@@ -80,13 +80,18 @@ private fun TituloSeccion(texto: String) {
 // Ajustes del lector. Se usa desde el menú de la biblioteca y desde la barra del propio lector,
 // donde los cambios se ven al momento.
 @OptIn(ExperimentalMaterial3Api::class)
+/** Solo las secciones «Pantalla» e «Imagen» (las usa el lector en línea, que tiene su propia navegación). */
 @Composable
-fun DialogoLector(almacen: Almacen, alCerrar: () -> Unit) {
+fun DialogoPantallaLector(almacen: Almacen, alCerrar: () -> Unit) = DialogoLector(almacen, alCerrar, soloPantalla = true)
+
+@Composable
+fun DialogoLector(almacen: Almacen, alCerrar: () -> Unit, soloPantalla: Boolean = false) {
     AlertDialog(
         onDismissRequest = alCerrar,
-        title = { Text("Lector") },
+        title = { Text(if (soloPantalla) "Pantalla y color" else "Lector") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+              if (!soloPantalla) {
                 TituloSeccion("Navegación")
                 Spacer(Modifier.height(8.dp))
                 FilaInterruptor(
@@ -110,8 +115,8 @@ fun DialogoLector(almacen: Almacen, alCerrar: () -> Unit) {
                     activado = almacen.mantenerEncendida,
                     alCambiar = { almacen.elegirMantenerEncendida(it) },
                 )
-
                 Spacer(Modifier.height(20.dp))
+              }
                 TituloSeccion("Pantalla")
                 Spacer(Modifier.height(8.dp))
                 Text("Color de fondo")

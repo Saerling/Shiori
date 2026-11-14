@@ -491,7 +491,7 @@ private fun TeclasVolumen(activas: Boolean) {
 }
 
 // Matriz de color para escala de grises y/o colores invertidos (null si no hay ninguno).
-private fun construirFiltro(grises: Boolean, invertir: Boolean): ColorFilter? {
+internal fun construirFiltro(grises: Boolean, invertir: Boolean): ColorFilter? {
     if (!grises && !invertir) return null
     val matriz = ColorMatrix()
     if (grises) matriz.setToSaturation(0f)
@@ -510,7 +510,7 @@ private fun construirFiltro(grises: Boolean, invertir: Boolean): ColorFilter? {
 
 // Orientación y brillo propios mientras el lector está abierto. Al salir se restauran.
 @Composable
-private fun AjustesPantalla(almacen: Almacen) {
+internal fun AjustesPantalla(almacen: Almacen) {
     val vista = LocalView.current
     val actividad = vista.context as? Activity
 
