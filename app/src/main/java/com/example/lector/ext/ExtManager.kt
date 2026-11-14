@@ -614,7 +614,8 @@ class ExtManager private constructor(private val app: Context) {
                 if (!leido) errs += "${r.nombre}: ${primerError ?: "sin respuesta"}"
             }
             // Una entrada por paquete y firma (si hay copias en varios listados con la misma firma, gana la versión más alta).
-            val unicas = nuevas.groupBy { it.pkg to it.firma }.values.map { g -> g.maxByOrNull { it.versionCode }!! }
+            // Una copia por listado, para poder elegir de cuál instalar cuando la misma extensión está en varios.
+            val unicas = nuevas.groupBy { Triple(it.pkg, it.firma, it.repoUrl) }.values.map { g -> g.maxByOrNull { it.versionCode }!! }
             withContext(Dispatchers.Main) {
                 if (unicas.isNotEmpty() || errs.isEmpty()) {
                     disponiblesTodas = unicas
@@ -842,6 +843,34 @@ class ExtManager private constructor(private val app: Context) {
             { leerInstaladas(); cargarFuentesReales(it); null },
             { it.message ?: "No se pudo instalar" },
         )
+    }
+
+    /** Todas las copias de una extensión (una por listado), de la versión más nueva a la más vieja. */
+    fun alternativas(pkg: String): List<ExtDisponible> =
+        disponiblesTodas.filter { it.pkg == pkg }.distinctBy { it.repoUrl }.sortedByDescending { it.versionCode }
+
+    /** Otras extensiones (con otro paquete) que leen la misma web que [d]. */
+    fun mismaWeb(d: ExtDisponible): List<ExtDisponible> {
+        val hosts = d.fuentes.mapNotNull { hostDe(it.baseUrl) }.toSet()
+        if (hosts.isEmpty()) return emptyList()
+        return disponibles.filter { o -> o.pkg != d.pkg && o.fuentes.any { hostDe(it.baseUrl) in hosts } }
+    }
+
+    private fun hostDe(url: String): String? =
+        runCatching { Uri.parse(url).host?.removePrefix("www.")?.lowercase() }.getOrNull()?.ifBlank { null }
+
+    /**
+     * Instala la copia de un listado concreto. Si ya está instalada (en el sistema) la de otro listado con otra
+     * firma, Android no deja reemplazarla: primero se pide desinstalar la actual.
+     */
+    fun instalarDe(d: ExtDisponible) {
+        val actual = instaladasRaw.firstOrNull { it.pkg == d.pkg }
+        if (actual != null && !actual.privada && d.firma.isNotBlank() && actual.firmas.none { it.equals(d.firma, true) }) {
+            com.example.lector.ui.Avisos.mostrar("La instalada viene de otro listado con otra firma: desinstálala y vuelve a pulsar Instalar")
+            desinstalar(d.pkg)
+            return
+        }
+        instalar(d)
     }
 
     fun instalar(e: ExtDisponible) {

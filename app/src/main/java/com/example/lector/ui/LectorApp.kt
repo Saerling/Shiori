@@ -85,6 +85,10 @@ fun Inicio(
     }
 
     var ruta by rememberSaveable { mutableStateOf<Ruta?>(null) }
+    var webUrl by rememberSaveable { mutableStateOf("") }
+    var webTitulo by rememberSaveable { mutableStateOf("") }
+    var webDesdeExt by rememberSaveable { mutableStateOf(false) }
+    val abrirWeb: (String, String) -> Unit = { u, t -> webDesdeExt = ruta == Ruta.ExtDetalle; webUrl = u; webTitulo = t; ruta = Ruta.Web }
     var detalleId by rememberSaveable { mutableStateOf<String?>(null) }
     // Explorar / extensiones: gestor único + qué extensión o fuente se está viendo.
     val contexto = LocalContext.current
@@ -420,6 +424,7 @@ fun Inicio(
                     onMigrar = { migrarId = it.id; ruta = Ruta.MigrarSerie },
                     onBuscarGlobal = { consultaGlobal = ""; ruta = Ruta.BusquedaGlobal },
                     onBuscarTitulo = { t -> consultaGlobal = t; ruta = Ruta.BusquedaGlobal },
+                    onWeb = abrirWeb,
                 )
                 LectorTab.Library -> Box(Modifier.padding(bottom = 76.dp)) {
                     BibliotecaScreen(
@@ -553,7 +558,8 @@ fun Inicio(
                         )
                     }
                     Ruta.ListadosExt -> ListadosExtScreen(ext) { ruta = null }
-                    Ruta.ExtDetalle -> ExtDetalleScreen(ext, extPkg.orEmpty()) { ruta = null }
+                    Ruta.ExtDetalle -> ExtDetalleScreen(ext, extPkg.orEmpty(), abrirWeb) { ruta = null }
+                    Ruta.Web -> WebViewScreen(webUrl, webTitulo) { ruta = if (webDesdeExt) Ruta.ExtDetalle else null }
                     Ruta.FuenteDetalle, Ruta.Ficha, Ruta.LeerOnline -> Box(Modifier.fillMaxSize())
                 }
             }

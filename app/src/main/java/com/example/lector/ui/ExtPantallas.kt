@@ -201,7 +201,7 @@ private fun DialogoAnadirRepo(ext: ExtManager, cerrar: () -> Unit) {
 // ───────────────────── Detalle de una extensión ─────────────────────
 
 @Composable
-fun ExtDetalleScreen(ext: ExtManager, pkg: String, onBack: () -> Unit) {
+fun ExtDetalleScreen(ext: ExtManager, pkg: String, onWeb: (String, String) -> Unit = { _, _ -> }, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val e = ext.instaladas.firstOrNull { it.pkg == pkg }
     var ajustesDe by remember { mutableStateOf<Long?>(null) }
@@ -328,6 +328,27 @@ fun ExtDetalleScreen(ext: ExtManager, pkg: String, onBack: () -> Unit) {
                         Text(f.nombre, style = TrackTitleStyle.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold), color = LectorColors.Text, maxLines = 1)
                         Text("${nombreIdioma(f.lang)}  ·  ${f.baseUrl}", style = TrackSubtitleStyle, color = LectorColors.Text.copy(alpha = 0.6f), maxLines = 1)
                     }
+                    if (f.baseUrl.startsWith("http")) {
+                        Box(
+                            Modifier.size(40.dp).pressable { onWeb(f.baseUrl, f.nombre) }.clip(CircleShape).background(LectorColors.PillFill),
+                            Alignment.Center,
+                        ) { Icon(Iconos.Globo, "Ver la web", tint = LectorColors.Text, modifier = Modifier.size(20.dp)) }
+                    }
+                }
+            }
+            // La misma extensión en otros listados: se puede cambiar de uno a otro.
+            val otras = ext.alternativas(e.pkg).filter { d -> e.firmas.none { it.equals(d.firma, true) } || d.versionCode != e.versionCode }
+            if (otras.isNotEmpty()) {
+                item(key = "otros_title", contentType = "shelf_title") {
+                    ArtistShelfTitle("En otros listados", Modifier.padding(top = 30.dp, bottom = 4.dp), count = otras.size)
+                }
+                items(otras.size, contentType = { "otro_listado" }) { i ->
+                    val d = otras[i]
+                    val misma = e.firmas.any { it.equals(d.firma, true) }
+                    FilaAjuste(
+                        Icons.Rounded.Refresh, "@${d.repoSigla}  •  v${d.versionName}",
+                        if (misma) "Misma firma: se instala encima" else "Otra firma: primero se desinstala la actual",
+                    ) { ext.instalarDe(d) }
                 }
             }
             if (configurables.isNotEmpty()) {

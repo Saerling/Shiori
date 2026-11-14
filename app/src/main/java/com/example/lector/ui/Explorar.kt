@@ -112,6 +112,8 @@ fun ExplorarScreen(
     onBuscarGlobal: () -> Unit = {},
     /** «Buscar en todas» del menú de mantener pulsado de Novedades: abre la búsqueda global con ese título. */
     onBuscarTitulo: ((String) -> Unit)? = null,
+    /** Abre una web en el WebView (p. ej. la de una extensión antes de instalarla). */
+    onWeb: (url: String, titulo: String) -> Unit = { _, _ -> },
 ) {
     var sub by rememberSaveable { mutableStateOf(0) }
     var reordenar by rememberSaveable { mutableStateOf(false) }
@@ -159,7 +161,7 @@ fun ExplorarScreen(
                     1 -> NovedadesTab(ext, reordenar, onManga, onFuente, onBuscarTitulo) { dialogoNovedades = true }
                     2 -> ExtensionesTab(
                         ext, consulta, false, { consulta = it }, onExt,
-                        onConfiar = { porConfiar = it }, onRepos = { onRuta(Ruta.ListadosExt) }
+                        onConfiar = { porConfiar = it }, onRepos = { onRuta(Ruta.ListadosExt) }, onWeb = onWeb,
                     )
                     else -> MigrarTab(ext, almacen, onMigrar) { onRuta(Ruta.MigracionesRecientes) }
                 }
@@ -767,7 +769,10 @@ private fun DialogoNovedades(ext: ExtManager, onCerrar: () -> Unit) {
 private fun ExtensionesTab(
     ext: ExtManager, consulta: String, buscando: Boolean, onConsulta: (String) -> Unit,
     onDetalle: (ExtInstalada) -> Unit, onConfiar: (ExtInstalada) -> Unit, onRepos: () -> Unit,
+    onWeb: (String, String) -> Unit = { _, _ -> },
 ) {
+    var elegir by remember { mutableStateOf<ExtDisponible?>(null) }
+    elegir?.let { d -> DialogoListados(d, ext, onWeb) { elegir = null } }
     val q = consulta.trim()
     val instaladas = ext.instaladas
     val inst = remember(instaladas, q, ext.mostrarNsfw, com.example.lector.ModoContenido.modo) {
@@ -900,7 +905,7 @@ private fun ExtensionesTab(
                 item(contentType = n) {
                     SearchSectionHeader(n, ruleAbove = false, modifier = Modifier.padding(top = arriba), trailing = { SearchCount(lista.size) })
                 }
-                items(lista, contentType = { n }) { FilaDisponible(it, ext) }
+                items(lista, contentType = { n }) { FilaDisponible(it, ext, onWeb) { elegir = it } }
             }
         }
         BarraDesplazamiento(estadoLista)
@@ -951,23 +956,84 @@ private fun FilaInstalada(e: ExtInstalada, ext: ExtManager, onDetalle: (ExtInsta
 }
 
 @Composable
-private fun FilaDisponible(d: ExtDisponible, ext: ExtManager) {
-    val subtitulo = remember(d.lang, d.nsfw, d.versionName, d.repoSigla) {
-        listOfNotNull("${bandera(d.lang)} ${nombreIdioma(d.lang)}", "+18".takeIf { d.nsfw }, "${d.versionName} @${d.repoSigla}").joinToString("  •  ")
+private fun FilaDisponible(d: ExtDisponible, ext: ExtManager, onWeb: (String, String) -> Unit, onElegir: () -> Unit) {
+    val copias = ext.alternativas(d.pkg).size
+    val subtitulo = remember(d.lang, d.nsfw, d.versionName, d.repoSigla, copias) {
+        listOfNotNull(
+            "${bandera(d.lang)} ${nombreIdioma(d.lang)}", "+18".takeIf { d.nsfw }, "${d.versionName} @${d.repoSigla}",
+            "en $copias listados".takeIf { copias > 1 },
+        ).joinToString("  •  ")
     }
+    val web = d.fuentes.firstOrNull { it.baseUrl.startsWith("http") }?.baseUrl
     ResultRow(
         artwork = { IconoExt(d.pkg, d.iconoUrl, Modifier.size(46.dp)) },
         title = d.nombre,
         subtitle = subtitulo,
-        onClick = null,
+        onClick = onElegir,
         trailing = {
-            val pr = ext.progreso[d.pkg]
-            when {
-                pr != null -> EstadoProgreso(pr) { ext.limpiarError(d.pkg) }
-                d.apkUrl.isBlank() -> Text("No disponible", style = AppTypography.bodySmall.copy(fontSize = 12.sp), color = SearchColors.Secondary)
-                else -> PildoraAccion("Instalar", Icons.Rounded.Add) { Tacto.tic(); ext.instalar(d) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (web != null) {
+                    Box(
+                        Modifier.size(34.dp).pressable { onWeb(web, d.nombre) }.clip(CircleShape).background(SearchColors.TileHigh),
+                        Alignment.Center,
+                    ) { Icon(Iconos.Globo, "Ver la web", tint = SearchColors.Primary, modifier = Modifier.size(18.dp)) }
+                    Spacer(Modifier.width(8.dp))
+                }
+                val pr = ext.progreso[d.pkg]
+                when {
+                    pr != null -> EstadoProgreso(pr) { ext.limpiarError(d.pkg) }
+                    d.apkUrl.isBlank() -> Text("No disponible", style = AppTypography.bodySmall.copy(fontSize = 12.sp), color = SearchColors.Secondary)
+                    copias > 1 -> PildoraAccion("Elegir", Icons.Rounded.Add) { Tacto.tic(); onElegir() }
+                    else -> PildoraAccion("Instalar", Icons.Rounded.Add) { Tacto.tic(); ext.instalarDe(d) }
+                }
             }
         },
+    )
+}
+
+/** De qué listado instalar una extensión, su web y otras extensiones que leen la misma web. */
+@Composable
+private fun DialogoListados(d: ExtDisponible, ext: ExtManager, onWeb: (String, String) -> Unit, onCerrar: () -> Unit) {
+    val copias = ext.alternativas(d.pkg)
+    val misma = ext.mismaWeb(d)
+    val web = d.fuentes.firstOrNull { it.baseUrl.startsWith("http") }?.baseUrl
+    @Composable
+    fun Opcion(titulo: String, detalle: String, accion: String, onClick: () -> Unit) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(titulo, style = AppTypography.bodyLarge.copy(fontWeight = FontWeight.SemiBold), color = SearchColors.Primary, maxLines = 1)
+                Text(detalle, style = AppTypography.bodySmall, color = SearchColors.Secondary, maxLines = 1)
+            }
+            PildoraAccion(accion, null) { Tacto.tic(); onClick() }
+        }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text(d.nombre) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (web != null) Opcion("Ver la web antes de instalar", web, "Abrir") { onCerrar(); onWeb(web, d.nombre) }
+                Text(
+                    if (copias.size > 1) "Está en ${copias.size} listados. Elige de cuál instalarla:" else "Listado",
+                    style = AppTypography.labelMedium, color = SearchColors.Secondary, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                )
+                copias.forEach { c ->
+                    Opcion(
+                        "@${c.repoSigla}",
+                        "v${c.versionName}" + (if (c.firma.length >= 8) "  •  firma ${c.firma.take(8)}" else ""),
+                        "Instalar",
+                    ) { onCerrar(); ext.instalarDe(c) }
+                }
+                if (misma.isNotEmpty()) {
+                    Text(
+                        "Otras extensiones de la misma web", style = AppTypography.labelMedium, color = SearchColors.Secondary,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                    )
+                    misma.forEach { o -> Opcion(o.nombre, "v${o.versionName}  •  @${o.repoSigla}", "Instalar") { onCerrar(); ext.instalarDe(o) } }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onCerrar) { Text("Cerrar") } },
     )
 }
 

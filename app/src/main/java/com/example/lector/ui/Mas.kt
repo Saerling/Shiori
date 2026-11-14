@@ -35,7 +35,9 @@ enum class Ruta {
     // Explorar / extensiones
     ListadosExt, ExtDetalle, FuenteDetalle,
     // Ficha de un manga de una fuente + lector online
-    Ficha, LeerOnline
+    Ficha, LeerOnline,
+    // WebView de una web (p. ej. de una extensión antes de instalarla)
+    Web,
 }
 
 fun Ruta.padre(): Ruta? = when (this) {
