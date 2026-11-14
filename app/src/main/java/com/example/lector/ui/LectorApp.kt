@@ -71,6 +71,10 @@ fun Inicio(
 
     var ruta by rememberSaveable { mutableStateOf<Ruta?>(null) }
     var detalleId by rememberSaveable { mutableStateOf<String?>(null) }
+    var webUrl by rememberSaveable { mutableStateOf("") }
+    var webTitulo by rememberSaveable { mutableStateOf("") }
+    var webDesdeExt by rememberSaveable { mutableStateOf(false) }
+    val abrirWeb: (String, String) -> Unit = { u, t -> webDesdeExt = ruta == Ruta.ExtDetalle; webUrl = u; webTitulo = t; ruta = Ruta.Web }
     // Explorar / extensiones: gestor único + qué extensión o fuente se está viendo.
     val contexto = LocalContext.current
     val ext = remember { ExtManager.obtener(contexto) }
@@ -151,6 +155,7 @@ fun Inicio(
                     onFuente = { fuenteId = it.id; desdeNovedades = false; ruta = Ruta.FuenteDetalle },
                     onExt = { extPkg = it.pkg; ruta = Ruta.ExtDetalle },
                     onManga = { f, m -> fuenteId = f.id; mangaSel = m; desdeNovedades = true; reanudar = null; ruta = Ruta.Ficha },
+                    onWeb = abrirWeb,
                 )
                 LectorTab.Library -> Box(Modifier.padding(bottom = 76.dp)) {
                     BibliotecaScreen(
@@ -244,7 +249,8 @@ fun Inicio(
                     Ruta.AjBiblioteca -> AjBibliotecaScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = it }
                     Ruta.AjSeguimiento -> AjSeguimientoScreen(almacen) { ruta = Ruta.Ajustes }
                     Ruta.ListadosExt -> ListadosExtScreen(ext) { ruta = null }
-                    Ruta.ExtDetalle -> ExtDetalleScreen(ext, extPkg.orEmpty()) { ruta = null }
+                    Ruta.ExtDetalle -> ExtDetalleScreen(ext, extPkg.orEmpty(), abrirWeb) { ruta = null }
+                    Ruta.Web -> WebViewScreen(webUrl, webTitulo) { ruta = if (webDesdeExt) Ruta.ExtDetalle else null }
                     Ruta.FuenteDetalle, Ruta.Ficha, Ruta.LeerOnline -> Box(Modifier.fillMaxSize())
                 }
             }

@@ -189,7 +189,7 @@ private fun DialogoAnadirRepo(ext: ExtManager, cerrar: () -> Unit) {
 // ───────────────────── Detalle de una extensión ─────────────────────
 
 @Composable
-fun ExtDetalleScreen(ext: ExtManager, pkg: String, onBack: () -> Unit) {
+fun ExtDetalleScreen(ext: ExtManager, pkg: String, onWeb: (String, String) -> Unit = { _, _ -> }, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val e = ext.instaladas.firstOrNull { it.pkg == pkg }
     var ajustesDe by remember { mutableStateOf<Long?>(null) }
@@ -239,9 +239,25 @@ fun ExtDetalleScreen(ext: ExtManager, pkg: String, onBack: () -> Unit) {
         val fuentes = ext.disponibles.firstOrNull { it.pkg == e.pkg }?.fuentes.orEmpty()
         TituloSeccion("Fuentes (${fuentes.size})")
         fuentes.forEach { f ->
-            Column(Modifier.padding(horizontal = 24.dp, vertical = 6.dp)) {
-                LText(f.nombre, LectorType.Section.copy(fontSize = 16.sp), maxLines = 1)
-                LText("${nombreIdioma(f.lang)}  ·  ${f.baseUrl}", LectorType.Label, color = LectorColors.Muted, maxLines = 1)
+            Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    LText(f.nombre, LectorType.Section.copy(fontSize = 16.sp), maxLines = 1)
+                    LText("${nombreIdioma(f.lang)}  ·  ${f.baseUrl}", LectorType.Label, color = LectorColors.Muted, maxLines = 1)
+                }
+                if (f.baseUrl.isNotBlank()) IconButton(onClick = { onWeb(f.baseUrl, f.nombre) }) { IconoGlobo(LectorColors.Text) }
+            }
+        }
+        // La misma extensión en otros listados: se puede cambiar de uno a otro.
+        val otras = ext.alternativas(e.pkg).filter { d -> e.firmas.none { it.equals(d.firma, true) } || d.versionCode != e.versionCode }
+        if (otras.isNotEmpty()) {
+            Divisor()
+            TituloSeccion("En otros listados")
+            otras.forEach { d ->
+                val misma = e.firmas.any { it.equals(d.firma, true) }
+                FilaAjuste(
+                    Icons.Rounded.Refresh, "@${d.repoSigla} · v${d.versionName}",
+                    if (misma) "Misma firma: se instala encima" else "Otra firma: primero se desinstala la actual",
+                ) { ext.instalarDe(d) }
             }
         }
         if (configurables.isNotEmpty()) {

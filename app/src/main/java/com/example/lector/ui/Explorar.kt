@@ -86,6 +86,7 @@ fun ExplorarScreen(
     onFuente: (FuenteUI) -> Unit,
     onExt: (ExtInstalada) -> Unit,
     onManga: (FuenteUI, MangaFuente) -> Unit,
+    onWeb: (url: String, titulo: String) -> Unit = { _, _ -> },
 ) {
     var sub by rememberSaveable { mutableStateOf(0) }
     var reordenar by rememberSaveable { mutableStateOf(false) }
@@ -164,7 +165,7 @@ fun ExplorarScreen(
                 1 -> NovedadesTab(ext, reordenar, onManga, onFuente) { dialogoNovedades = true }
                 2 -> ExtensionesTab(
                     ext, consulta, buscando, { consulta = it }, onExt,
-                    onConfiar = { porConfiar = it }, onRepos = { onRuta(Ruta.ListadosExt) }
+                    onConfiar = { porConfiar = it }, onRepos = { onRuta(Ruta.ListadosExt) }, onWeb = onWeb,
                 )
                 else -> MigrarTab()
             }
@@ -447,7 +448,10 @@ private fun DialogoNovedades(ext: ExtManager, onCerrar: () -> Unit) {
 private fun ExtensionesTab(
     ext: ExtManager, consulta: String, buscando: Boolean, onConsulta: (String) -> Unit,
     onDetalle: (ExtInstalada) -> Unit, onConfiar: (ExtInstalada) -> Unit, onRepos: () -> Unit,
+    onWeb: (String, String) -> Unit,
 ) {
+    var elegir by remember { mutableStateOf<ExtDisponible?>(null) }
+    elegir?.let { d -> DialogoListados(d, ext, onWeb) { elegir = null } }
     val q = consulta.trim()
     fun coincide(n: String) = q.isEmpty() || n.contains(q, ignoreCase = true)
     val inst = ext.instaladas.filter { coincide(it.nombre) && (ext.mostrarNsfw || !it.nsfw) }
@@ -483,7 +487,7 @@ private fun ExtensionesTab(
             }
             disp.forEach { (lang, lista) ->
                 item { TituloSeccion(nombreIdioma(lang)) }
-                items(lista) { FilaDisponible(it, ext) }
+                items(lista) { FilaDisponible(it, ext, onWeb) { elegir = it } }
             }
         }
     }
@@ -516,9 +520,11 @@ private fun FilaInstalada(e: ExtInstalada, ext: ExtManager, onDetalle: (ExtInsta
 }
 
 @Composable
-private fun FilaDisponible(d: ExtDisponible, ext: ExtManager) {
+private fun FilaDisponible(d: ExtDisponible, ext: ExtManager, onWeb: (String, String) -> Unit, onElegir: () -> Unit) {
+    val otros = ext.alternativas(d.pkg).size - 1
+    val web = d.fuentes.firstOrNull { it.baseUrl.isNotBlank() }?.baseUrl
     Row(
-        Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth().clickable { onElegir() }.padding(start = 24.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconoExt(d.pkg, d.iconoUrl, Modifier.size(48.dp))
@@ -526,14 +532,84 @@ private fun FilaDisponible(d: ExtDisponible, ext: ExtManager) {
         Column(Modifier.weight(1f)) {
             LText(d.nombre, LectorType.Section.copy(fontSize = 17.sp), maxLines = 1)
             Subtitulo(listOf("${bandera(d.lang)} ${nombreIdioma(d.lang)}", "${d.versionName} @${d.repoSigla}"), d.nsfw)
+            if (otros > 0) {
+                LText(
+                    "En ${otros + 1} listados · toca para elegir",
+                    LectorType.Label, color = MaterialTheme.colorScheme.primary, maxLines = 1,
+                )
+            }
+        }
+        if (web != null) {
+            IconButton(onClick = { onWeb(web, d.nombre) }) { IconoGlobo(LectorColors.Text) }
         }
         val pr = ext.progreso[d.pkg]
         when {
             pr != null -> EstadoProgreso(pr) { ext.limpiarError(d.pkg) }
             d.apkUrl.isBlank() -> LText("No disponible", LectorType.Label, color = LectorColors.Muted)
-            else -> Pildora("Instalar") { ext.instalar(d) }
+            else -> Pildora("Instalar") { ext.instalarDe(d) }
         }
     }
+}
+
+/** De qué listado instalar una extensión, su web y otras extensiones que leen la misma web. */
+@Composable
+private fun DialogoListados(d: ExtDisponible, ext: ExtManager, onWeb: (String, String) -> Unit, onCerrar: () -> Unit) {
+    val copias = ext.alternativas(d.pkg)
+    val misma = ext.mismaWeb(d)
+    val web = d.fuentes.firstOrNull { it.baseUrl.isNotBlank() }?.baseUrl
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text(d.nombre) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (web != null) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onCerrar(); onWeb(web, d.nombre) }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconoGlobo(LectorColors.Text)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            LText("Ver la web antes de instalar", LectorType.Body)
+                            LText(web, LectorType.Label, color = LectorColors.Muted, maxLines = 1)
+                        }
+                    }
+                }
+                LText(
+                    if (copias.size > 1) "Está en ${copias.size} listados. Elige de cuál instalarla:" else "Listado",
+                    LectorType.Label, Modifier.padding(top = 12.dp, bottom = 4.dp), color = LectorColors.Muted,
+                )
+                copias.forEach { c ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            LText("@${c.repoSigla}", LectorType.Section.copy(fontSize = 16.sp), maxLines = 1)
+                            LText(
+                                "v${c.versionName}" + (if (c.firma.length >= 8) " · firma ${c.firma.take(8)}" else ""),
+                                LectorType.Label, color = LectorColors.Muted, maxLines = 1,
+                            )
+                        }
+                        Pildora("Instalar") { onCerrar(); ext.instalarDe(c) }
+                    }
+                }
+                if (misma.isNotEmpty()) {
+                    LText(
+                        "Otras extensiones de la misma web",
+                        LectorType.Label, Modifier.padding(top = 12.dp, bottom = 4.dp), color = LectorColors.Muted,
+                    )
+                    misma.forEach { o ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                LText(o.nombre, LectorType.Section.copy(fontSize = 16.sp), maxLines = 1)
+                                LText("v${o.versionName} @${o.repoSigla}", LectorType.Label, color = LectorColors.Muted, maxLines = 1)
+                            }
+                            Pildora("Instalar") { onCerrar(); ext.instalarDe(o) }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onCerrar) { Text("Cerrar") } },
+    )
 }
 
 @Composable
