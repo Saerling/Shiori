@@ -193,7 +193,6 @@ fun Marca(marcada: Boolean) {
 /** Interruptor: el AppSwitch de Mochy (ui/mochy/AppSwitch.kt), con el toque háptico de Shiori. */
 @Composable
 fun Interruptor(activado: Boolean, onChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
-    if (fxOn("switch")) { InterruptorCoss(activado, onChange?.let { c -> { v: Boolean -> Tacto.alternar(v); c(v) } }, modifier); return }
     AppSwitch(
         checked = activado,
         onCheckedChange = onChange?.let { cambiar -> { v: Boolean -> Tacto.alternar(v); cambiar(v) } },
@@ -306,7 +305,9 @@ fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
     Column(modifier.clip(SuaveShape(24.dp)).background(LectorColors.Card).then(when (estilo % 5) { 1 -> Modifier.bordeBrillante(24.dp); 2 -> Modifier.foco(LectorColors.Text); 3 -> Modifier.hazBorde(24.dp, acento); 4 -> Modifier.noise(.06f); else -> Modifier }).padding(20.dp)) {
         if (estilo >= 0 && estilo % 3 == 1) Box(Modifier.padding(bottom = 6.dp).size(26.dp, 4.dp).clip(CircleShape).background(acento))
         val tam = LectorType.Display.copy(fontSize = if (value.length > 6) 22.sp else 36.sp)
+        val num = value.toLongOrNull()
         when {
+            fxOn("nf_stats") && num != null -> NumeroFlow(num, tam.copy(fontWeight = tam.fontWeight ?: androidx.compose.ui.text.font.FontWeight.Bold), color = if (estilo >= 0 && estilo % 3 == 2) acento else LectorColors.Text)
             fxOn("numberticker") -> LText(textoContando(value), tam, maxLines = 1, color = if (estilo >= 0 && estilo % 3 == 2) acento else LectorColors.Text)
             else -> LText(value, tam, maxLines = 1, color = if (estilo >= 0 && estilo % 3 == 2) acento else LectorColors.Text)
         }

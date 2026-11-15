@@ -6,6 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.lector"
+    testOptions { unitTests { isIncludeAndroidResources = true; all { it.maxHeapSize = "3g"; it.systemProperty("robolectric.graphicsMode", "NATIVE"); it.systemProperty("robolectric.pixelCopyRenderMode", "hardware"); it.systemProperty("roborazzi.test.record", "true") } } }
     compileSdk = 35
 
     defaultConfig {
@@ -15,7 +16,7 @@ android {
         // En GitHub Actions el número sube solo en cada compilación (1000 + número de ejecución): así cada versión
         // publicada es mayor que la anterior y Android la instala como actualización. Compilado a mano: 9.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1000 + it } ?: 9
-        versionName = "0.79"
+        versionName = "0.80"
     }
 
     // Una sola firma fija para todas las versiones (antes cada compilación de GitHub creaba una clave de depuración
@@ -104,4 +105,11 @@ dependencies {
     // Motor de JavaScript que usan las extensiones (JavaScriptEngine), la misma librería y versión que Komikku.
     implementation("com.github.zhanghai.quickjs-java:quickjs-android:547f5b1597")
     testImplementation("junit:junit:4.13.2")
+    // Capturas de verificación (Robolectric + Roborazzi): la biblioteca de animaciones pintada en las piezas reales.
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.43.1")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.43.1")
 }

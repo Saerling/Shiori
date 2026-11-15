@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -123,6 +124,7 @@ fun BotonDescarga(
         0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart), label = "giro",
     )
 
+    if (fxOn("download")) { BotonDescargaFx(estado, onClick, modifier); return }
     Box(modifier.size(44.dp).pressable(onClick), Alignment.Center) {
         when (estado) {
             is EstadoDescarga.Libre -> {

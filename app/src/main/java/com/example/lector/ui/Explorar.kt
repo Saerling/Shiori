@@ -824,7 +824,7 @@ private fun ExtensionesTab(
             if (ext.cargando) item(key = "cargando", contentType = "Aviso") {
                 if (com.example.lector.ui.mochy.EstiloApp.orbes) Box(Modifier.fillMaxWidth().padding(bottom = 14.dp), Alignment.Center) {
                     IndicadorCarga(Modifier.size(34.dp), SearchColors.Primary, estado = com.example.lector.ui.orbes.EstadoOrbe.CONNECTING)
-                } else LinearProgressIndicator(
+                } else com.example.lector.ui.ProgresoLinea(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = SearchHorizontalPadding).padding(bottom = 14.dp).height(2.dp).clip(CircleShape),
                     color = SearchColors.Primary, trackColor = SearchColors.Divider,
                 )
@@ -1009,6 +1009,7 @@ private fun DialogoListados(d: ExtDisponible, ext: ExtManager, onWeb: (String, S
         }
     }
     androidx.compose.material3.AlertDialog(
+        modifier = com.example.lector.ui.estiloDialogoFxM(),
         onDismissRequest = onCerrar,
         title = { Text(d.nombre) },
         text = {
@@ -1500,6 +1501,8 @@ fun ImagenRemota(
     onCargada: ((ImageBitmap) -> Unit)? = null,
     escala: ContentScale = ContentScale.Crop,
     maxLado: Int = 512,
+    // Biblioteca de animaciones: aplicar los efectos de portada (Tilt, Glow, Magic Card, Glare).
+    efectosPortada: Boolean = true,
     // Fuente de la que viene la imagen: se descarga con su cliente (cookies, Cloudflare, Referer…).
     fuenteId: Long? = null,
 ) {
@@ -1519,7 +1522,7 @@ fun ImagenRemota(
     }
     // La portada nueva aparece con un fundido; la que ya estaba en caché empieza directamente en 1f.
     val opacidad by animateFloatAsState(if (img != null) 1f else 0f, tween(300), label = "portadaFundido")
-    Box(modifier.background(LectorColors.CardHigh)) {
+    Box((if (efectosPortada) modifier.efectosPortadaFx() else modifier).background(LectorColors.CardHigh)) {
         val i = img
         if (i != null) Image(
             bitmap = i, contentDescription = null, contentScale = escala,

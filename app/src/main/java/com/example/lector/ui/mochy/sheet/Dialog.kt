@@ -52,7 +52,7 @@ fun DefaultDialog(
         ) {
             Column(
                 horizontalAlignment = horizontalAlignment,
-                modifier = modifier
+                modifier = modifier.then(com.example.lector.ui.estiloDialogoFxM())
                     .padding(24.dp)
             ) {
                 if (icon != null) {

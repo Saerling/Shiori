@@ -110,7 +110,9 @@ fun HistorialScreen(
         val q = consulta.trim()
         (locales + enLinea).filter { q.isEmpty() || it.titulo.contains(q, ignoreCase = true) }.sortedByDescending { it.tiempo }
     }
-    val grupos = remember(entradas) { entradas.groupBy { inicioDelDiaH(it.tiempo) } }
+    var diaFx by remember { mutableStateOf<Int?>(null) }
+    val gruposTodos = remember(entradas) { entradas.groupBy { inicioDelDiaH(it.tiempo) } }
+    val grupos = if (com.example.lector.fx.fxOn("weekstrip") && diaFx != null) gruposTodos.filterKeys { it == inicioDelDiaH(System.currentTimeMillis() - (6 - diaFx!!) * 86_400_000L) } else gruposTodos
     val formatoHora = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
 
     val acento = MaterialTheme.colorScheme.primary
@@ -158,7 +160,13 @@ fun HistorialScreen(
             if (consulta.isBlank()) VacioHistorial("Aún no has leído nada", "Lo que leas aparecerá aquí, ordenado por día, para retomarlo con un toque.")
             else VacioHistorial("Sin resultados", "Nada coincide con «$consulta».")
         } else {
+            val semanaFx = com.example.lector.fx.fxOn("weekstrip")
             LazyColumn(contentPadding = PaddingValues(bottom = 190.dp)) {
+                // Biblioteca de animaciones: Week Strip Calendar — toca un día para ver solo lo de ese día.
+                if (semanaFx) item(key = "fx_semana") {
+                    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { com.example.lector.fx.TiraSemana(diaFx ?: -1, { diaFx = if (diaFx == it) null else it }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        conteo = { i -> gruposTodos[inicioDelDiaH(System.currentTimeMillis() - (6 - i) * 86_400_000L)]?.size ?: 0 }, color = acento) }
+                }
                 var base = 0
                 grupos.forEach { (dia, lista) ->
                     val inicio = base

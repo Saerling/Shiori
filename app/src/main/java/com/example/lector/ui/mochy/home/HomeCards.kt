@@ -190,7 +190,8 @@ fun HomeSectionTitle(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
+            if (com.example.lector.fx.fxOn("comictext")) com.example.lector.fx.TextoComic(title, tam = 22.sp, color = androidx.compose.ui.graphics.Color(0xFFFFD60A))
+            else Text(
                 text = title,
                 style = HomeLabelStyle,
                 color = SectionLabelColor,

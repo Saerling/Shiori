@@ -11,14 +11,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Saerling/lector/releases/latest"><img src="https://img.shields.io/github/v/release/Saerling/lector?style=for-the-badge&label=versi%C3%B3n&color=111114" alt="Última versión"></a>
-  <a href="https://github.com/Saerling/lector/releases"><img src="https://img.shields.io/github/downloads/Saerling/lector/total?style=for-the-badge&label=descargas&color=111114" alt="Descargas"></a>
+  <a href="https://github.com/Saerling/Shiori/releases/latest"><img src="https://img.shields.io/github/v/release/Saerling/Shiori?style=for-the-badge&label=versi%C3%B3n&color=111114" alt="Última versión"></a>
+  <a href="https://github.com/Saerling/Shiori/releases"><img src="https://img.shields.io/github/downloads/Saerling/Shiori/total?style=for-the-badge&label=descargas&color=111114" alt="Descargas"></a>
   <img src="https://img.shields.io/badge/Android-8.0%2B-111114?style=for-the-badge&logo=android&logoColor=white" alt="Android 8.0+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licencia-GPL--3.0-111114?style=for-the-badge" alt="GPL-3.0"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Saerling/lector/releases/latest"><b>⬇ Descargar el APK</b></a>
+  <a href="https://github.com/Saerling/Shiori/releases/latest"><b>⬇ Descargar el APK</b></a>
   &nbsp;·&nbsp;
   <a href="#instalar">Instalar con Orion Store</a>
   &nbsp;·&nbsp;
@@ -80,7 +80,7 @@ Lee `.cbz` / `.zip`, PDF y carpetas de imágenes de tu teléfono, sin conexión.
 ## Instalar
 
 - **Orion Store:** busca *Shiori* en [Orion Store](https://github.com/RookieEnough/Orion-Store) y toca Instalar. Orion avisa de cada versión nueva.
-- **GitHub:** descarga el `.apk` de la [última versión](https://github.com/Saerling/lector/releases/latest) y ábrelo.
+- **GitHub:** descarga el `.apk` de la [última versión](https://github.com/Saerling/Shiori/releases/latest) y ábrelo.
 
 Después, Shiori se actualiza sola desde *Más → Acerca de → Buscar actualizaciones*. Cada versión nueva se instala encima de la anterior y conserva tus datos.
 

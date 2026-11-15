@@ -183,6 +183,7 @@ private fun ToastPill(toast: TopToast) {
             .shadow(14.dp, RoundedCornerShape(30.dp), clip = false, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(RoundedCornerShape(30.dp))
             .background(ToastCard)
+            .then(com.example.lector.ui.estiloAvisoFx())
             .pointerInput(toast.id) {
                 // dragging up closes it; it follows the finger only that way
                 detectVerticalDragGestures(
@@ -216,6 +217,7 @@ private fun ToastPill(toast: TopToast) {
                 if (toast.thumbnail != null) {
                     com.example.lector.ui.ImagenRemota(
                         url = toast.thumbnail,
+                        efectosPortada = false,
                         escala = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )

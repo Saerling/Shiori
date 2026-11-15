@@ -126,7 +126,7 @@ fun DialogoAlerta(
 ) {
     com.example.lector.ui.mochy.sheet.DefaultDialog(
         onDismiss = onDismissRequest,
-        modifier = modifier.estiloDialogoFx(),
+        modifier = modifier,
         icon = icon,
         title = title,
         horizontalAlignment = Alignment.Start,
