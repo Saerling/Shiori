@@ -36,8 +36,8 @@ object Seguidores {
     private val API_TIPO = "application/vnd.api+json".toMediaType()
 
     fun prefs(ctx: Context) = ctx.getSharedPreferences("seguidores", Context.MODE_PRIVATE)
-    private fun token(ctx: Context, s: String) = prefs(ctx).getString("tk_$s", null)
-    private fun extra(ctx: Context, s: String) = prefs(ctx).getString("extra_$s", null)
+    private fun token(ctx: Context, s: String) = Secreto.leer(prefs(ctx), "tk_$s")
+    private fun extra(ctx: Context, s: String) = Secreto.leer(prefs(ctx), "extra_$s")
 
     private fun ejecutar(r: Request): String = http.newCall(r).execute().use { res ->
         val cuerpo = res.body.string()
@@ -53,7 +53,7 @@ object Seguidores {
             val cuerpo = JSONObject().put("username", usuario).put("password", clave2).toString().toRequestBody(JSON_TIPO)
             val o = JSONObject(ejecutar(Request.Builder().url("$api/account/login").put(cuerpo).build()))
             val tk = o.getJSONObject("context").getString("session_token")
-            prefs(ctx).edit().putString("tk_$clave", tk).apply()
+            Secreto.poner(prefs(ctx).edit(), "tk_$clave", tk).apply()
         }
         private fun auth(ctx: Context, b: Request.Builder) = b.header("Authorization", "Bearer ${token(ctx, clave)}")
         override suspend fun buscar(ctx: Context, q: String) = withContext(Dispatchers.IO) {
@@ -87,7 +87,7 @@ object Seguidores {
             val tk = JSONObject(ejecutar(Request.Builder().url("https://kitsu.io/api/oauth/token").post(form).build())).getString("access_token")
             val yo = JSONObject(ejecutar(Request.Builder().url("$api/users?filter[self]=true").header("Authorization", "Bearer $tk").build()))
                 .getJSONArray("data").getJSONObject(0).getString("id")
-            prefs(ctx).edit().putString("tk_$clave", tk).putString("extra_$clave", yo).apply()
+            Secreto.poner(Secreto.poner(prefs(ctx).edit(), "tk_$clave", tk), "extra_$clave", yo).apply()
         }
         private fun auth(ctx: Context, b: Request.Builder) = b.header("Authorization", "Bearer ${token(ctx, clave)}").header("Accept", "application/vnd.api+json")
         override suspend fun buscar(ctx: Context, q: String) = withContext(Dispatchers.IO) {
@@ -136,7 +136,7 @@ object Seguidores {
                 .add("code_verifier", p.getString("mal_verif", "")!!).add("grant_type", "authorization_code")
                 .add("redirect_uri", "lector://mal").build()
             val tk = JSONObject(ejecutar(Request.Builder().url("https://myanimelist.net/v1/oauth2/token").post(form).build())).getString("access_token")
-            p.edit().putString("tk_$clave", tk).apply()
+            Secreto.poner(p.edit(), "tk_$clave", tk).apply()
         }
         private fun auth(ctx: Context, b: Request.Builder) = b.header("Authorization", "Bearer ${token(ctx, clave)}")
         override suspend fun buscar(ctx: Context, q: String) = withContext(Dispatchers.IO) {

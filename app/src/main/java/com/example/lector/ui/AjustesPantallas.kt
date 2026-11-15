@@ -569,7 +569,7 @@ fun AjSeguimientoScreen(almacen: Almacen, onBack: () -> Unit) {
                 PillButton("Iniciar sesión", Icons.Rounded.Person, {
                     if (clientId.isNotEmpty()) {
                         almacen.guardarClientId(clientId)
-                        runCatching { contexto.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Anilist.urlDeLogin(clientId)))) }
+                        runCatching { Anilist.marcarLogin(contexto); contexto.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Anilist.urlDeLogin(clientId)))) }
                     }
                 })
             }

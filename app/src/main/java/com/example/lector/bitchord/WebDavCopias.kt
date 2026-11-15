@@ -27,8 +27,8 @@ class WebDavAjustes(ctx: Context) {
         get() = p.getString("usuario", "").orEmpty()
         set(v) = p.edit().putString("usuario", v.trim()).apply()
     var clave: String
-        get() = p.getString("clave", "").orEmpty()
-        set(v) = p.edit().putString("clave", v).apply()
+        get() = com.example.lector.Secreto.leer(p, "clave").orEmpty()
+        set(v) = com.example.lector.Secreto.poner(p.edit(), "clave", v).apply()
     var carpeta: String
         get() = p.getString("carpeta", "Shiori").orEmpty()
         set(v) = p.edit().putString("carpeta", v.trim().trim('/')).apply()

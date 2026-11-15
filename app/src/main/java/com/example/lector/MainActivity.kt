@@ -207,7 +207,7 @@ class MainActivity : ComponentActivity() {
             ?.map { it.split("=", limit = 2) }
             ?.firstOrNull { it.size == 2 && it[0] == "access_token" }
             ?.get(1)
-        if (!token.isNullOrEmpty()) {
+        if (!token.isNullOrEmpty() && Anilist.loginEsperado(this)) {
             almacen.guardarTokenAnilist(token)
             Toast.makeText(this, "Sesión de AniList iniciada", Toast.LENGTH_SHORT).show()
         }

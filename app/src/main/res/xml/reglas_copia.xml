@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: tokens y contraseñas no viajan en copias de Google ni al pasar a otro móvil. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="seguidores.xml" />
+        <exclude domain="sharedpref" path="bitchord_webdav.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="seguidores.xml" />
+        <exclude domain="sharedpref" path="bitchord_webdav.xml" />
+    </device-transfer>
+</data-extraction-rules>

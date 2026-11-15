@@ -434,7 +434,7 @@ class Almacen private constructor(private val contexto: Context) {
         prefs.edit().putString("anilist_client", valor).apply()
     }
 
-    var anilistToken by mutableStateOf<String?>(prefs.getString("anilist_token", null))
+    var anilistToken by mutableStateOf<String?>(Secreto.leer(prefs, "anilist_token"))
         private set
 
     var anilistUsuario by mutableStateOf<String?>(prefs.getString("anilist_usuario", null))
@@ -443,7 +443,7 @@ class Almacen private constructor(private val contexto: Context) {
     fun guardarTokenAnilist(token: String) {
         anilistToken = token
         anilistUsuario = null
-        prefs.edit().putString("anilist_token", token).remove("anilist_usuario").apply()
+        Secreto.poner(prefs.edit(), "anilist_token", token).remove("anilist_usuario").apply()
     }
 
     fun guardarUsuarioAnilist(nombre: String) {
