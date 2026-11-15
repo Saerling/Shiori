@@ -25,6 +25,19 @@
   <a href="#funciones">Funciones</a>
 </p>
 
+<p align="center">
+  <img src="docs/capturas/01-inicio.jpg" width="24%" alt="Inicio">
+  <img src="docs/capturas/02-biblioteca.jpg" width="24%" alt="Biblioteca">
+  <img src="docs/capturas/03-ficha.jpg" width="24%" alt="Ficha de un manga">
+  <img src="docs/capturas/04-explorar.jpg" width="24%" alt="Explorar fuentes">
+</p>
+<p align="center">
+  <img src="docs/capturas/05-novedades.jpg" width="24%" alt="Novedades">
+  <img src="docs/capturas/06-actualizaciones.jpg" width="24%" alt="Actualizaciones">
+  <img src="docs/capturas/07-historial.jpg" width="24%" alt="Historial">
+  <img src="docs/capturas/08-mas.jpg" width="24%" alt="Más">
+</p>
+
 ---
 
 ## Funciones
@@ -34,7 +47,7 @@
 <td width="50%" valign="top">
 
 ### 🧩 Extensiones
-Compatible con las extensiones de **Mihon / Komikku**: añade listados, instala, confía y ajusta cada fuente con sus filtros. Tiene un listado propio, [Alejandria](https://github.com/Saerling/Alejandria).
+Compatible con las extensiones de **Mihon / Komikku**: añade listados, instala, confía y ajusta cada fuente con sus filtros.
 
 ### 🔎 Explorar
 Fuentes, novedades, extensiones, migración entre fuentes y **búsqueda global** en todas a la vez.
