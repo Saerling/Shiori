@@ -14,7 +14,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** Fotogramas quietos de la apertura de puntos (build/apertura/*.png), para verla sin teléfono. */
+/** Fotogramas quietos de la apertura de puntos (en build/apertura), para verla sin teléfono. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w400dp-h800dp-xhdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
