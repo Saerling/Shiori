@@ -26,7 +26,7 @@ enum class Superficie(val nombre: String) { CRISTAL("Cristal"), LIQUIDO("Liquid 
 enum class FondoApp(val nombre: String) { NEGRO("Liso"), AURORA("Aurora"), COLOR("Aurora de color") }
 
 /** Animación al abrir la app. */
-enum class AnimArranque(val nombre: String) { AGUJERO("Agujero negro"), RAPIDA("Rápida"), NINGUNA("Ninguna") }
+enum class AnimArranque(val nombre: String) { PUNTOS("Puntos"), AGUJERO("Agujero negro"), RAPIDA("Rápida"), NINGUNA("Ninguna") }
 
 /** Todas las opciones de aspecto en las que hemos trabajado, con sus valores guardados. */
 object Aspecto {
@@ -34,7 +34,7 @@ object Aspecto {
 
     var superficie by mutableStateOf(Superficie.CRISTAL); private set
     var fondo by mutableStateOf(FondoApp.NEGRO); private set
-    var arranque by mutableStateOf(AnimArranque.AGUJERO); private set
+    var arranque by mutableStateOf(AnimArranque.PUNTOS); private set
     var luzTactil by mutableStateOf(true); private set
     /** Redondeo de las portadas en toda la app, en dp (el «Cover rounding» de Mochy). */
     var radioPortada by mutableFloatStateOf(16f); private set
@@ -43,7 +43,7 @@ object Aspecto {
         val p = ctx.getSharedPreferences("aspecto", Context.MODE_PRIVATE).also { prefs = it }
         superficie = runCatching { Superficie.valueOf(p.getString("superficie", null)!!) }.getOrDefault(Superficie.CRISTAL)
         fondo = runCatching { FondoApp.valueOf(p.getString("fondo", null)!!) }.getOrDefault(FondoApp.NEGRO)
-        arranque = runCatching { AnimArranque.valueOf(p.getString("arranque", null)!!) }.getOrDefault(AnimArranque.AGUJERO)
+        arranque = runCatching { AnimArranque.valueOf(p.getString("arranque", null)!!) }.getOrDefault(AnimArranque.PUNTOS)
         luzTactil = p.getBoolean("luz", true)
         radioPortada = p.getFloat("radio_portada", 16f)
     }

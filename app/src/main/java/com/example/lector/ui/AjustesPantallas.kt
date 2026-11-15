@@ -372,7 +372,8 @@ fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit) {
                 TarjetaVista(a.nombre, Aspecto.arranque == a, acento, { Aspecto.elegir(a) }) {
                     Box(Modifier.fillMaxSize().background(if (a == AnimArranque.NINGUNA) LectorColors.Bg else Color.Black), Alignment.Center) {
                         when (a) {
-                            AnimArranque.AGUJERO -> LogoApp(Modifier.size(70.dp), conFondo = false)
+                            AnimArranque.PUNTOS -> LogoApp(Modifier.size(84.dp), conFondo = false)
+                        AnimArranque.AGUJERO -> LogoApp(Modifier.size(70.dp), conFondo = false, agujero = true)
                             AnimArranque.RAPIDA -> LogoApp(Modifier.size(46.dp).graphicsLayer { alpha = 0.55f }, conFondo = false)
                             AnimArranque.NINGUNA -> VistaBarra(Aspecto.superficie, Modifier.align(Alignment.BottomCenter))
                         }

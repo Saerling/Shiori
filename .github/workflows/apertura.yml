@@ -1,0 +1,23 @@
+name: Capturas de la apertura
+
+# Pinta fotogramas quietos de la animación de apertura (Robolectric + Roborazzi) y los sube como artefacto.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: ['app/src/main/java/com/example/lector/ui/AperturaPuntos.kt', 'app/src/main/java/com/example/lector/ui/PuntosIcono.kt', 'app/src/test/java/com/example/lector/ui/AperturaTest.kt', '.github/workflows/apertura.yml']
+
+jobs:
+  capturas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: 8.9 }
+      - run: gradle testDebugUnitTest --tests '*AperturaTest'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: apertura, path: app/build/apertura/*.png }
