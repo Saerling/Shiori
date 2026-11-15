@@ -93,7 +93,7 @@ dependencies {
     implementation("com.squareup.okio:okio:3.17.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.11.0")
     implementation("io.github.pdvrieze.xmlutil:core-android:0.91.3")
-    implementation("io.github.pdvrieze.xmlutil:serialization:0.91.3")
+    implementation("io.github.pdvrieze.xmlutil:serialization:1.0.2.1")
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     // Módulos de OkHttp que las extensiones usan por nombre (Brotli, DoH, logging, zstd), como en Komikku.
     implementation("com.squareup.okhttp3:okhttp-brotli:5.3.2")
