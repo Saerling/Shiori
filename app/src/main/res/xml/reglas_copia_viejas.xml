@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 o anterior: lo mismo que reglas_copia.xml. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="seguidores.xml" />
+    <exclude domain="sharedpref" path="bitchord_webdav.xml" />
+</full-backup-content>

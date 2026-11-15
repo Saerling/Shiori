@@ -24,10 +24,14 @@ android {
     // para que cualquier compilación pueda actualizar a la anterior; ver HANDOFF (PASO 23).
     signingConfigs {
         create("shiori") {
-            storeFile = file("firma/shiori.jks")
-            storePassword = "shiori-lector"
-            keyAlias = "shiori"
-            keyPassword = "shiori-lector"
+            // Si existen los secretos SHIORI_KEYSTORE_B64 / SHIORI_KEYSTORE_PASSWORD (GitHub Actions) se usan esos;
+            // si no, la clave histórica del repositorio. Ver SEGURIDAD.md (punto 2).
+            val pass = System.getenv("SHIORI_KEYSTORE_PASSWORD")
+            val externo = System.getenv("SHIORI_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() && !pass.isNullOrEmpty() }
+            storeFile = externo ?: file("firma/shiori.jks")
+            storePassword = if (externo != null) pass else "shiori-lector"
+            keyAlias = System.getenv("SHIORI_KEY_ALIAS")?.takeIf { externo != null && it.isNotEmpty() } ?: "shiori"
+            keyPassword = if (externo != null) pass else "shiori-lector"
         }
     }
 

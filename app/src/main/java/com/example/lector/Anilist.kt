@@ -25,6 +25,12 @@ object Anilist {
     fun urlDeLogin(clientId: String) =
         "https://anilist.co/api/v2/oauth/authorize?client_id=$clientId&response_type=token"
 
+    // Solo se acepta un token si el usuario pidió entrar hace poco (evita que otra app inyecte una sesión ajena).
+    private fun p(ctx: android.content.Context) = ctx.getSharedPreferences("seguidores", android.content.Context.MODE_PRIVATE)
+    fun marcarLogin(ctx: android.content.Context) = p(ctx).edit().putLong("anilist_pedido", System.currentTimeMillis()).apply()
+    fun loginEsperado(ctx: android.content.Context): Boolean =
+        (System.currentTimeMillis() - p(ctx).getLong("anilist_pedido", 0L) < 15 * 60_000L).also { p(ctx).edit().remove("anilist_pedido").apply() }
+
     private fun consulta(token: String?, query: String, variables: JSONObject): JSONObject {
         val conexion = URL(API).openConnection() as HttpURLConnection
         try {
