@@ -51,7 +51,7 @@ fun AjustesScreen(almacen: Almacen, onBack: () -> Unit, onRuta: (Ruta) -> Unit) 
 }
 
 @Composable
-fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit) {
+fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit, onBibliotecaFx: () -> Unit = {}) {
     val opciones = Paletas.fijas.map { it.nombre to it.color } +
         if (Build.VERSION.SDK_INT >= 31) listOf(Paletas.SISTEMA to colorDePaleta(Paletas.SISTEMA)) else emptyList()
     PaginaAjustes("Apariencia", onBack) {
@@ -67,6 +67,9 @@ fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit) {
         if (Build.VERSION.SDK_INT >= 31) {
             LText("«Sistema» usa los colores de tu fondo de pantalla.", LectorType.Label, Modifier.padding(24.dp, 12.dp), color = LectorColors.Muted)
         }
+        Divisor()
+        TituloSeccion("Personalización")
+        FilaAjuste(Icons.Rounded.Star, "Biblioteca de animaciones y funciones", "${com.example.lector.fx.Fx.count(com.example.lector.fx.CatalogoShiori.map { it.id })} de ${com.example.lector.fx.CatalogoShiori.size} activas · Magic UI, Motion Primitives, NumberFlow y más", onBibliotecaFx)
         Divisor()
         TituloSeccion("Información del cómic")
         FilaSwitch(

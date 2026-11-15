@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import android.graphics.BitmapFactory
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -51,7 +52,7 @@ fun ComicCover(comic: Comic, almacen: Almacen, modifier: Modifier = Modifier, sh
     val portada = remember(comic.id) {
         BitmapFactory.decodeFile(almacen.portadaDe(comic.id).path)?.asImageBitmap()
     }
-    Box(modifier.clip(shape).background(LectorColors.CardHigh), contentAlignment = Alignment.Center) {
+    Box(modifier.fx("tilt") { inclinar() }.fx("glow") { halo() }.clip(shape).background(LectorColors.CardHigh).fx("magiccard") { foco() }.fx("glare") { destello() }, contentAlignment = Alignment.Center) {
         if (portada != null) {
             Image(bitmap = portada, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         } else {
@@ -92,6 +93,15 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CoverCarousel(items: List<Comic>, almacen: Almacen, onClick: (Comic) -> Unit, modifier: Modifier = Modifier) {
+    // Biblioteca de animaciones: Marquee / Infinite Slider y Carousel con escala.
+    if (Fx.on("marquee") || Fx.on("infiniteslider")) {
+        Marquesina(modifier.padding(horizontal = 24.dp)) { items.forEach { c -> Column(Modifier.width(120.dp).pressable { onClick(c) }) { ComicCover(c, almacen, Modifier.fillMaxWidth().aspectRatio(2f / 3f)); LText(c.titulo, LectorType.Body, maxLines = 1) } } }
+        return
+    }
+    if (Fx.on("carousel") && items.isNotEmpty()) {
+        CarruselEscala(items.size, modifier.height(260.dp)) { i -> val c = items[i]; Column(Modifier.pressable { onClick(c) }) { ComicCover(c, almacen, Modifier.fillMaxWidth().aspectRatio(2f / 3f).weight(1f, false)); LText(c.titulo, LectorType.Body, maxLines = 1) } }
+        return
+    }
     val state = rememberLazyListState()
     LazyRow(
         modifier, state = state,
@@ -125,7 +135,7 @@ fun FloatingNavBar(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier:
     val shape = SuaveShape(30.dp)
     val tabs = LectorTab.values()
     BoxWithConstraints(
-        modifier.fillMaxWidth().height(60.dp).clip(shape).background(LectorColors.Glass)
+        modifier.fillMaxWidth().height(60.dp).clip(shape).background(LectorColors.Glass).fx("noise") { noise(.05f) }.fx("ripple") { ondaAlTocar() }
             .border(1.dp, LectorColors.GlassBorderBrush, shape).padding(6.dp)
     ) {
         val ancho = maxWidth / tabs.size

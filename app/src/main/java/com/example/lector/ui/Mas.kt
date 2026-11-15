@@ -34,10 +34,13 @@ enum class Ruta {
     Ficha, LeerOnline,
     // WebView de una web (p. ej. de una extensión antes de instalarla)
     Web,
+    // Ajustes → Apariencia → Personalización → Biblioteca de animaciones y funciones
+    BibliotecaFx,
 }
 
 fun Ruta.padre(): Ruta? = when (this) {
     Ruta.Apariencia, Ruta.AjBiblioteca, Ruta.AjSeguimiento -> Ruta.Ajustes
+    Ruta.BibliotecaFx -> Ruta.Apariencia
     Ruta.Ficha -> Ruta.FuenteDetalle
     Ruta.LeerOnline -> Ruta.Ficha
     else -> null

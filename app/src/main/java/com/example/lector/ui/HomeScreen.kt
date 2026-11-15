@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
@@ -143,7 +144,7 @@ private fun Hero(featured: Comic, all: List<Comic>, almacen: Almacen, onOpen: (C
                     )
                 )
                 Column(Modifier.align(Alignment.BottomStart).padding(24.dp)) {
-                    LText("Continuar", LectorType.Label, color = Color(0xB3FFFFFF))
+                    if (Fx.on("shinytext")) TextoBrillo("Continuar", LectorType.Label) else LText("Continuar", LectorType.Label, color = Color(0xB3FFFFFF))
                     LText(s.titulo, LectorType.Hero, maxLines = 2)
                     LText(s.textoPagina(), LectorType.Label, color = Color(0xB3FFFFFF))
                     Spacer(Modifier.height(14.dp))

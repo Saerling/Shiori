@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -102,7 +103,8 @@ fun DetalleScreen(
                         .graphicsLayer { alpha = t; translationY = (1f - t) * 60f },
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    ComicCover(comic, almacen, Modifier.width(124.dp).aspectRatio(2f / 3f), SuaveShape(20.dp))
+                    if (Fx.on("backlight")) Contraluz(Modifier.width(124.dp).aspectRatio(2f / 3f)) { ComicCover(comic, almacen, Modifier.fillMaxSize(), SuaveShape(20.dp)) }
+                    else ComicCover(comic, almacen, Modifier.width(124.dp).aspectRatio(2f / 3f).fx("glassoverlay") { bordeBrillante(20.dp) }, SuaveShape(20.dp))
                     Spacer(Modifier.width(18.dp))
                     Column(Modifier.weight(1f)) {
                         LText(comic.titulo, LectorType.Hero, maxLines = 3)

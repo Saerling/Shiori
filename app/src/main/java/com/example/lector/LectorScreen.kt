@@ -1,5 +1,7 @@
 package com.example.lector
 
+import com.example.lector.fx.*
+import androidx.compose.foundation.layout.statusBarsPadding
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.view.WindowManager
@@ -141,6 +143,7 @@ fun LectorScreen(comic: Comic, almacen: Almacen, alCerrar: () -> Unit) {
 
                 val alTocar = { barraVisible = !barraVisible }
 
+                Box(Modifier.fillMaxSize().fx("lens") { lupa() }) {
                 if (modo == Modo.VERTICAL) {
                     LectorVertical(
                         archivo = archivo,
@@ -163,6 +166,7 @@ fun LectorScreen(comic: Comic, almacen: Almacen, alCerrar: () -> Unit) {
                         alTocar = alTocar,
                     )
                 }
+                }
 
                 // Capa de color sobre la página (no intercepta toques).
                 if (almacen.tinte != Tinte.NINGUNO) {
@@ -175,6 +179,13 @@ fun LectorScreen(comic: Comic, almacen: Almacen, alCerrar: () -> Unit) {
                     )
                 }
 
+                // Biblioteca de animaciones: progreso, hora/batería y confeti al terminar.
+                if (Fx.on("scrollprogress")) BarraProgresoScroll((paginaActual + 1f) / lista.size, Modifier.align(Alignment.TopCenter).statusBarsPadding(), MaterialTheme.colorScheme.primary)
+                if (Fx.on("battery")) RelojBateria(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp).background(Color(0x88000000), androidx.compose.foundation.shape.RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 3.dp))
+                val confeti = rememberConfeti()
+                LaunchedEffect(paginaActual) { if (Fx.on("confetti") && lista.size > 1 && paginaActual == lista.size - 1) confeti.disparar() }
+                Confeti(confeti, Modifier.fillMaxSize())
+
                 if (barraVisible) {
                     Row(
                         Modifier
@@ -185,7 +196,8 @@ fun LectorScreen(comic: Comic, almacen: Almacen, alCerrar: () -> Unit) {
                             .padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
+                        if (Fx.on("nf_page")) NumeroFlowGrupo(paginaActual + 1, lista.size, MaterialTheme.typography.bodyLarge, Modifier.weight(1f), MaterialTheme.colorScheme.onBackground)
+                        else Text(
                             "${paginaActual + 1} / ${lista.size}",
                             modifier = Modifier.weight(1f),
                             color = MaterialTheme.colorScheme.onBackground,
