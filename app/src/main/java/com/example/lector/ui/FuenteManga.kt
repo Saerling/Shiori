@@ -1,5 +1,8 @@
 package com.example.lector.ui
 
+import androidx.compose.animation.togetherWith
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import com.example.lector.fx.*
 import androidx.compose.foundation.combinedClickable
 import android.content.Context
@@ -535,7 +538,7 @@ fun FichaMangaScreen(
                     onTitleClick = { alBuscarGlobal(tituloFicha) },
                     onTitleLongClick = { copiarTexto(ctx, tituloFicha) },
                 ) {
-                    if (fxOn("follow")) androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { BotonEstado(enBiblioteca != null, "En la biblioteca", "Añadir", "♥", color = acento) { alternarBiblioteca() } }
+                    if (fxOn("follow")) SeguirCabecera(enBiblioteca != null, acento) { alternarBiblioteca() }
                     else CircleAction(
                         if (enBiblioteca != null) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         if (enBiblioteca != null) "Quitar de la biblioteca" else "Añadir a la biblioteca",
@@ -1494,4 +1497,39 @@ internal fun abrirCarpeta(ctx: android.content.Context, dir: java.io.File) {
             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION))
     }.isSuccess
     if (!ok) Avisos.mostrar("Carpeta: ${dir.path}")
+}
+
+
+/**
+ * «Follow Toggle» en la cabecera de la ficha, a la medida de los botones de Mochy (33 dp, mismo relleno): rebote al
+ * tocar, corazón que salta y fondo del acento cuando está en la biblioteca. El texto (que cambia letra a letra) solo
+ * se muestra si la pantalla es ancha; en el móvil no cabe junto a los demás botones y los empujaba fuera.
+ */
+@Composable
+private fun SeguirCabecera(activo: Boolean, acento: Color, onClick: () -> Unit) {
+    val rebote = remember { androidx.compose.animation.core.Animatable(1f) }
+    val sc = rememberCoroutineScope()
+    val conTexto = LocalConfiguration.current.screenWidthDp >= 440
+    val fondo by animateColorAsState(if (activo) acento.copy(alpha = .22f) else PillFill, tween(180), label = "seguirFondo")
+    val tinta = if (activo) acento else if (TemaActual.oscuro) PillContent else LectorColors.Text
+    Row(
+        Modifier.graphicsLayer { scaleX = rebote.value; scaleY = rebote.value }
+            .height(33.dp).let { if (conTexto) it else it.width(33.dp) }
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50)).background(fondo)
+            .semantics { contentDescription = if (activo) "Quitar de la biblioteca" else "Añadir a la biblioteca" }
+            .clickable { onClick(); sc.launch { rebote.snapTo(.82f); rebote.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = .4f, stiffness = 600f)) } }
+            .animateContentSize()
+            .padding(horizontal = if (conTexto) 13.dp else 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        androidx.compose.animation.AnimatedContent(activo, label = "seguirIcono", transitionSpec = {
+            (androidx.compose.animation.scaleIn(initialScale = .4f, animationSpec = androidx.compose.animation.core.spring(dampingRatio = .5f, stiffness = 700f)) + fadeIn(tween(120)))
+                .togetherWith(androidx.compose.animation.scaleOut(targetScale = .4f, animationSpec = tween(110)) + fadeOut(tween(90)))
+        }) { a -> Icon(if (a) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null, tint = tinta, modifier = Modifier.size(17.dp)) }
+        if (conTexto) {
+            Spacer(Modifier.width(7.dp))
+            TextoMorph(if (activo) "En la biblioteca" else "Añadir", PillLabelStyle, color = tinta)
+        }
+    }
 }

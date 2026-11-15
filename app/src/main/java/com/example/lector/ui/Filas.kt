@@ -181,7 +181,6 @@ fun FilaRadio(etiqueta: String, marcada: Boolean, onClick: () -> Unit) {
 /** Botón de opción redondo: anillo gris; marcado, círculo blanco con un punto oscuro. */
 @Composable
 fun Marca(marcada: Boolean) {
-    if (fxOn("checkbox")) { CasillaCoss(marcada); return }
     val relleno by animateColorAsState(if (marcada) LectorColors.Text else Color.Transparent, tween(150), label = "marca")
     Box(
         Modifier.size(22.dp).clip(CircleShape).background(relleno)

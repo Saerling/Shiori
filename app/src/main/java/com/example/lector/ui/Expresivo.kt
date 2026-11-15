@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -139,7 +141,7 @@ fun BotonExpresivo(
 @Composable
 fun GrupoBotones(opciones: List<String>, elegida: Int, onElegir: (Int) -> Unit, modifier: Modifier = Modifier) {
     if (opciones.isEmpty()) return
-    if (fxOn("segmented")) { Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { SegmentadoDeslizante(opciones, elegida, onElegir, color = MaterialTheme.colorScheme.primary) } }; return }
+    if (fxOn("segmented")) { Box(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), contentAlignment = Alignment.Center) { androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { SegmentadoDeslizante(opciones, elegida, onElegir, color = MaterialTheme.colorScheme.primary) } }; return }
     val pos = remember { Animatable(elegida.toFloat()) }
     androidx.compose.runtime.LaunchedEffect(elegida) {
         if (Mov.reducido) pos.snapTo(elegida.toFloat())
@@ -216,7 +218,7 @@ fun IndicadorCarga(
     // Qué está haciendo la app: elige la animación del thinking orb (Personalización → Estilo).
     estado: com.example.lector.ui.orbes.EstadoOrbe = com.example.lector.ui.orbes.EstadoOrbe.BREATHING,
 ) {
-    if (fxOn("spinner")) { Box(modifier, contentAlignment = Alignment.Center) { Girador(Modifier.fillMaxSize(.8f), color) }; return }
+    if (fxOn("spinner")) { Box(modifier.size(28.dp), contentAlignment = Alignment.Center) { Girador(Modifier.fillMaxSize(.8f), color) }; return }
     if (com.example.lector.ui.mochy.EstiloApp.orbes) {
         val estados = com.example.lector.ui.orbes.EstadoOrbe.entries
         val variar = com.example.lector.ui.mochy.EstiloApp.variarOrbes

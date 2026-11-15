@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
@@ -37,7 +38,7 @@ fun AppSwitch(
     enabled: Boolean = true,
     thumbContent: (@Composable () -> Unit)? = null,
 ) {
-    if (com.example.lector.fx.fxOn("switch")) { com.example.lector.fx.InterruptorCoss(checked, if (enabled) onCheckedChange else null, modifier); return }
+    if (com.example.lector.fx.fxOn("switch")) { com.example.lector.fx.InterruptorCoss(checked, if (enabled) onCheckedChange else null, modifier.alpha(if (enabled) 1f else 0.38f)); return }
     val alpha = if (enabled) 1f else 0.38f
     val animSpec = tween<Color>(150)
 

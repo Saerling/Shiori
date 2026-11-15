@@ -78,7 +78,7 @@ private fun LibraryBadges(c: Comic, almacen: Almacen, descargas: Int, modifier: 
         if (almacen.insigniaProgreso && !c.enLinea) {
             val p = (progresoDe(c) * 100).toInt()
             if (c.terminado()) LibraryBadge("✓", acento, sobre)
-            else if (p in 1..99 && com.example.lector.fx.fxOn("progressring")) Box(Modifier.clip(CircleShape).background(Color(0xB8000000)).padding(2.dp)) { com.example.lector.fx.AnilloProgreso(p / 100f, Modifier.size(24.dp), acento, 3.dp, estilo = androidx.compose.ui.text.TextStyle(fontSize = 7.sp, color = Color.White)) }
+            else if (p in 1..99 && com.example.lector.fx.fxOn("progressring")) Box(Modifier.clip(CircleShape).background(Color(0xB8000000)).padding(2.dp)) { com.example.lector.fx.AnilloProgreso(p / 100f, Modifier.size(16.dp), acento, 2.5.dp, conTexto = false) }
             else if (p in 1..99) LibraryBadge("$p%", acento, sobre)
         }
     }
@@ -98,7 +98,7 @@ private fun LibraryContinueButton(onClick: () -> Unit, modifier: Modifier, small
     val acento = MaterialTheme.colorScheme.primary
     Box(
         modifier
-            .then(if (com.example.lector.fx.fxOn("pulsating")) Modifier.pulso(acento, 16.dp) else Modifier)
+            // «pulsating» ya no late en cada tarjeta a la vez: queda en el botón flotante y el de leer de la ficha.
             .size(if (small) 32.dp else 30.dp)
             .clip(CircleShape)
             .background(if (small) acento else acento.copy(alpha = 0.2f))
