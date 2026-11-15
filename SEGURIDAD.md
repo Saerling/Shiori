@@ -3,7 +3,7 @@
 | # | Punto | Estado |
 |---|---|---|
 | 1 | Ocultar API keys | ✅ No hay claves de API en el código; el Client ID de AniList lo pone cada usuario. |
-| 2 | Secretos fuera de Git | ⚠️ **La clave de firma `app/firma/shiori.jks` y su contraseña están en el repo** (se hizo para que cualquier compilación actualice encima). La compilación ya acepta la firma desde secretos (`SHIORI_KEYSTORE_B64`, `SHIORI_KEYSTORE_PASSWORD`, `SHIORI_KEY_ALIAS`); ver «Firma» abajo. |
+| 2 | Secretos fuera de Git | ✅ La clave histórica `app/firma/shiori.jks` era pública, así que se **rotó**: los APK publicados llevan una clave nueva (RSA 4096) que solo vive en los secretos de GitHub. La vieja queda en el repo solo como origen de la rotación. Ver «Firma» abajo. |
 | 3 | Key pública para DB | N/A — la base de datos es local (Room/SQLite). |
 | 4 | Row-Level Security | N/A — sin servidor. |
 | 5 | Encriptar datos sensibles | ✅ Tokens de AniList/MAL/Kitsu/MangaUpdates y la contraseña WebDAV se cifran con AES-256-GCM (clave en el Android Keystore). |
@@ -25,7 +25,22 @@
 
 ## Firma (punto 2)
 
-Cualquiera puede firmar un APK con la clave pública del repo y Android lo aceptaría como actualización de Shiori. Para cerrarlo:
+La clave vieja (`shiori.jks`, contraseña `shiori-lector`) estuvo pública, así que cualquiera podía firmar un APK que Android aceptaría como actualización de Shiori. Se cerró con **rotación de firma v3** (Android 9+):
 
-1. **Mantener la clave pero sacarla del repo** no sirve: ya está en el historial.
-2. **Rotar la clave** (recomendado): crear una clave nueva, guardarla en los secretos de GitHub y publicar. Los usuarios tendrían que desinstalar e instalar **una vez** (o usar rotación v3 con `apksigner rotate` para que la actualización entre sin desinstalar en Android 9+).
+- `app/firma/linaje.bin` es la prueba, firmada con la clave vieja, de que autoriza a la nueva. No es secreta.
+- En GitHub Actions el APK se vuelve a firmar: la clave vieja para Android 8 (v2) y la nueva para Android 9+ (v3).
+- Quien tenga Shiori instalado se actualiza encima **sin desinstalar ni perder nada**.
+- Desde esa actualización, la clave vieja ya no tiene permiso de *rollback*: un APK firmado solo con ella es rechazado por Android.
+- Android 8 (API 26-27) no soporta rotación: esos equipos siguen con la clave vieja.
+- `Probar rotación de firma` (workflow) lo comprueba en emuladores Android 8 y 14.
+
+Secretos necesarios en *Settings → Secrets and variables → Actions*:
+
+| Secreto | Valor |
+|---|---|
+| `SHIORI_KEYSTORE_B64` | el archivo `shiori-2026.jks` en base64 |
+| `SHIORI_KEYSTORE_PASSWORD` | su contraseña (alias `shiori2`) |
+
+Huellas SHA-256: vieja `3fdd72a1…0479391e`, nueva `e68d6bed…e5fd40ed20`.
+
+⚠️ Guarda una copia de `shiori-2026.jks` y su contraseña fuera de GitHub (los secretos no se pueden volver a leer). Si se pierde, no habrá más actualizaciones encima.

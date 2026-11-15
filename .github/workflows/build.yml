@@ -46,13 +46,6 @@ jobs:
           name: lector-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      # Firma desde secretos (si están configurados). Sin secretos se usa la clave histórica del repo.
-      - name: Preparar la firma
-        env:
-          KS: ${{ secrets.SHIORI_KEYSTORE_B64 }}
-        run: |
-          if [ -n "$KS" ]; then echo "$KS" | base64 -d > "$RUNNER_TEMP/shiori.jks"; echo "SHIORI_KEYSTORE=$RUNNER_TEMP/shiori.jks" >> "$GITHUB_ENV"; fi
-
       # APK optimizado (R8, sin ofuscar). Si esto falla, el APK debug sigue disponible.
       - name: Compilar APK optimizado (release)
         id: release
@@ -60,9 +53,6 @@ jobs:
         run: |
           set -o pipefail
           gradle assembleRelease --stacktrace 2>&1 | tee build-release.log
-        env:
-          SHIORI_KEYSTORE_PASSWORD: ${{ secrets.SHIORI_KEYSTORE_PASSWORD }}
-          SHIORI_KEY_ALIAS: ${{ secrets.SHIORI_KEY_ALIAS }}
 
       - name: Resumen de errores (release)
         if: steps.release.outcome == 'failure'
@@ -76,6 +66,34 @@ jobs:
         with:
           name: lector-release-apk
           path: app/build/outputs/apk/release/*.apk
+
+      # Rotación de firma (APK Signature Scheme v3): el APK lleva la clave vieja para Android 8 (v2) y la nueva para
+      # Android 9+ (v3) junto con app/firma/linaje.bin, la prueba firmada de que la vieja autoriza a la nueva. Así se
+      # actualiza encima sin desinstalar y, una vez instalado, un APK firmado solo con la clave vieja ya no entra.
+      # La clave nueva vive solo en los secretos SHIORI_KEYSTORE_B64 / SHIORI_KEYSTORE_PASSWORD (ver SEGURIDAD.md).
+      - name: Firmar con la clave nueva
+        if: steps.release.outcome == 'success'
+        env:
+          KS: ${{ secrets.SHIORI_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.SHIORI_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KS" ] || [ -z "$KS_PASS" ]; then
+            echo "::warning title=Firma::Faltan los secretos SHIORI_KEYSTORE_B64 / SHIORI_KEYSTORE_PASSWORD: se publica con la clave vieja."
+            exit 0
+          fi
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/nueva.jks"
+          apk=app/build/outputs/apk/release/app-release.apk
+          "$bt/apksigner" sign --ks app/firma/shiori.jks --ks-key-alias shiori --ks-pass pass:shiori-lector \
+            --next-signer --ks "$RUNNER_TEMP/nueva.jks" --ks-key-alias shiori2 --ks-pass env:KS_PASS \
+            --lineage app/firma/linaje.bin --rotation-min-sdk-version 28 --out "$RUNNER_TEMP/rotado.apk" "$apk"
+          rm -f "$RUNNER_TEMP/nueva.jks"
+          # Comprobación: Android 8 ve la clave vieja y Android 9+ la nueva; si no, no se publica.
+          v=$("$bt/apksigner" verify --print-certs --min-sdk-version 26 --max-sdk-version 27 "$RUNNER_TEMP/rotado.apk" | grep -c 3fdd72a167df2e0c)
+          n=$("$bt/apksigner" verify --print-certs --min-sdk-version 28 "$RUNNER_TEMP/rotado.apk" | grep -c e68d6bede0401c8f)
+          [ "$v" = 1 ] && [ "$n" = 1 ] || { echo "::error title=Firma::La rotación no quedó bien (v2=$v v3=$n)"; exit 1; }
+          mv "$RUNNER_TEMP/rotado.apk" "$apk"
+          echo "Firmado con rotación v3 (vieja → nueva)" >> "$GITHUB_STEP_SUMMARY"
 
       # Cada compilación de las ramas principales se publica como versión. La app mira la última («latest») y, si su
       # número (lo que va tras el último guion de la etiqueta) es mayor que el suyo, ofrece descargarla e instalarla.
