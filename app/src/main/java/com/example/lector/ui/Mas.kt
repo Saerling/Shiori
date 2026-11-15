@@ -128,6 +128,12 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
         BurbujaMas(Icons.Rounded.Share, "Datos y almacenamiento", null, Modifier.entrada(i++), onClick = { onRuta(Ruta.Datos) })
 
         GrupoMas("App", Modifier.entrada(i++))
+        // Biblioteca de animaciones: Command Menu (blocks.so) para saltar a cualquier pantalla escribiendo.
+        if (com.example.lector.fx.fxOn("cmd")) {
+            var comandos by remember { mutableStateOf(false) }
+            BurbujaMas(Icons.Rounded.Search, "Comandos", "Escribe a dónde quieres ir", Modifier.entrada(i++), onClick = { comandos = true })
+            com.example.lector.fx.MenuComandos(comandos, comandosShiori(onRuta), { comandos = false }, "Buscar una pantalla o acción…")
+        }
         BurbujaMas(Icons.Rounded.Settings, "Ajustes", null, Modifier.entrada(i++), onClick = { onRuta(Ruta.Ajustes) })
         BurbujaMas(Icons.Rounded.Face, "Acerca de", null, Modifier.entrada(i), onClick = { onRuta(Ruta.AcercaDe) })
     }
@@ -201,6 +207,8 @@ fun EstadisticasScreen(comics: List<Comic>, almacen: Almacen, ext: ExtManager, o
 
     PaginaAjustes("Estadísticas", onBack) {
         com.example.lector.ui.bitchord.ReplayTarjeta(almacen) { verReplay = true }
+        // Biblioteca de animaciones: Daily Activity Calendar / Github Contribution con tu historial real.
+        if (com.example.lector.fx.fxOn("activity")) MapaLecturaShiori(almacen)
         // Anillo de la biblioteca (terminados / en curso / sin empezar) que se dibuja al entrar.
         AnilloBiblioteca(terminados, enCurso, sinEmpezar, comics.size)
         TituloSeccion("Biblioteca")

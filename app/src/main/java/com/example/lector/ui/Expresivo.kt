@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.animateColorAsState
@@ -123,7 +124,8 @@ fun BotonExpresivo(
     ) {
         if (icono != null) Icon(icono, null, tint = tinta, modifier = Modifier.size(22.dp))
         if (icono != null && texto != null) Spacer(Modifier.width(8.dp))
-        if (texto != null) LText(
+        if (texto != null && fxOn("textmorph")) TextoMorph(texto, MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold), color = tinta)
+        else if (texto != null) LText(
             texto, MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
             color = tinta, maxLines = 1,
         )
@@ -137,6 +139,7 @@ fun BotonExpresivo(
 @Composable
 fun GrupoBotones(opciones: List<String>, elegida: Int, onElegir: (Int) -> Unit, modifier: Modifier = Modifier) {
     if (opciones.isEmpty()) return
+    if (fxOn("segmented")) { Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { SegmentadoDeslizante(opciones, elegida, onElegir, color = MaterialTheme.colorScheme.primary) } }; return }
     val pos = remember { Animatable(elegida.toFloat()) }
     androidx.compose.runtime.LaunchedEffect(elegida) {
         if (Mov.reducido) pos.snapTo(elegida.toFloat())
@@ -213,6 +216,7 @@ fun IndicadorCarga(
     // Qué está haciendo la app: elige la animación del thinking orb (Personalización → Estilo).
     estado: com.example.lector.ui.orbes.EstadoOrbe = com.example.lector.ui.orbes.EstadoOrbe.BREATHING,
 ) {
+    if (fxOn("spinner")) { Box(modifier, contentAlignment = Alignment.Center) { Girador(Modifier.fillMaxSize(.8f), color) }; return }
     if (com.example.lector.ui.mochy.EstiloApp.orbes) {
         val estados = com.example.lector.ui.orbes.EstadoOrbe.entries
         val variar = com.example.lector.ui.mochy.EstiloApp.variarOrbes

@@ -109,6 +109,7 @@ fun rememberCabeceras(fuenteId: Long): Map<String, String> {
 
 @Composable
 fun ProgressLine(progress: Float, modifier: Modifier = Modifier) {
+    if (fxOn("progress")) { BarraProgresoScroll(progress, modifier.clip(CircleShape).background(LectorColors.PillFill), colores = listOf(androidx.compose.material3.MaterialTheme.colorScheme.primary, LectorColors.Text)); return }
     Box(modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(LectorColors.PillFill)) {
         Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(LectorColors.Text))
     }
@@ -123,7 +124,7 @@ fun PillButton(text: String, icon: ImageVector, onClick: () -> Unit, modifier: M
 @Composable
 fun SectionHeader(title: String, modifier: Modifier = Modifier) {
     Row(modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-        LText(title, LectorType.Section)
+        if (fxOn("comictext")) TextoComic(title, tam = 22.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.primary) else LText(title, LectorType.Section)
         Icon(Icons.Rounded.KeyboardArrowRight, null, tint = LectorColors.Muted, modifier = Modifier.size(18.dp))
     }
 }
@@ -134,6 +135,15 @@ fun SectionHeader(title: String, modifier: Modifier = Modifier) {
  */
 @Composable
 fun CoverCarousel(items: List<Comic>, almacen: Almacen, onClick: (Comic) -> Unit, modifier: Modifier = Modifier) {
+    // Biblioteca de animaciones: Marquee (Magic UI) y Carousel (Motion Primitives) con las portadas reales.
+    if (fxOn("marquee") && items.isNotEmpty()) {
+        Marquesina(modifier.padding(horizontal = 20.dp), velocidad = 30) { items.forEach { c -> Column(Modifier.width(118.dp).pressable { onClick(c) }) { ComicCover(c, almacen, Modifier.fillMaxWidth().aspectRatio(2f / 3f)); Spacer(Modifier.height(6.dp)); LText(c.titulo, LectorType.Body, maxLines = 1) } } }
+        return
+    }
+    if (fxOn("carousel") && items.isNotEmpty()) {
+        CarruselEscala(items.size, modifier.height(250.dp)) { i -> val c = items[i]; Column(Modifier.pressable { onClick(c) }) { ComicCover(c, almacen, Modifier.fillMaxWidth().aspectRatio(2f / 3f)); Spacer(Modifier.height(6.dp)); LText(c.titulo, LectorType.Body, maxLines = 1) } }
+        return
+    }
     val visto = com.example.lector.ui.mochy.rememberRevealSeenState()
     com.example.lector.ui.mochy.home.HomeCardRow(
         rowKey = "portadas", items = items, revealSeen = visto, key = { it.id }, modifier = modifier,
@@ -184,7 +194,7 @@ fun FloatingNavBar(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier:
         selectedIndex = selected.ordinal,
         onItemClick = { i, _ -> onSelect(tabs[i]) },
         modifier = modifier,
-        clipped = Modifier.luzTactil(),
+        clipped = Modifier.luzTactil().fx("noise") { noise(.07f) },
     )
 }
 
