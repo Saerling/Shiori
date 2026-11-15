@@ -147,7 +147,7 @@ private fun FilaCasilla(etiqueta: String, estado: ToggleableState, alPulsar: () 
         Modifier.fillMaxWidth().clickable(onClick = alPulsar).padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TriStateCheckbox(state = estado, onClick = null)
+        if (com.example.lector.fx.fxOn("checkbox")) com.example.lector.fx.CasillaTriCoss(estado) else TriStateCheckbox(state = estado, onClick = null)
         Spacer(Modifier.width(12.dp))
         LText(etiqueta, LectorType.Body)
     }

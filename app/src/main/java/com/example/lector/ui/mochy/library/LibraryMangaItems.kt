@@ -6,6 +6,7 @@
 
 package com.example.lector.ui.mochy.library
 
+import com.example.lector.fx.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -73,10 +74,11 @@ private fun LibraryBadges(c: Comic, almacen: Almacen, descargas: Int, modifier: 
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (!c.enLinea && almacen.insigniaLocal) LibraryBadge("Local", Color(0xE62E7D6B), Color.White)
         if (c.enLinea && almacen.insigniaDescargas && descargas > 0) LibraryBadge("↓ $descargas", Color(0xB8000000), Color.White)
-        if (c.enLinea && almacen.insigniaSinLeer && c.sinLeer > 0) LibraryBadge("${c.sinLeer}", acento, sobre)
+        if (c.enLinea && almacen.insigniaSinLeer && c.sinLeer > 0) com.example.lector.ui.InsigniaSinLeerFx(c.sinLeer, acento, sobre) { LibraryBadge("${c.sinLeer}", acento, sobre) }
         if (almacen.insigniaProgreso && !c.enLinea) {
             val p = (progresoDe(c) * 100).toInt()
             if (c.terminado()) LibraryBadge("✓", acento, sobre)
+            else if (p in 1..99 && com.example.lector.fx.fxOn("progressring")) Box(Modifier.clip(CircleShape).background(Color(0xB8000000)).padding(2.dp)) { com.example.lector.fx.AnilloProgreso(p / 100f, Modifier.size(24.dp), acento, 3.dp, estilo = androidx.compose.ui.text.TextStyle(fontSize = 7.sp, color = Color.White)) }
             else if (p in 1..99) LibraryBadge("$p%", acento, sobre)
         }
     }
@@ -96,6 +98,7 @@ private fun LibraryContinueButton(onClick: () -> Unit, modifier: Modifier, small
     val acento = MaterialTheme.colorScheme.primary
     Box(
         modifier
+            .then(if (com.example.lector.fx.fxOn("pulsating")) Modifier.pulso(acento, 16.dp) else Modifier)
             .size(if (small) 32.dp else 30.dp)
             .clip(CircleShape)
             .background(if (small) acento else acento.copy(alpha = 0.2f))

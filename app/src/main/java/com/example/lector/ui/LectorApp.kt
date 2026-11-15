@@ -687,7 +687,7 @@ fun Inicio(
                             e.titulo, e.capNombre.trim().trimEnd(':').trim().ifBlank { "Seguir leyendo" },
                             onClick = { abrirEnLinea(e.fuenteId, e.urlManga, e.titulo, e.portadaUrl, null) },
                             progreso = if (e.total > 0) ((e.pagina + 1).toFloat() / e.total).coerceIn(0f, 1f) else null,
-                        ) { m -> ImagenRemota(e.portadaUrl, m.clip(CircleShape), cabeceras, fuenteId = e.fuenteId) }
+                        ) { m -> ImagenRemota(e.portadaUrl, m.clip(CircleShape), cabeceras, fuenteId = e.fuenteId, efectosPortada = false) }
                         Spacer(Modifier.height(8.dp))
                     } else if (ultimo != null) {
                         MiniReader(ultimo, almacen, onClick = { abrirDetalle(ultimo) })

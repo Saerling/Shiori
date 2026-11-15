@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.foundation.combinedClickable
 import android.content.Context
 import android.content.Intent
@@ -480,6 +481,7 @@ fun FichaMangaScreen(
     val comicLocal = comic?.takeIf { it.portadaPropia }
     val portadaNitida: @Composable (Modifier) -> Unit = { m ->
         if (comicLocal != null) ComicCover(comicLocal, almacen, m, RectangleShape)
+        else if (fxOn("backlight")) Contraluz(m) { ImagenRemota(portadaUrl, Modifier.fillMaxSize(), cabecerasImg, maxLado = 900, fuenteId = f.id) }
         else ImagenRemota(portadaUrl, m, cabecerasImg, maxLado = 900, fuenteId = f.id)
     }
     val portadaSuave: (@Composable (Modifier) -> Unit)? = if (comicLocal != null) null else { m ->
@@ -533,7 +535,8 @@ fun FichaMangaScreen(
                     onTitleClick = { alBuscarGlobal(tituloFicha) },
                     onTitleLongClick = { copiarTexto(ctx, tituloFicha) },
                 ) {
-                    CircleAction(
+                    if (fxOn("follow")) androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { BotonEstado(enBiblioteca != null, "En la biblioteca", "Añadir", "♥", color = acento) { alternarBiblioteca() } }
+                    else CircleAction(
                         if (enBiblioteca != null) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         if (enBiblioteca != null) "Quitar de la biblioteca" else "Añadir a la biblioteca",
                         onClick = { alternarBiblioteca() }, tint = if (enBiblioteca != null) acento else null,
@@ -1268,7 +1271,7 @@ private fun VisorPortada(
     ) {
         Box(Modifier.fillMaxSize().background(Color(0xF0000000)).pointerInput(Unit) { detectTapGestures { onCerrar() } }) {
             if (local != null) Image(local, null, Modifier.fillMaxSize().padding(24.dp), contentScale = ContentScale.Fit)
-            else ImagenRemota(url, Modifier.fillMaxSize().padding(24.dp), cabeceras, escala = ContentScale.Fit, maxLado = 1400, fuenteId = fuenteId)
+            else ImagenRemota(url, Modifier.fillMaxSize().padding(24.dp), cabeceras, escala = ContentScale.Fit, maxLado = 1400, fuenteId = fuenteId, efectosPortada = false)
             Row(
                 Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(24.dp).clip(CircleShape)
                     .background(Color(0xCC1A1A1C)).padding(horizontal = 12.dp, vertical = 6.dp),

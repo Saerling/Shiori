@@ -273,7 +273,7 @@ private class PulsacionNode(
  * inclinación. El nodo de arriba solo añade la «luz táctil» de Shiori cuando está activada en Aspecto.
  */
 private fun Modifier.luzTactil(tipo: TipoPulsacion, radio: Dp, margen: Dp): Modifier =
-    if (Aspecto.luzTactil) this.then(PulsacionElement(tipo, 1f, 0f, radio, margen)) else this
+    (if (Aspecto.luzTactil) this.then(PulsacionElement(tipo, 1f, 0f, radio, margen)) else this).fx("ripple") { ondaAlTocar(LectorColors.Text) }
 
 /** Botón / tarjeta tocable con rebote (sin ondas cuadradas). Con [onLongClick], también mantener pulsado. */
 fun Modifier.pressable(onClick: () -> Unit): Modifier = pressableCon(0.95f, null, onClick)
@@ -285,7 +285,7 @@ fun Modifier.pressableCon(escalaPulsada: Float, onClick: () -> Unit): Modifier =
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.pressableCon(escalaPulsada: Float, onLongClick: (() -> Unit)?, onClick: () -> Unit): Modifier = composed {
     val fuente = remember { MutableInteractionSource() }
-    val base = this.pressBounce(fuente, escalaPulsada).luzTactil(TipoPulsacion.REBOTE, 0.dp, 0.dp).fx("ripple") { ondaAlTocar(LectorColors.Text) }
+    val base = this.pressBounce(fuente, escalaPulsada).luzTactil(TipoPulsacion.REBOTE, 0.dp, 0.dp)
     if (onLongClick == null) base.clickable(interactionSource = fuente, indication = null, onClick = onClick)
     else base.combinedClickable(interactionSource = fuente, indication = null, onLongClick = onLongClick, onClick = onClick)
 }
@@ -447,6 +447,7 @@ fun AvisosHost(modifier: Modifier = Modifier) {
 /** Texto numérico cuyos dígitos ruedan al cambiar: el OdometerNumber de Mochy (ui/mochy/OdometerText.kt). */
 @Composable
 fun Odometro(texto: String, estilo: TextStyle, modifier: Modifier = Modifier, color: Color = LectorColors.Text) {
+    if (fxOn("slidingnumber") && texto.isNotEmpty() && texto.all { it.isDigit() } && texto.length < 15) { NumeroFlow(texto.toLong(), estilo.copy(fontWeight = estilo.fontWeight ?: FontWeight.Bold), modifier, color); return }
     val tam = if (estilo.fontSize.isSpecified) estilo.fontSize else LectorType.Body.fontSize
     com.example.lector.ui.mochy.OdometerNumber(
         value = texto,

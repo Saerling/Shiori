@@ -37,6 +37,7 @@ fun AppSwitch(
     enabled: Boolean = true,
     thumbContent: (@Composable () -> Unit)? = null,
 ) {
+    if (com.example.lector.fx.fxOn("switch")) { com.example.lector.fx.InterruptorCoss(checked, if (enabled) onCheckedChange else null, modifier); return }
     val alpha = if (enabled) 1f else 0.38f
     val animSpec = tween<Color>(150)
 

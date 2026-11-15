@@ -6,6 +6,7 @@
 
 package com.example.lector.ui.mochy.detail
 
+import com.example.lector.fx.*
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ContentTransform
@@ -636,6 +637,7 @@ internal fun PlayPill(label: String, enabled: Boolean, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            .then(if (enabled && com.example.lector.fx.fxOn("pulsating")) Modifier.pulso(content, 33.dp) else Modifier)
             .pressBounce(interaction)
             .graphicsLayer { alpha = if (enabled) 1f else 0.5f }
             .height(33.dp)

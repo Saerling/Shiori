@@ -398,6 +398,7 @@ private fun Contenido(almacen: Almacen, destino: String?, alConsumirDestino: () 
     // Aviso mientras se copia o se empaqueta (puede tardar con archivos grandes).
     if (importando) {
         AlertDialog(
+        modifier = com.example.lector.ui.estiloDialogoFxM(),
             onDismissRequest = {},
             confirmButton = {},
             title = { Text("Importando…") },
@@ -451,6 +452,7 @@ private fun Contenido(almacen: Almacen, destino: String?, alConsumirDestino: () 
 private fun DialogoFallo(texto: String, alCerrar: () -> Unit) {
     val ctx = LocalContext.current
     AlertDialog(
+        modifier = com.example.lector.ui.estiloDialogoFxM(),
         onDismissRequest = alCerrar,
         title = { Text("La app se cerró por un error") },
         text = {

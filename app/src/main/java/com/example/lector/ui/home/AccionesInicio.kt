@@ -192,6 +192,10 @@ fun CarruselInicio(
     onLongClick: (Comic) -> Unit,
 ) {
     val enSeleccion = seleccion.isNotEmpty()
+    if (!enSeleccion && items.isNotEmpty() && (com.example.lector.fx.fxOn("marquee") || com.example.lector.fx.fxOn("carousel"))) {
+        com.example.lector.ui.CarruselFx(items, { c -> Box(Modifier.combinedClickable(interactionSource = null, indication = HomeCardHighlight, onClick = { onClick(c) }, onLongClick = { onLongClick(c) })) { HomeCoverCard(c, almacen) } })
+        return
+    }
     HomeCardRow(rowKey = rowKey, items = items, revealSeen = revealSeen, key = { it.id }) { c ->
         val sel = c.id in seleccion
         val escala by animateFloatAsState(if (sel) 0.92f else 1f, label = "selPortada")
@@ -291,7 +295,7 @@ fun DialogoCategoriasInicio(ids: List<String>, almacen: Almacen, onCerrar: () ->
                         }.padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TriStateCheckbox(state = e, onClick = null)
+                        if (com.example.lector.fx.fxOn("checkbox")) com.example.lector.fx.CasillaTriCoss(e) else TriStateCheckbox(state = e, onClick = null)
                         Spacer(Modifier.width(8.dp))
                         Text(cat.nombre + if (cat.oculta) " (oculta)" else "")
                     }

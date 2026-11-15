@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import android.os.Build
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -211,7 +212,7 @@ fun FondoCristal(
     val lente = remember(estilo == Superficie.LIQUIDO && desenfoca) {
         if (estilo == Superficie.LIQUIDO && desenfoca && Build.VERSION.SDK_INT >= 33) LenteLiquida() else null
     }
-    Box(modifier.clipToBounds()) {
+    Box(modifier.clipToBounds().fx("noise") { noise(.06f) }) {
         Box(
             Modifier.fillMaxSize()
                 .then(if (margen > 0) Modifier.sangrado(margen) else Modifier)

@@ -201,7 +201,8 @@ fun DetalleScreen(
             title = { Text("Eliminar") },
             text = { Text("¿Quitar «${comic.titulo}» de la biblioteca? Se borra la copia guardada en la app.") },
             confirmButton = {
-                TextButton(onClick = { dBorrar = false; almacen.eliminar(comic.id); onChanged(); onBack() }) { Text("Eliminar") }
+                if (fxOn("holddelete")) BotonMantener("Mantén para eliminar", color = LectorColors.Error) { dBorrar = false; almacen.eliminar(comic.id); onChanged(); onBack() }
+                else TextButton(onClick = { dBorrar = false; almacen.eliminar(comic.id); onChanged(); onBack() }) { Text("Eliminar") }
             },
             dismissButton = { TextButton(onClick = { dBorrar = false }) { Text("Cancelar") } },
         )

@@ -82,13 +82,13 @@ fun LText(
 fun ComicCover(comic: Comic, almacen: Almacen, modifier: Modifier = Modifier, shape: Shape = FormaPortada) {
     val portada = rememberPortada(almacen, comic.id)
     if (portada != null) androidx.compose.runtime.SideEffect { com.example.lector.ui.mochy.EstiloApp.anotarPortada("c:" + comic.id, portada.width, portada.height) }
-    Box(modifier.fx("tilt") { inclinar() }.fx("glow") { halo() }.clip(shape).background(LectorColors.CardHigh).fx("magiccard") { foco() }.fx("glare") { destello() }, contentAlignment = Alignment.Center) {
+    Box(modifier.efectosPortadaFx().clip(shape).background(LectorColors.CardHigh), contentAlignment = Alignment.Center) {
         when {
             portada != null ->
                 Image(bitmap = portada, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             // Manga en línea sin portada guardada (añadido con pulsación larga, copia restaurada…): la de la fuente.
             comic.enLinea && !comic.portadaUrl.isNullOrBlank() ->
-                ImagenRemota(comic.portadaUrl, Modifier.fillMaxSize(), rememberCabeceras(comic.fuenteId), fuenteId = comic.fuenteId)
+                ImagenRemota(comic.portadaUrl, Modifier.fillMaxSize(), rememberCabeceras(comic.fuenteId), fuenteId = comic.fuenteId, efectosPortada = false)
             else -> LText(comic.titulo.take(1).uppercase(), LectorType.Display, color = LectorColors.Muted)
         }
     }
@@ -124,7 +124,7 @@ fun PillButton(text: String, icon: ImageVector, onClick: () -> Unit, modifier: M
 @Composable
 fun SectionHeader(title: String, modifier: Modifier = Modifier) {
     Row(modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (fxOn("comictext")) TextoComic(title, tam = 22.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.primary) else LText(title, LectorType.Section)
+        if (fxOn("comictext")) TextoComic(title, tam = 22.sp, color = androidx.compose.ui.graphics.Color(0xFFFFD60A)) else LText(title, LectorType.Section)
         Icon(Icons.Rounded.KeyboardArrowRight, null, tint = LectorColors.Muted, modifier = Modifier.size(18.dp))
     }
 }
@@ -316,10 +316,11 @@ private fun BotonMini(onClick: () -> Unit) {
  */
 @Composable
 fun Modifier.luzTactil(): Modifier {
+    val onda = this.fx("ripple") { ondaAlTocar(LectorColors.Text) }
     val luz = remember { Animatable(0f) }
     var punto by remember { mutableStateOf(Offset.Zero) }
     val scope = rememberCoroutineScope()
-    return this
+    return onda
         .pointerInput(Unit) {
             awaitPointerEventScope {
                 while (true) {
@@ -343,3 +344,6 @@ fun Modifier.luzTactil(): Modifier {
             )
         }
 }
+
+/** Efectos de portada de la biblioteca de animaciones (Tilt, Glow, Magic Card, Glare): los usan todas las portadas. */
+fun Modifier.efectosPortadaFx(): Modifier = this.fx("tilt") { inclinar() }.fx("glow") { halo() }.fx("magiccard") { foco() }.fx("glare") { destello() }

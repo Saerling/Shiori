@@ -545,7 +545,7 @@ fun BibliotecaScreen(
                             }.padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            TriStateCheckbox(state = e, onClick = null)
+                            if (com.example.lector.fx.fxOn("checkbox")) com.example.lector.fx.CasillaTriCoss(e) else TriStateCheckbox(state = e, onClick = null)
                             Spacer(Modifier.width(8.dp))
                             Text(cat.nombre + if (cat.oculta) " (oculta)" else "")
                         }

@@ -3,6 +3,7 @@
 
 package com.example.lector.ui.mochy.search
 
+import com.example.lector.fx.*
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -437,11 +438,12 @@ fun SearchField(
     focusRequester: FocusRequester? = null,
     onFocusChanged: ((Boolean) -> Unit)? = null,
 ) {
+    val fxHaz = focused && com.example.lector.fx.fxOn("searchinput")
     // Shiori: sin el reproductor de Mochy, no hace falta soltar el foco cuando se abre su hoja.
     var fieldHasFocus by remember { mutableStateOf(false) }
 
     Row(
-        modifier = modifier
+        modifier = modifier.then(if (fxHaz) Modifier.hazBorde(24.dp, androidx.compose.material3.MaterialTheme.colorScheme.primary) else Modifier)
             .fillMaxWidth()
             .height(SearchFieldHeight)
             .clip(RoundedCornerShape(50))

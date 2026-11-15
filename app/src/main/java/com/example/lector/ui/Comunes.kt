@@ -114,7 +114,7 @@ fun BotonRedondoTema(icono: ImageVector, desc: String, onClick: () -> Unit, modi
 fun MensajeVacio(texto: String, accion: String? = null, onAccion: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     if (fxOn("empty")) {
         Box(modifier.fillMaxSize().padding(bottom = 100.dp), contentAlignment = Alignment.Center) {
-            EstadoVacio("📚", texto.substringBefore('.').take(60), if (texto.contains('.')) texto.substringAfter('.').trim() else "", accion = if (accion != null && onAccion != null) ({ PillButton(accion, Icons.Rounded.KeyboardArrowRight, onAccion) }) else null)
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { EstadoVacio("📚", texto.substringBefore('.').take(60), if (texto.contains('.')) texto.substringAfter('.').trim() else "", accion = if (accion != null && onAccion != null) ({ PillButton(accion, Icons.Rounded.KeyboardArrowRight, onAccion) }) else null) }
         }
         return
     }

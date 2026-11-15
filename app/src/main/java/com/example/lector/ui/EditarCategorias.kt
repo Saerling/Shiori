@@ -213,7 +213,7 @@ fun DialogoAsignarCategorias(
     var sel by remember { mutableStateOf(seleccionInicial) }
     Dialog(onDismissRequest = alCancelar) {
         Surface(shape = SuaveShape(28.dp), color = LectorColors.CardHigh) {
-            Column(Modifier.padding(top = 24.dp, bottom = 12.dp)) {
+            Column(Modifier.estiloDialogoFx().padding(top = 24.dp, bottom = 12.dp)) {
                 LText("Asignar categorías", LectorType.Display.copy(fontSize = 24.sp), Modifier.padding(horizontal = 24.dp))
                 Spacer(Modifier.height(12.dp))
                 Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {

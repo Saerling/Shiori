@@ -575,7 +575,8 @@ fun Visor(
                     IndicadorCarga(Modifier.size(48.dp), color = MaterialTheme.colorScheme.primary, estado = com.example.lector.ui.orbes.EstadoOrbe.COMPOSING)
                     Spacer(Modifier.height(16.dp))
                     Text(cap.nombre, style = LectorType.Section, color = GrisNeutro, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 40.dp))
-                    Text("Cargando capítulo…", style = LectorType.Label, color = GrisNeutro.copy(alpha = 0.7f))
+                    if (fxOn("textshimmer")) TextoBrillo("Cargando capítulo…", LectorType.Label, base = GrisNeutro.copy(alpha = 0.7f), brillo = Color.White)
+                    else Text("Cargando capítulo…", style = LectorType.Label, color = GrisNeutro.copy(alpha = 0.7f))
                 }
                 else Column(
                     Modifier.padding(24.dp).widthIn(max = 420.dp).fillMaxWidth().clip(FormaTarjeta).background(LectorColors.Card)

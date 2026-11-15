@@ -53,7 +53,7 @@ fun FilaOpcion(etiqueta: String, marcada: Boolean, alElegir: () -> Unit) {
         Modifier.fillMaxWidth().clickable { alElegir() },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = marcada, onClick = null)
+        if (com.example.lector.fx.fxOn("checkbox")) com.example.lector.ui.Marca(marcada) else RadioButton(selected = marcada, onClick = null)
         Spacer(Modifier.width(8.dp))
         Text(etiqueta)
     }
@@ -69,7 +69,7 @@ fun FilaInterruptor(titulo: String, detalle: String?, activado: Boolean, alCambi
             }
         }
         Spacer(Modifier.width(8.dp))
-        Switch(checked = activado, onCheckedChange = alCambiar)
+        com.example.lector.ui.Interruptor(activado, alCambiar)
     }
 }
 

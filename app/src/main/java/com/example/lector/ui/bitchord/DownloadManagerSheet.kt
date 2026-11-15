@@ -129,7 +129,7 @@ private fun DownloadPillBody(onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(
+            com.example.lector.ui.AnilloDescarga(
                 // Never quite zero: a ring pinned at nothing reads as
                 // stalled where the first sliver reads as starting.
                 progress = { progress.coerceAtLeast(0.02f) },
@@ -213,7 +213,7 @@ private fun DownloadManagerRow(item: TareaDescarga, progress: Float?, onCancel: 
             when {
                 progress == null -> RowStatus("En cola")
                 else -> {
-                    LinearProgressIndicator(
+                    com.example.lector.ui.ProgresoLinea(
                         progress = { progress },
                         modifier = Modifier.fillMaxWidth().height(3.dp),
                         color = LectorColors.Text,
