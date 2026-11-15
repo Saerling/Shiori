@@ -98,7 +98,7 @@ dependencies {
     // Módulos de OkHttp que las extensiones usan por nombre (Brotli, DoH, logging, zstd), como en Komikku.
     implementation("com.squareup.okhttp3:okhttp-brotli:5.3.2")
     implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:5.3.2")
-    implementation("com.squareup.okhttp3:logging-interceptor:5.3.2")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.5.1")
     implementation("com.squareup.okhttp3:okhttp-zstd:5.3.2")
     implementation("io.reactivex:rxjava:1.3.8")
     implementation("org.jsoup:jsoup:1.23.2")
