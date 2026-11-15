@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Arrangement
@@ -241,7 +242,7 @@ fun DialogoShiori(
         ) {
             Column(
                 Modifier.padding(20.dp).fillMaxWidth().clip(SuaveShape(30.dp)).background(LectorColors.Card)
-                    .border(1.dp, LectorColors.Linea, SuaveShape(30.dp)).padding(vertical = 22.dp),
+                    .border(1.dp, LectorColors.Linea, SuaveShape(30.dp)).estiloDialogoFx().padding(vertical = 22.dp),
             ) {
                 LText(titulo, LectorType.Section, Modifier.padding(horizontal = 24.dp))
                 Spacer(Modifier.height(12.dp))

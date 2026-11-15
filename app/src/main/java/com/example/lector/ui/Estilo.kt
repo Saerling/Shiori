@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.ui.composed
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.runtime.remember
@@ -284,7 +285,7 @@ fun Modifier.pressableCon(escalaPulsada: Float, onClick: () -> Unit): Modifier =
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.pressableCon(escalaPulsada: Float, onLongClick: (() -> Unit)?, onClick: () -> Unit): Modifier = composed {
     val fuente = remember { MutableInteractionSource() }
-    val base = this.pressBounce(fuente, escalaPulsada).luzTactil(TipoPulsacion.REBOTE, 0.dp, 0.dp)
+    val base = this.pressBounce(fuente, escalaPulsada).luzTactil(TipoPulsacion.REBOTE, 0.dp, 0.dp).fx("ripple") { ondaAlTocar(LectorColors.Text) }
     if (onLongClick == null) base.clickable(interactionSource = fuente, indication = null, onClick = onClick)
     else base.combinedClickable(interactionSource = fuente, indication = null, onLongClick = onLongClick, onClick = onClick)
 }
@@ -333,6 +334,7 @@ fun BonesHost(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
 
 @Composable
 fun Bone(ancho: Dp, alto: Dp, modifier: Modifier = Modifier, forma: Shape = SuaveShape(20.dp)) {
+    if (fxOn("skeleton")) { Box(modifier.size(ancho, alto).clip(forma).esqueleto(0.dp, LectorColors.CardHigh)); return }
     com.example.lector.ui.mochy.Bone(ancho, alto, modifier, forma)
 }
 

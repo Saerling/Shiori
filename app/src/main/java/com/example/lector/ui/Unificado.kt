@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -125,7 +126,7 @@ fun DialogoAlerta(
 ) {
     com.example.lector.ui.mochy.sheet.DefaultDialog(
         onDismiss = onDismissRequest,
-        modifier = modifier,
+        modifier = modifier.estiloDialogoFx(),
         icon = icon,
         title = title,
         horizontalAlignment = Alignment.Start,

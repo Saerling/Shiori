@@ -287,7 +287,7 @@ private fun ContenidoSeccion(s: SeccionP, almacen: Almacen, onBibliotecaFx: () -
         ) {
             LText("Biblioteca de animaciones y funciones", LectorType.Section.copy(fontSize = 17.sp))
             Spacer(Modifier.height(4.dp))
-            LText("${com.example.lector.fx.Fx.count(com.example.lector.fx.CatalogoShiori.map { it.id })} de ${com.example.lector.fx.CatalogoShiori.size} activas · blocks.so, Magic UI, coss ui, opensourceui, NumberFlow y Motion Primitives. Actívalas una a una a tu gusto.", EstiloPie, color = LectorColors.Muted)
+            LText("${com.example.lector.fx.Fx.count(IdsFxShiori)} de ${IdsFxShiori.size} activas · blocks.so, Magic UI, coss ui, opensourceui, NumberFlow y Motion Primitives. Actívalas una a una a tu gusto.", EstiloPie, color = LectorColors.Muted)
         }
         SeccionP.ESTILO -> SeccionEstilo()
     }

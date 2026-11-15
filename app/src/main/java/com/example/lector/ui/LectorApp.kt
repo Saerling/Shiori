@@ -522,7 +522,7 @@ fun Inicio(
                     Ruta.Datos -> DatosScreen(almacen, alRecargar) { ruta = null }
                     Ruta.Ajustes -> AjustesScreen(almacen, { ruta = null }) { ruta = it }
                     Ruta.Apariencia -> PersonalizacionScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = Ruta.BibliotecaFx }
-                    Ruta.BibliotecaFx -> com.example.lector.fx.BibliotecaFxPantalla(com.example.lector.fx.CatalogoShiori, { ruta = Ruta.Apariencia })
+                    Ruta.BibliotecaFx -> com.example.lector.fx.BibliotecaFxPantalla(remember(visibles) { catalogoShiori(almacen, visibles) { ruta = it } }, { ruta = Ruta.Apariencia })
                     Ruta.AjBiblioteca -> AjBibliotecaScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = it }
                     Ruta.AjSeguimiento -> AjSeguimientoScreen(almacen) { ruta = Ruta.Ajustes }
                     Ruta.AjVisor -> AjustesVisorScreen(almacen) { ruta = Ruta.Ajustes }

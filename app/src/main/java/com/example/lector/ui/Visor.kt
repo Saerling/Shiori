@@ -556,7 +556,7 @@ fun Visor(
     }
 
     Box(
-        Modifier.fillMaxSize().background(fondo)
+        Modifier.fillMaxSize().background(fondo).fx("lens") { lupa() }
             // Saber si hay un dedo en la pantalla (pausa el autodesplazamiento), sin consumir nada.
             .pointerInput(Unit) {
                 awaitPointerEventScope {
@@ -650,8 +650,8 @@ fun Visor(
 
         // Biblioteca de animaciones: progreso, hora/batería y confeti al terminar el capítulo.
         if (n != null && n > 0) {
-            if (Fx.on("scrollprogress")) BarraProgresoScroll((paginaReal + 1f) / n, Modifier.align(Alignment.TopCenter).statusBarsPadding(), MaterialTheme.colorScheme.primary)
-            if (Fx.on("battery") && !barras) RelojBateria(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp).pildoraCristal(CircleShape, sombra = false).padding(horizontal = 10.dp, vertical = 4.dp), color = TintaBarra)
+            if (fxOn("scrollprogress")) BarraProgresoScroll((paginaReal + 1f) / n, Modifier.align(Alignment.TopCenter).statusBarsPadding(), MaterialTheme.colorScheme.primary)
+            if (fxOn("battery") && !barras) RelojBateria(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp).pildoraCristal(CircleShape, sombra = false).padding(horizontal = 10.dp, vertical = 4.dp), color = TintaBarra)
             val confeti = rememberConfeti()
             LaunchedEffect(paginaReal) { if (Fx.on("confetti") && n > 1 && paginaReal == n - 1) confeti.disparar() }
             Confeti(confeti, Modifier.fillMaxSize())
@@ -663,7 +663,7 @@ fun Visor(
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
             enter = entraPildora(), exit = salePildora(),
         ) {
-            if (Fx.on("nf_page")) NumeroFlowGrupo(paginaReal + 1, n ?: 0, EstiloContador, Modifier.pildoraCristal(CircleShape, sombra = false).padding(horizontal = 14.dp, vertical = 5.dp), TintaBarra)
+            if (fxOn("nf_page")) NumeroFlowGrupo(paginaReal + 1, n ?: 0, EstiloContador, Modifier.pildoraCristal(CircleShape, sombra = false).padding(horizontal = 14.dp, vertical = 5.dp), TintaBarra)
             else Text(
                 "${paginaReal + 1} / ${n ?: 0}",
                 style = EstiloContador, color = TintaBarra,
@@ -896,7 +896,7 @@ private val BordeBarra: Color
         Aspecto.superficie == Superficie.LIQUIDO -> Color.White.copy(alpha = if (TemaActual.oscuro) 0.33f else 0.8f)
         else -> LectorColors.Linea
     }
-private val TintaBarra: Color get() = LectorColors.Text
+internal val TintaBarra: Color get() = LectorColors.Text
 private val SubBarra: Color get() = LectorColors.Muted
 
 // Formas y colores fijos del lector (constantes: nada se reserva en cada fotograma).
@@ -905,11 +905,11 @@ private val FormaTarjeta = SuaveShape(28.dp)
 private val FormaEsqueleto = SuaveShape(24.dp)
 private val GrisNeutro = Color(0xFF9A9AA0)
 private val ColorEsqueleto = Color(0x1F8E8E93)
-private val EstiloContador = LectorType.Label.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
+internal val EstiloContador = LectorType.Label.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
 
 /** Píldora de cristal flotante: tinte de la barra, línea finísima y una sombra suave (salvo en «Líquido»). */
 @Composable
-private fun Modifier.pildoraCristal(forma: Shape, sombra: Boolean = true): Modifier {
+internal fun Modifier.pildoraCristal(forma: Shape, sombra: Boolean = true): Modifier {
     val conSombra = sombra && Aspecto.superficie != Superficie.LIQUIDO
     return this
         .then(if (conSombra) Modifier.shadow(10.dp, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.28f)) else Modifier)

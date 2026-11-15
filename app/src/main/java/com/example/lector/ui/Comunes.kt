@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -111,6 +112,12 @@ fun BotonRedondoTema(icono: ImageVector, desc: String, onClick: () -> Unit, modi
 /** Mensaje centrado para pantallas o listas vacías, con una acción opcional. */
 @Composable
 fun MensajeVacio(texto: String, accion: String? = null, onAccion: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+    if (fxOn("empty")) {
+        Box(modifier.fillMaxSize().padding(bottom = 100.dp), contentAlignment = Alignment.Center) {
+            EstadoVacio("📚", texto.substringBefore('.').take(60), if (texto.contains('.')) texto.substringAfter('.').trim() else "", accion = if (accion != null && onAccion != null) ({ PillButton(accion, Icons.Rounded.KeyboardArrowRight, onAccion) }) else null)
+        }
+        return
+    }
     Column(
         modifier.fillMaxSize().padding(horizontal = 40.dp).padding(bottom = 120.dp),
         verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
@@ -213,7 +220,7 @@ fun HojaLector(onCerrar: () -> Unit, content: @Composable ColumnScope.() -> Unit
         dragHandle = { Box(Modifier.padding(vertical = 14.dp).size(36.dp, 4.dp).clip(CircleShape).background(LectorColors.Muted.copy(alpha = 0.5f))) },
     ) {
         CompositionLocalProvider(LocalContentColor provides LectorColors.Text) {
-            Column(Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.85f).dp)) { content() }
+            Column(Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.85f).dp)) { Column(Modifier.fillMaxWidth().fx("sheet") { noise(.05f) }) { content() } }
         }
         Spacer(Modifier.navigationBarsPadding())
     }

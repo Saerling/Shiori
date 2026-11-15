@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import com.example.lector.fx.aparecerDifuso
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -37,7 +38,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun Modifier.entrada(indice: Int, pasoMs: Int = 60): Modifier {
     if (MovimientoReducido.activo) return this
-    if (com.example.lector.fx.Fx.on("blurfade") || com.example.lector.fx.Fx.on("inview")) return this.then(Modifier.aparecerDifuso(indice.coerceIn(0, 8), 40))
+    if (com.example.lector.fx.fxOn("blurfade")) return this.then(Modifier.aparecerDifuso(indice.coerceIn(0, 8), 40))
     val visto = com.example.lector.ui.mochy.rememberRevealSeenState()
     return this.revealOnAppear(
         key = "entrada",
@@ -111,7 +112,7 @@ fun BarraSuperior(
 fun BotonFlotante(texto: String, acento: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier.navigationBarsPadding().padding(24.dp)
-            .pressable(onClick).clip(SuaveShape(22.dp)).background(acento)
+            .fx("pulsating") { pulso(acento, 22.dp) }.pressable(onClick).clip(SuaveShape(22.dp)).background(acento)
             .padding(horizontal = 26.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

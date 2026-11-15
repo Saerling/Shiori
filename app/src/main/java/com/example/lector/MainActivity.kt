@@ -296,6 +296,8 @@ fun App(
             if (arranque) ArranqueOverlay { arranque = false }
             if (!bloqueada) com.example.lector.ui.DialogoActualizacion()
             if (bloqueada) PantallaBloqueo(alDesbloquear)
+                    // Biblioteca de animaciones: revelado circular al cambiar el tema y bienvenida (Onboarding).
+            com.example.lector.ui.FxCapasGlobales(oscuro)
         }
       }
     }

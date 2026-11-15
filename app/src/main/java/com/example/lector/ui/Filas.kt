@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -180,6 +181,7 @@ fun FilaRadio(etiqueta: String, marcada: Boolean, onClick: () -> Unit) {
 /** Botón de opción redondo: anillo gris; marcado, círculo blanco con un punto oscuro. */
 @Composable
 fun Marca(marcada: Boolean) {
+    if (fxOn("checkbox")) { CasillaCoss(marcada); return }
     val relleno by animateColorAsState(if (marcada) LectorColors.Text else Color.Transparent, tween(150), label = "marca")
     Box(
         Modifier.size(22.dp).clip(CircleShape).background(relleno)
@@ -191,6 +193,7 @@ fun Marca(marcada: Boolean) {
 /** Interruptor: el AppSwitch de Mochy (ui/mochy/AppSwitch.kt), con el toque háptico de Shiori. */
 @Composable
 fun Interruptor(activado: Boolean, onChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
+    if (fxOn("switch")) { InterruptorCoss(activado, onChange?.let { c -> { v: Boolean -> Tacto.alternar(v); c(v) } }, modifier); return }
     AppSwitch(
         checked = activado,
         onCheckedChange = onChange?.let { cambiar -> { v: Boolean -> Tacto.alternar(v); cambiar(v) } },
@@ -298,8 +301,15 @@ fun ChipBorde(texto: String, color: Color) {
 
 @Composable
 fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
-    Column(modifier.clip(SuaveShape(24.dp)).background(LectorColors.Card).padding(20.dp)) {
-        LText(value, LectorType.Display.copy(fontSize = if (value.length > 6) 22.sp else 36.sp), maxLines = 1)
+    val estilo = if (fxOn("stats")) Fx.variante("stats") else -1
+    val acento = MaterialTheme.colorScheme.primary
+    Column(modifier.clip(SuaveShape(24.dp)).background(LectorColors.Card).then(when (estilo % 5) { 1 -> Modifier.bordeBrillante(24.dp); 2 -> Modifier.foco(LectorColors.Text); 3 -> Modifier.hazBorde(24.dp, acento); 4 -> Modifier.noise(.06f); else -> Modifier }).padding(20.dp)) {
+        if (estilo >= 0 && estilo % 3 == 1) Box(Modifier.padding(bottom = 6.dp).size(26.dp, 4.dp).clip(CircleShape).background(acento))
+        val tam = LectorType.Display.copy(fontSize = if (value.length > 6) 22.sp else 36.sp)
+        when {
+            fxOn("numberticker") -> LText(textoContando(value), tam, maxLines = 1, color = if (estilo >= 0 && estilo % 3 == 2) acento else LectorColors.Text)
+            else -> LText(value, tam, maxLines = 1, color = if (estilo >= 0 && estilo % 3 == 2) acento else LectorColors.Text)
+        }
         Spacer(Modifier.height(4.dp))
         LText(label, LectorType.Label, color = LectorColors.Muted, maxLines = 2)
     }
