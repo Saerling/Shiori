@@ -119,13 +119,13 @@ enum class Patron { Puntos, Cuadricula, Rayas, Hexagonos, Diagonal, Milimetrado,
 
 /** Patrones de fondo: Dot / Grid / Striped / Hexagon Pattern (Magic UI) y Dot Grid, Graph Paper, Line Grid, Diagonal Box (opensourceui). */
 fun Modifier.patron(tipo: Patron, color: Color = Color(0x33888888), paso: Dp = 22.dp): Modifier = drawWithCache {
-    val s = paso.toPx()
+    val s = paso.toPx(); val ancho = size.width; val alto = size.height
     // Hexágonos: los trazados dependen solo del tamaño; se construyen una vez y no en cada dibujo.
     val hexagonos: List<Path> = if (tipo != Patron.Hexagonos) emptyList() else buildList {
         val r = s / 1.7f; val w = sqrt(3f) * r; var fila = 0; var y = 0f
-        while (y < size.height + r) {
+        while (y < alto + r) {
             var x = if (fila % 2 == 0) 0f else w / 2
-            while (x < size.width + w) {
+            while (x < ancho + w) {
                 val p = Path(); for (i in 0..5) { val a = Math.toRadians((60 * i - 30).toDouble()); val px = x + r * cos(a).toFloat(); val py = y + r * sin(a).toFloat(); if (i == 0) p.moveTo(px, py) else p.lineTo(px, py) }; p.close()
                 add(p); x += w
             }
