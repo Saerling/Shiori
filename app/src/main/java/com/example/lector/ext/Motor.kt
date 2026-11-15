@@ -10,7 +10,8 @@ import eu.kanade.tachiyomi.source.model.FilterList
  * solo tiene que crear una clase que implemente esta interfaz y asignarla a [Motor.actual].
  * Con eso se activan solas las pestañas Novedades y la pantalla de cada fuente.
  */
-data class MangaFuente(val url: String, val titulo: String, val portadaUrl: String?)
+// memo: datos internos de la extensión (JSON, tachiyomix 1.6); hay que devolvérselos tal cual. Ver CacheFichas.
+data class MangaFuente(val url: String, val titulo: String, val portadaUrl: String?, val memo: String? = null)
 
 data class PaginaMangas(val mangas: List<MangaFuente>, val haySiguiente: Boolean)
 
@@ -23,6 +24,8 @@ data class DetalleManga(
     val generos: List<String>,
     val estado: Int,
     val portadaUrl: String?,
+    // UpdateStrategy.ONLY_FETCH_ONCE de la fuente (one-shots, galerías): no hace falta volver a revisarlo.
+    val soloUnaVez: Boolean = false,
 )
 
 data class CapituloFuente(
@@ -31,9 +34,11 @@ data class CapituloFuente(
     val fecha: Long,
     val scanlator: String?,
     val numero: Float,
+    val memo: String? = null,
 )
 
-data class FichaManga(val detalle: DetalleManga, val capitulos: List<CapituloFuente>)
+/** [memo]: el del manga tras cargarlo; [guardada]: cuándo se guardó en el móvil (0 = recién traída de la fuente). */
+data class FichaManga(val detalle: DetalleManga, val capitulos: List<CapituloFuente>, val memo: String? = null, val guardada: Long = 0)
 
 interface MotorFuentes {
     suspend fun populares(fuente: FuenteUI, pagina: Int): PaginaMangas
@@ -66,6 +71,18 @@ interface MotorFuentes {
 
     /** Dirección web de un manga en el sitio de la fuente (null si no se sabe). */
     fun urlManga(fuente: FuenteUI, manga: MangaFuente): String? = null
+
+    /**
+     * Descarga una imagen (una portada) con el cliente y las cabeceras de la PROPIA fuente, como Mihon/Komikku: así
+     * lleva sus cookies (Cloudflare), su User-Agent, su Referer y sus interceptores. Carga la extensión si hace falta.
+     * null si no se puede.
+     */
+    suspend fun bytesImagen(fuenteId: Long, url: String): ByteArray? = null
+    /** Mangas parecidos según la propia fuente (si lo ofrece); vacío si no. */
+    suspend fun relacionados(fuente: FuenteUI, manga: MangaFuente): List<MangaFuente> = emptyList()
+
+    /** Cliente HTTP general de la app (cookies compartidas con el WebView, Cloudflare, DNS sobre HTTPS). */
+    fun clienteGeneral(): okhttp3.OkHttpClient? = null
 
     /** Cabeceras HTTP (Referer, User-Agent...) para cargar las portadas de esta fuente. */
     fun cabeceras(fuente: FuenteUI): Map<String, String> = emptyMap()

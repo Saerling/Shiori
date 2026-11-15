@@ -1,5 +1,8 @@
 package com.example.lector.ui
 
+import kotlinx.coroutines.launch
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -10,6 +13,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -24,22 +28,31 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.composed
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import com.example.lector.Almacen
-import com.example.lector.BibliotecaScreen
 import com.example.lector.Comic
 import com.example.lector.ext.CapituloFuente
 import com.example.lector.ext.MangaFuente
 import com.example.lector.ext.Motor
-import com.example.lector.HistorialScreen
+import com.example.lector.Notificaciones
 import com.example.lector.ext.ExtManager
 
 /**
  * Pantalla principal con el diseño nuevo.
  *  - Pestañas: Inicio, Buscar, Biblioteca, Historial, Más.
  *  - Encima de las pestañas se abren (con animación) la página de un cómic y las páginas de Más/Ajustes.
- * Tu BibliotecaScreen e HistorialScreen siguen intactos.
+ * `destino` llega de una notificación (actualizaciones, descargas, extensiones) y se consume al abrirlo.
  */
 @Composable
 fun Inicio(
@@ -52,13 +65,15 @@ fun Inicio(
     alAbrir: (Comic) -> Unit,
     alEliminar: (Comic) -> Unit,
     alRecargar: () -> Unit,
-    pestanaBiblioteca: Int,
-    alCambiarPestanaBiblioteca: (Int) -> Unit,
+    destino: String? = null,
+    alConsumirDestino: () -> Unit = {},
     // false mientras se lee un cómic local encima: Inicio sigue vivo pero no debe atender el botón atrás.
     activo: Boolean = true,
 ) {
     // Los cómics de categorías ocultas no salen en Inicio, Buscar ni Historial.
     // Solo se ven en Biblioteca, manteniendo pulsado su título.
+    // Modo SFW/NSFW (Ajustes → Seguridad): se filtra aquí una vez para Inicio, Biblioteca e Historial.
+    val comics = androidx.compose.runtime.remember(comics, com.example.lector.ModoContenido.modo, com.example.lector.ext.ExtManager.obtener(androidx.compose.ui.platform.LocalContext.current).fuentes) { com.example.lector.ModoContenido.filtrar(comics) }
     val visibles = almacen.sinOcultos(comics)
     val ultimo = visibles.firstOrNull { it.id == almacen.ultimoAbierto }
     // Último manga en línea que se estaba leyendo (si no está en una categoría oculta).
@@ -70,13 +85,15 @@ fun Inicio(
     }
 
     var ruta by rememberSaveable { mutableStateOf<Ruta?>(null) }
-    var detalleId by rememberSaveable { mutableStateOf<String?>(null) }
     var webUrl by rememberSaveable { mutableStateOf("") }
     var webTitulo by rememberSaveable { mutableStateOf("") }
     var webDesdeExt by rememberSaveable { mutableStateOf(false) }
     val abrirWeb: (String, String) -> Unit = { u, t -> webDesdeExt = ruta == Ruta.ExtDetalle; webUrl = u; webTitulo = t; ruta = Ruta.Web }
+    var detalleId by rememberSaveable { mutableStateOf<String?>(null) }
     // Explorar / extensiones: gestor único + qué extensión o fuente se está viendo.
     val contexto = LocalContext.current
+    // Replay (de BitChord): anota en el teléfono cada capítulo que se abre.
+    LaunchedEffect(Unit) { com.example.lector.bitchord.ReplayRegistro.iniciar(contexto, almacen) }
     val ext = remember { ExtManager.obtener(contexto) }
     var extPkg by rememberSaveable { mutableStateOf<String?>(null) }
     var fuenteId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -89,6 +106,185 @@ fun Inicio(
     var paginaLectura by remember { mutableStateOf(0) }
     // Capítulo y página que hay que abrir al cargar la ficha (cuando se entra desde el historial).
     var reanudar by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    // Pantalla a la que vuelve la ficha cuando no se abrió desde la lista de una fuente (p. ej. búsqueda global).
+    var vueltaFicha by remember { mutableStateOf<Ruta?>(null) }
+    // Estado guardado (búsqueda, modo, desplazamiento…) de la búsqueda global y de la lista de cada fuente: al ir a un
+    // manga y volver, siguen como estaban en vez de reiniciarse.
+    val estadosPantallas = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    // Mangas abiertos uno encima de otro desde una ficha (recomendaciones, «Fuente no disponible»): «atrás» vuelve
+    // al anterior en vez de salir de la ficha. Se vacía al salir de la ficha.
+    val fichasAnteriores = remember { androidx.compose.runtime.mutableStateListOf<Pair<Long, MangaFuente>>() }
+    var consultaGlobal by rememberSaveable { mutableStateOf("") }
+    var migrarId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Solo en la versión debug: «probar:<paquete>» confía en esa extensión y abre el catálogo de su primera fuente.
+    // Lo usa la prueba automática en el emulador (.github/workflows/probar.yml).
+    var paquetePrueba by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(paquetePrueba) {
+        val pkg = paquetePrueba ?: return@LaunchedEffect
+        ext.refrescarInstaladas()
+        var fuente: com.example.lector.ext.FuenteUI? = null
+        repeat(60) {
+            if (fuente != null) return@repeat
+            ext.instaladas.firstOrNull { it.pkg == pkg }?.let { e -> if (!e.confiable) ext.confiar(e) }
+            fuente = ext.fuentes.filter { it.pkg == pkg }.let { l -> l.firstOrNull { it.lang == "es" } ?: l.firstOrNull { it.lang == "en" } ?: l.firstOrNull() }
+            if (fuente == null) kotlinx.coroutines.delay(500)
+        }
+        // El id puede ser provisional hasta que la extensión termina de cargar: se espera a que no cambie.
+        repeat(20) {
+            kotlinx.coroutines.delay(1000)
+            val delPaquete = ext.fuentes.filter { it.pkg == pkg }
+            val ahora = delPaquete.firstOrNull { it.nombre == fuente?.nombre && it.lang == fuente?.lang }
+                ?: delPaquete.firstOrNull { it.lang == "es" } ?: delPaquete.firstOrNull()
+            if (ahora != null) fuente = ahora
+        }
+        android.util.Log.i("LectorPrueba", "fuente=${fuente?.nombre} id=${fuente?.id}")
+        val fp = fuente
+        // «|capitulo»: recorre populares → ficha → primer capítulo como lo haría el usuario, sin tocar la pantalla.
+        var abrirLector: (() -> Unit)? = null
+        if (fp != null && PruebaAuto.probarCapitulo) {
+            PruebaAuto.probarCapitulo = false
+            val motor = com.example.lector.ext.Motor.actual
+            val r = runCatching {
+                requireNotNull(motor)
+                val m = motor.populares(fp, 1).mangas.first()
+                val fi = motor.ficha(fp, m)
+                val cap = fi.capitulos.firstOrNull() ?: error("«${m.titulo}» sin capítulos")
+                // Como al abrirlo desde Actualizaciones o la cola de descargas: sin memo, recuperado de la ficha guardada.
+                val recuperado = com.example.lector.CacheFichas.conMemo(fp.id, m.url, cap.copy(memo = null))
+                val n = motor.cantidadPaginas(fp, recuperado)
+                // Y lo abre en el lector de verdad (para las capturas del emulador).
+                abrirLector = {
+                    fuenteId = fp.id; mangaSel = m; desdeNovedades = false
+                    capsLectura = fi.capitulos; capIndice = 0; paginaLectura = 0; ruta = Ruta.LeerOnline
+                }
+                "«${m.titulo}»: ${fi.capitulos.size} caps, memo manga=${fi.memo != null}, memo cap=${cap.memo != null} " +
+                    "(guardado=${recuperado.memo != null}); «${cap.nombre}»: $n páginas"
+            }
+            android.util.Log.i("LectorPrueba", "capitulo ${fp.nombre}: " + r.getOrElse { "ERROR ${it.message ?: it.javaClass.simpleName}" })
+        }
+        val abrir = abrirLector
+        if (abrir != null) abrir() else fuente?.let { fuenteId = it.id; desdeNovedades = false; ruta = Ruta.FuenteDetalle }
+    }
+
+    // Abrir desde una notificación.
+    LaunchedEffect(destino) {
+        when (destino) {
+            Notificaciones.DESTINO_ACTUALIZACIONES -> { ruta = null; detalleId = null; onTab(LectorTab.Updates) }
+            Notificaciones.DESTINO_DESCARGAS -> { detalleId = null; ruta = Ruta.Descargas }
+            Notificaciones.DESTINO_EXTENSIONES -> { ruta = null; detalleId = null; onTab(LectorTab.Search) }
+            com.example.lector.NuevaVersion.DESTINO -> com.example.lector.NuevaVersion.abrirDesdeNotificacion(contexto)
+            com.example.lector.TareaCopia.DESTINO -> {
+                com.example.lector.TareaCopia.informeVisto = true
+                com.example.lector.TareaCopia.verInforme = com.example.lector.TareaCopia.informe != null
+            }
+            else -> {
+                val depurable = (contexto.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                // Prueba del emulador: «probar-ruta:AjBiblioteca» abre esa pantalla de ajustes directamente.
+                if (destino?.startsWith("probar-ruta:") == true && depurable) {
+                    runCatching { Ruta.valueOf(destino.removePrefix("probar-ruta:")) }.getOrNull()?.let { ruta = it }
+                }
+                if (destino?.startsWith("probar:") == true && depurable) {
+                    paquetePrueba = destino.removePrefix("probar:").substringBefore('|')
+                    if (destino.endsWith("|autorec")) PruebaAuto.abrirRecomendacion = true
+                    if (destino.endsWith("|capitulo")) PruebaAuto.probarCapitulo = true
+                }
+                // Capturas del emulador: «probar-pantalla:Library» abre esa pestaña; «probar-pantalla:Ajustes», esa ruta.
+                if (destino?.startsWith("probar-pantalla:") == true && depurable) {
+                    val n = destino.removePrefix("probar-pantalla:")
+                    runCatching { LectorTab.valueOf(n) }.getOrNull()?.let { ruta = null; detalleId = null; onTab(it) }
+                        ?: runCatching { Ruta.valueOf(n) }.getOrNull()?.let { ruta = it }
+                }
+                // Pruebas de las copias en el emulador: restaurar un archivo y crear una copia, midiendo el tiempo.
+                if (destino?.startsWith("probar-restaurar:") == true && depurable) {
+                    val ruta = destino.removePrefix("probar-restaurar:")
+                    com.example.lector.TareaCopia.lanzar(contexto, "Restaurando copia") {
+                        val t0 = android.os.SystemClock.elapsedRealtime()
+                        val inf = com.example.lector.Tachibk.restaurar(contexto, java.io.File(ruta).readBytes(), this)
+                        android.util.Log.i("LectorPrueba", "restaurar ms=${android.os.SystemClock.elapsedRealtime() - t0} bien=${inf.bien} avisos=${inf.avisos} errores=${inf.errores}")
+                        inf
+                    }
+                }
+                // «Fuente no disponible»: abre un manga de una fuente que no existe (busca su título en las demás).
+                if (destino?.startsWith("probar-huerfano:") == true && depurable) {
+                    fuenteId = 424242L
+                    mangaSel = com.example.lector.ext.MangaFuente("/no-existe", destino.removePrefix("probar-huerfano:"), null)
+                    desdeNovedades = true; vueltaFicha = null; reanudar = null
+                    ruta = Ruta.Ficha
+                }
+                // Actualización de la app: lee la última versión de GitHub y descarga su APK (sin instalarlo).
+                if (destino == "probar-version" && depurable) {
+                    kotlin.concurrent.thread {
+                        val r = runCatching {
+                            val v = kotlinx.coroutines.runBlocking { com.example.lector.NuevaVersion.ultima(contexto) }
+                            if (v == null) "sin versiones publicadas" else {
+                                val f = java.io.File(contexto.cacheDir, "prueba-version.apk")
+                                com.example.lector.ext.ExtRepos.descargarA(v.apkUrl, f) {}
+                                "ultima=${v.nombre} codigo=${v.codigo} actual=${com.example.lector.NuevaVersion.codigoActual(contexto)} " +
+                                    "descargado=${f.length()} esperado=${v.tamano} notas=${v.notas.lineSequence().firstOrNull()}"
+                            }
+                        }
+                        android.util.Log.i("LectorPrueba", "version " + r.getOrElse { "error ${it.message ?: it.javaClass.simpleName}" })
+                    }
+                }
+                // Direcciones de descarga de unas extensiones (de los listados), para instalarlas en la prueba.
+                if (destino?.startsWith("probar-url:") == true && depurable) {
+                    val pkgs = destino.removePrefix("probar-url:").split(',')
+                    kotlin.concurrent.thread {
+                        repeat(90) { if (ext.disponibles.isEmpty()) Thread.sleep(1000) }
+                        pkgs.forEach { p ->
+                            val d = ext.disponibles.firstOrNull { it.pkg.endsWith(".$p") || it.pkg == p }
+                            android.util.Log.i("LectorPrueba", "url $p ${d?.pkg ?: "-"} ${d?.apkUrl ?: "-"}")
+                        }
+                    }
+                }
+                // Enlace compartido: primero las fuentes de esa web (las extensiones reconocen su propia dirección al
+                // buscarla); si alguna lo encuentra, su ficha; si no, búsqueda en todas las fuentes con el enlace.
+                if (destino?.startsWith("abrir-url:") == true) {
+                    val url = destino.removePrefix("abrir-url:")
+                    val motorU = com.example.lector.ext.Motor.actual
+                    Avisos.mostrar("Buscando el manga del enlace…")
+                    val host = runCatching { android.net.Uri.parse(url).host?.removePrefix("www.") }.getOrNull()
+                    val candidatas = ext.fuentes.filter { host != null && it.baseUrl.contains(host, ignoreCase = true) }
+                    var hallado: Pair<com.example.lector.ext.FuenteUI, MangaFuente>? = null
+                    for (fc in candidatas) {
+                        val r = runCatching { motorU?.buscar(fc, url, 1)?.mangas }.getOrNull()
+                        if (!r.isNullOrEmpty()) { hallado = fc to r.first(); break }
+                    }
+                    val h = hallado
+                    if (h != null) {
+                        fuenteId = h.first.id; mangaSel = h.second; desdeNovedades = true; vueltaFicha = null; reanudar = null
+                        ruta = Ruta.Ficha
+                    } else { consultaGlobal = url; ruta = Ruta.BusquedaGlobal }
+                }
+                // Prueba de un listado de extensiones: lo mismo que «Añadir listado», sin guardarlo.
+                if (destino?.startsWith("probar-repo:") == true && depurable) {
+                    val entrada = destino.removePrefix("probar-repo:")
+                    kotlin.concurrent.thread {
+                        val c = com.example.lector.ext.ExtRepos.candidatos(entrada)
+                        for (u in c) {
+                            val r = runCatching { com.example.lector.ext.ExtRepos.extensiones(com.example.lector.ext.ExtRepos.leerTienda(u)) }
+                            android.util.Log.i(
+                                "LectorPrueba",
+                                "repo $u -> " + r.fold({ l -> "ok ${l.size} extensiones, p. ej. ${l.firstOrNull()?.apkUrl}" }, { e -> "error ${e.message ?: e.javaClass.simpleName}" }),
+                            )
+                            if (r.isSuccess) break
+                        }
+                    }
+                }
+                if (destino == "probar-copia" && depurable) {
+                    com.example.lector.TareaCopia.lanzar(contexto, "Creando copia .tachibk") {
+                        val t0 = android.os.SystemClock.elapsedRealtime()
+                        val archivo = java.io.File(contexto.filesDir, "exportada.tachibk")
+                        val inf = archivo.outputStream().use { com.example.lector.Tachibk.crear(contexto, it, this) }
+                        android.util.Log.i("LectorPrueba", "crear ms=${android.os.SystemClock.elapsedRealtime() - t0} bytes=${archivo.length()} bien=${inf.bien} avisos=${inf.avisos}")
+                        inf
+                    }
+                }
+            }
+        }
+        if (destino != null) alConsumirDestino()
+    }
     val hayCapa = ruta != null || detalleId != null
 
     // Al cerrar cualquier página que estaba encima, relee la biblioteca (progreso, "último leído", etc.).
@@ -101,8 +297,37 @@ fun Inicio(
         else if (ruta == Ruta.LeerOnline && capsLectura.isEmpty()) ruta = Ruta.Ficha
     }
 
-    BackHandler(enabled = activo && ruta != null && detalleId == null) {
-        ruta = if (ruta == Ruta.Ficha && desdeNovedades) null else ruta?.padre()
+    // Atrás desde una ficha: primero al manga anterior (si se abrió esta desde otra ficha); si no, a donde se venía.
+    val volverDeFicha: () -> Unit = {
+        val previa = fichasAnteriores.removeLastOrNull()
+        if (previa != null) {
+            fuenteId = previa.first; mangaSel = previa.second; reanudar = null
+        } else ruta = if (desdeNovedades) vueltaFicha else Ruta.FuenteDetalle
+    }
+    LaunchedEffect(ruta) { if (ruta != Ruta.Ficha && ruta != Ruta.LeerOnline) fichasAnteriores.clear() }
+
+    // Atrás predictivo (Android 14+): mientras se desliza, la página de arriba sigue al dedo; al soltar, se navega.
+    val ambitoGesto = rememberCoroutineScope()
+    GestoAtras.hayEncima = ruta != null || detalleId != null
+    androidx.activity.compose.PredictiveBackHandler(enabled = activo && ruta != null && detalleId == null) { gesto ->
+        GestoAtras.vuelta?.cancel()
+        try {
+            gesto.collect { e ->
+                GestoAtras.desdeIzquierda = e.swipeEdge == androidx.activity.BackEventCompat.EDGE_LEFT
+                GestoAtras.progreso = e.progress
+            }
+            val mismaPagina = ruta == Ruta.Ficha && fichasAnteriores.isNotEmpty()
+            if (ruta == Ruta.Ficha) volverDeFicha() else ruta = ruta?.padre()
+            // Entre fichas encadenadas la página sigue arriba: vuelve a su tamaño con muelle, sin salto.
+            if (mismaPagina) GestoAtras.vuelta = ambitoGesto.launchGesto {
+                androidx.compose.animation.core.animate(GestoAtras.progreso, 0f, animationSpec = Muelles.espacial()) { v, _ -> GestoAtras.progreso = v }
+            } else GestoAtras.progreso = 0f
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            GestoAtras.vuelta = ambitoGesto.launchGesto {
+                androidx.compose.animation.core.animate(GestoAtras.progreso, 0f, animationSpec = Muelles.espacial()) { v, _ -> GestoAtras.progreso = v }
+            }
+            throw e
+        }
     }
     BackHandler(enabled = activo && detalleId != null) { detalleId = null }
 
@@ -111,6 +336,7 @@ fun Inicio(
         fuenteId = fId
         mangaSel = MangaFuente(url, titulo, portada)
         desdeNovedades = true // al volver se regresa a la pestaña desde la que se abrió
+        vueltaFicha = null
         reanudar = cap
         ruta = Ruta.Ficha
     }
@@ -137,38 +363,81 @@ fun Inicio(
         else -> ""
     }
 
-    Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
+    // Como en musicfy: al abrir una ficha (o un cómic) la página de debajo retrocede (se encoge y se apaga) con
+    // el muelle con el que se abre; al volver, avanza con una curva suave de 560 ms.
+    val abiertaEncima = detalleId != null || pila.isNotEmpty()
+    val retroceso = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(abiertaEncima) {
+        // HomeRecedeSpring / HomeReturnEase de Mochy (NavigationBuilder): escala 0,92 y alfa 0,45 (ver graphicsLayer).
+        if (abiertaEncima) retroceso.animateTo(1f, spring(dampingRatio = 0.88f, stiffness = 150f, visibilityThreshold = 0.001f))
+        else retroceso.animateTo(0f, tween(ContenedorCierreMs, easing = CierreEasing))
+    }
+
+    Box(
+        Modifier.fillMaxSize().background(LectorColors.Bg)
+            // Dónde se tocó por última vez (sin consumir el toque): la ficha crece desde ahí, como en Mochy.
+            .onSizeChanged { OrigenToque.tam = it }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        ev.changes.firstOrNull { it.pressed && !it.previousPressed }?.let { OrigenToque.punto = it.position; OrigenToque.rect = null }
+                    }
+                }
+            }
+    ) {
+      // Todo lo que queda bajo la barra flotante: se graba para el cristal esmerilado de la barra y el mini lector.
+      val estadoPestanas = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+      Box(Modifier.fillMaxSize().raizCristal(CristalApp)) {
+        // Fondo vivo (Apariencia → Fondo): detrás de las pestañas, y el cristal de la barra lo desenfoca.
+        FondoVivo(Aspecto.fondo, Modifier.fillMaxSize(), acento = androidx.compose.material3.MaterialTheme.colorScheme.primary)
         AnimatedContent(
             targetState = tab, label = "tabs",
+            modifier = Modifier.graphicsLayer {
+                val r = retroceso.value
+                if (r > 0f) {
+                    val e = 1f - 0.08f * r
+                    scaleX = e; scaleY = e
+                    alpha = 1f - 0.55f * r
+                }
+            },
+            // Como el NavHost de Mochy (MainActivity): un octavo de pantalla hacia el lado de la pestaña nueva con el
+            // muelle por defecto de slideIn, y un fundido de 200 ms.
             transitionSpec = {
-                ContentTransform(
-                    fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.97f),
-                    fadeOut(tween(110)),
+                val derecha = targetState.ordinal >= initialState.ordinal
+                if (Mov.reducido) ContentTransform(fadeIn(tween(120)), fadeOut(tween(100))) else ContentTransform(
+                    slideInHorizontally { if (derecha) it / 8 else -it / 8 } + fadeIn(tween(200)),
+                    slideOutHorizontally { if (derecha) -it / 8 else it / 8 } + fadeOut(tween(200)),
                 )
             }
         ) { t ->
-            when (t) {
-                LectorTab.Home -> HomeScreen(visibles, almacen, onOpen = abrirDetalle, onRead = leerComic, onAdd = alAnadir)
+            // Cada pestaña guarda su estado (desplazamiento, búsquedas, pestaña interna) al cambiar: nada se reinicia.
+            estadoPestanas.SaveableStateProvider(t.name) { when (t) {
+                LectorTab.Home -> HomeScreen(visibles, almacen, onOpen = abrirDetalle, onRead = leerComic, onAdd = alAnadir, ext = ext, onEliminar = alEliminar)
                 LectorTab.Search -> ExplorarScreen(
                     ext = ext,
                     onRuta = { ruta = it },
-                    onFuente = { fuenteId = it.id; desdeNovedades = false; ruta = Ruta.FuenteDetalle },
+                    onFuente = { fuenteId = it.id; desdeNovedades = false; generoBuscar = BusquedaPendiente.tomar(); ruta = Ruta.FuenteDetalle },
                     onExt = { extPkg = it.pkg; ruta = Ruta.ExtDetalle },
-                    onManga = { f, m -> fuenteId = f.id; mangaSel = m; desdeNovedades = true; reanudar = null; ruta = Ruta.Ficha },
+                    onManga = { f, m -> fuenteId = f.id; mangaSel = m; desdeNovedades = true; vueltaFicha = null; reanudar = null; ruta = Ruta.Ficha },
+                    almacen = almacen,
+                    onMigrar = { migrarId = it.id; ruta = Ruta.MigrarSerie },
+                    onBuscarGlobal = { consultaGlobal = ""; ruta = Ruta.BusquedaGlobal },
+                    onBuscarTitulo = { t -> consultaGlobal = t; ruta = Ruta.BusquedaGlobal },
                     onWeb = abrirWeb,
                 )
                 LectorTab.Library -> Box(Modifier.padding(bottom = 76.dp)) {
                     BibliotecaScreen(
                         comics = comics,
                         almacen = almacen,
+                        ext = ext,
+                        alAbrir = abrirDetalle,
+                        alLeer = leerComic,
                         alAnadir = alAnadir,
                         alAnadirCarpeta = alAnadirCarpeta,
-                        alAbrir = abrirDetalle,
+                        alEditarCategorias = { ruta = Ruta.Categorias },
+                        alMigrar = { migrarId = it.id; ruta = Ruta.MigrarSerie },
                         alEliminar = alEliminar,
-                        alRecargar = alRecargar,
-                        pestana = pestanaBiblioteca,
-                        alCambiarPestana = alCambiarPestanaBiblioteca,
-                        conNavegacion = false,
                     )
                 }
                 LectorTab.Updates -> Box(Modifier.statusBarsPadding().padding(bottom = 76.dp)) {
@@ -178,53 +447,60 @@ fun Inicio(
                         alAbrir = { a ->
                             abrirEnLinea(
                                 a.fuenteId, a.urlManga, a.titulo, a.portadaUrl,
-                                a.capUrl to ext.paginaDe(a.fuenteId, a.capUrl),
+                                a.capUrl to ext.paginaDe(a.fuenteId, a.urlManga, a.capUrl),
                             )
                         },
-                        cabecerasDe = { id ->
-                            // Ya corre en un hilo de fondo: aquí sí se puede cargar la extensión.
-                            ext.fuentes.firstOrNull { it.id == id }
-                                ?.let { f -> Motor.actual?.let { m -> kotlinx.coroutines.runBlocking { m.cabecerasCargando(f) } } }
-                                .orEmpty()
-                        },
+                        alAbrirManga = { a -> abrirEnLinea(a.fuenteId, a.urlManga, a.titulo, a.portadaUrl, null) },
+                        alBuscarGlobal = { t -> consultaGlobal = t; ruta = Ruta.BusquedaGlobal },
                     )
                 }
                 LectorTab.History -> Box(Modifier.statusBarsPadding().padding(bottom = 76.dp)) {
                     HistorialScreen(
                         comics = visibles, almacen = almacen,
-                        alAbrir = leerComic, alCambiar = alRecargar,
+                        alAbrir = leerComic,
                         alAbrirOnline = { e ->
                             abrirEnLinea(e.fuenteId, e.urlManga, e.titulo, e.portadaUrl, e.capUrl to e.pagina)
                         },
-                        cabecerasDe = { id ->
-                            // Ya corre en un hilo de fondo: aquí sí se puede cargar la extensión.
-                            ext.fuentes.firstOrNull { it.id == id }
-                                ?.let { f -> Motor.actual?.let { m -> kotlinx.coroutines.runBlocking { m.cabecerasCargando(f) } } }
-                                .orEmpty()
-                        },
+                        alAbrirManga = { e -> abrirEnLinea(e.fuenteId, e.urlManga, e.titulo, e.portadaUrl, null) },
                     )
                 }
                 LectorTab.More -> MasScreen(
+                    almacen = almacen,
                     onRuta = { ruta = it },
                     onAdd = alAnadir,
                     onAddFolder = alAnadirCarpeta,
                 )
-            }
+            } }
         }
 
         // Páginas que se deslizan encima (detalle de cómic, Más → Categorías, Ajustes, etc.).
         AnimatedContent(
             targetState = capa, label = "capa",
+            // Como Mochy (NavigationBuilder): el detalle de un cómic es una ruta «de portada» (entra con fadeIn 300 y al
+            // volver se encoge hacia arriba: scaleOut 260 a 0,82 desde (0,5, 0,22) + fadeOut 180); las demás páginas
+            // usan la transición por defecto del NavHost (un octavo de pantalla + fundido de 200).
             transitionSpec = {
-                ContentTransform(
-                    slideInHorizontally(tween(330, easing = EnfasisEasing)) { it / 8 } +
-                        scaleIn(tween(330, easing = EnfasisEasing), initialScale = 0.96f) +
-                        fadeIn(tween(260, easing = EnfasisEasing)),
-                    slideOutHorizontally(tween(240, easing = EnfasisEasing)) { -it / 8 } +
-                        scaleOut(tween(240, easing = EnfasisEasing), targetScale = 0.97f) + fadeOut(tween(160)),
+                val vuelta = targetState.isEmpty() || (targetState == Ruta.Ajustes.name && initialState.isNotEmpty())
+                val portada = (if (vuelta) initialState else targetState).startsWith("d:")
+                if (Mov.reducido) ContentTransform(fadeIn(tween(120)), fadeOut(tween(100)))
+                else if (portada && !vuelta) ContentTransform(fadeIn(tween(300)), fadeOut(tween(200)))
+                else if (portada) ContentTransform(
+                    fadeIn(tween(300)),
+                    scaleOut(tween(260), targetScale = 0.82f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.22f)) +
+                        fadeOut(tween(180)),
+                )
+                else if (!vuelta) ContentTransform(
+                    slideInHorizontally { it / 8 } + fadeIn(tween(200)),
+                    slideOutHorizontally { -it / 8 } + fadeOut(tween(200)),
+                )
+                else ContentTransform(
+                    slideInHorizontally { -it / 8 } + fadeIn(tween(200)),
+                    slideOutHorizontally { it / 8 } + fadeOut(tween(200)),
                 )
             }
         ) { clave ->
+          // Gesto atrás predictivo: la página sigue al dedo (se encoge y redondea) antes de soltarla.
+          Box(Modifier.fillMaxSize().gestoAtras(clave == capa && clave.isNotEmpty())) {
             when {
                 clave.isEmpty() -> Box(Modifier.fillMaxSize())
                 clave.startsWith("d:") -> {
@@ -242,47 +518,113 @@ fun Inicio(
                 }
                 else -> when (Ruta.valueOf(clave)) {
                     Ruta.Categorias -> EditarCategoriasScreen(almacen) { ruta = null }
-                    Ruta.Estadisticas -> EstadisticasScreen(visibles) { ruta = null }
+                    Ruta.Estadisticas -> EstadisticasScreen(visibles, almacen, ext) { ruta = null }
                     Ruta.Datos -> DatosScreen(almacen, alRecargar) { ruta = null }
                     Ruta.Ajustes -> AjustesScreen(almacen, { ruta = null }) { ruta = it }
-                    Ruta.Apariencia -> AparienciaScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = Ruta.BibliotecaFx }
+                    Ruta.Apariencia -> PersonalizacionScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = Ruta.BibliotecaFx }
                     Ruta.BibliotecaFx -> com.example.lector.fx.BibliotecaFxPantalla(com.example.lector.fx.CatalogoShiori, { ruta = Ruta.Apariencia })
                     Ruta.AjBiblioteca -> AjBibliotecaScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = it }
                     Ruta.AjSeguimiento -> AjSeguimientoScreen(almacen) { ruta = Ruta.Ajustes }
+                    Ruta.AjVisor -> AjustesVisorScreen(almacen) { ruta = Ruta.Ajustes }
+                    Ruta.AjDescargas -> AjDescargasScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = it }
+                    Ruta.AjExplorar -> AjExplorarScreen(almacen, ext, { ruta = Ruta.Ajustes }) { ruta = it }
+                    Ruta.AjSeguridad -> AjSeguridadScreen(almacen) { ruta = Ruta.Ajustes }
+                    Ruta.AjAvanzado -> AjAvanzadoScreen(almacen) { ruta = Ruta.Ajustes }
+                    Ruta.AcercaDe -> AcercaDeScreen { ruta = Ruta.Ajustes }
+                    Ruta.Descargas -> ColaDescargasScreen(almacen) { ruta = null }
+                    Ruta.BusquedaGlobal -> estadosPantallas.SaveableStateProvider("global") { BusquedaGlobalScreen(
+                        ext, almacen, consultaGlobal,
+                        onManga = { f, m ->
+                            fuenteId = f.id; mangaSel = m; desdeNovedades = true; reanudar = null
+                            vueltaFicha = Ruta.BusquedaGlobal; ruta = Ruta.Ficha
+                        },
+                    ) { ruta = null } }
+                    Ruta.MigracionesRecientes -> com.example.lector.ui.migrar.MigracionesRecientesScreen(
+                        onAbrir = { m -> abrirEnLinea(m.aId, m.aUrl.orEmpty(), m.titulo, m.portada, null) },
+                    ) { ruta = null }
+                    Ruta.MigrarSerie -> {
+                        val c = comics.firstOrNull { it.id == migrarId }
+                        val origen = c?.let { x -> ext.fuentes.firstOrNull { it.id == x.fuenteId } }
+                        if (c == null || origen == null) {
+                            // Sin su fuente: se abre su ficha, que enseña «Fuente no disponible» con la búsqueda en las demás.
+                            LaunchedEffect(Unit) {
+                                if (c != null && c.enLinea) abrirEnLinea(c.fuenteId, c.urlManga.orEmpty(), c.titulo, c.portadaUrl, null)
+                                else ruta = null
+                            }
+                            Box(Modifier.fillMaxSize().background(LectorColors.Bg))
+                        } else MigrarScreen(
+                            ext, almacen, c, origen, null,
+                            alHecho = { d -> ruta = null; alRecargar(); Avisos.mostrar("Migrado a ${d.nombre}") },
+                            onBack = { ruta = null },
+                        )
+                    }
                     Ruta.ListadosExt -> ListadosExtScreen(ext) { ruta = null }
                     Ruta.ExtDetalle -> ExtDetalleScreen(ext, extPkg.orEmpty(), abrirWeb) { ruta = null }
                     Ruta.Web -> WebViewScreen(webUrl, webTitulo) { ruta = if (webDesdeExt) Ruta.ExtDetalle else null }
                     Ruta.FuenteDetalle, Ruta.Ficha, Ruta.LeerOnline -> Box(Modifier.fillMaxSize())
                 }
             }
+          }
         }
 
 
         // Pila fuente → ficha → lector online: cada una sigue viva mientras haya otra encima.
         listOf(Ruta.FuenteDetalle, Ruta.Ficha, Ruta.LeerOnline).forEach { r ->
             key(r) {
+                // Portada de origen de la ficha: se toma (y se consume) al abrirla, y se usa también al cerrarla.
+                val visibleR = r in pila && detalleId == null
+                val antes = remember { booleanArrayOf(false) }
+                val rectFicha = remember { arrayOfNulls<androidx.compose.ui.geometry.Rect>(1) }
+                if (visibleR && !antes[0]) rectFicha[0] = if (r == Ruta.Ficha && !Mov.reducido) OrigenToque.rect.also { OrigenToque.rect = null } else null
+                antes[0] = visibleR
+                val conContenedor = r == Ruta.Ficha && rectFicha[0] != null
                 AnimatedVisibility(
-                    visible = r in pila && detalleId == null,
-                    enter = slideInHorizontally(tween(330, easing = EnfasisEasing)) { it / 8 } +
-                        scaleIn(tween(330, easing = EnfasisEasing), initialScale = 0.96f) +
-                        fadeIn(tween(260, easing = EnfasisEasing)),
-                    exit = slideOutHorizontally(tween(240, easing = EnfasisEasing)) { it / 8 } +
-                        scaleOut(tween(240, easing = EnfasisEasing), targetScale = 0.97f) + fadeOut(tween(160)),
+                    visible = visibleR,
+                    // La página «crece» al abrirse (muelle suave, interrumpible) y se encoge al cerrarse.
+                    // Si se abrió tocando una portada (ficha), la página crece DESDE esa portada (container transform de
+                    // Mochy); si no, crece desde el punto tocado.
+                    // Sin portada de origen, como Mochy: la lista de la fuente es una página normal (un octavo de pantalla +
+                    // fundido de 200) y la ficha y el lector son rutas «de portada» (fadeIn 300; al cerrar, scaleOut 260 a
+                    // 0,82 desde (0,5, 0,22) + fadeOut 180).
+                    enter = if (Mov.reducido) fadeIn(tween(120)) else if (conContenedor) fadeIn(tween(90))
+                        else if (r == Ruta.FuenteDetalle) slideInHorizontally { it / 8 } + fadeIn(tween(200))
+                        else fadeIn(tween(300)),
+                    exit = if (Mov.reducido) fadeOut(tween(100)) else if (conContenedor && detalleId == null) fadeOut(tween(200, delayMillis = 380))
+                        else if (r == Ruta.FuenteDetalle) slideOutHorizontally { it / 8 } + fadeOut(tween(200))
+                        else scaleOut(tween(260), targetScale = 0.82f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.22f)) +
+                            fadeOut(tween(180)),
                 ) {
+                    val rectOrigen = if (conContenedor && detalleId == null) rectFicha[0] else null
+                    val p by transition.animateFloat(
+                        transitionSpec = {
+                            if (targetState == androidx.compose.animation.EnterExitState.Visible) spring(0.88f, 150f, 0.001f)
+                            else tween(ContenedorCierreMs, easing = CierreEasing)
+                        }, label = "contenedor",
+                    ) { if (it == androidx.compose.animation.EnterExitState.Visible) 1f else 0f }
                     // Fondo opaco y toques propios: la pantalla de debajo no se ve ni recibe toques.
-                    Box(Modifier.fillMaxSize().background(LectorColors.Bg).pointerInput(Unit) { detectTapGestures { } }) {
+                    Box(Modifier.fillMaxSize().contenedor(rectOrigen) { p }.gestoAtras(r == ruta).background(LectorColors.Bg).pointerInput(Unit) { detectTapGestures { } }) {
                         when (r) {
-                        Ruta.FuenteDetalle -> FuenteDetalleScreen(
+                        Ruta.FuenteDetalle -> estadosPantallas.SaveableStateProvider("fuente_${fuenteId}") { FuenteDetalleScreen(
                             ext, fuenteId ?: 0L,
                             onManga = { mangaSel = it; desdeNovedades = false; reanudar = null; ruta = Ruta.Ficha },
                             generoBuscar = generoBuscar, alConsumirGenero = { generoBuscar = null },
-                        ) { ruta = null }
+                            onBuscarGlobal = { t -> consultaGlobal = t; ruta = Ruta.BusquedaGlobal },
+                        ) { ruta = null } }
                         Ruta.Ficha -> {
                             val m = mangaSel
                             if (m == null) Box(Modifier.fillMaxSize().background(LectorColors.Bg))
-                            else FichaMangaScreen(
-                                ext, fuenteId ?: 0L, m, almacen, alRecargar,
-                                onBack = { ruta = if (desdeNovedades) null else Ruta.FuenteDetalle },
+                            // Una ficha por manga: al pasar a otro (o volver al anterior) se crea de nuevo, con su estado.
+                            else androidx.compose.animation.AnimatedContent(
+                                targetState = (fuenteId ?: 0L) to m,
+                                transitionSpec = {
+                                    (fadeIn(tween(260)) + scaleIn(tween(320, easing = EnfasisEasing), initialScale = 0.94f)) togetherWith
+                                        fadeOut(tween(180))
+                                },
+                                contentKey = { "${it.first}|${it.second.url}" },
+                                label = "ficha",
+                            ) { (fid, mm) -> FichaMangaScreen(
+                                ext, fid, mm, almacen, alRecargar,
+                                onBack = volverDeFicha,
                                 onLeer = { caps, i, pagina ->
                                     capsLectura = caps; capIndice = i; paginaLectura = pagina; ruta = Ruta.LeerOnline
                                 },
@@ -290,7 +632,12 @@ fun Inicio(
                                 alConsumirReanudar = { reanudar = null },
                                 // Vuelve a la lista de la fuente (si la ficha venía de la biblioteca, se abre) y busca el género.
                                 alGenero = { g -> generoBuscar = g; desdeNovedades = false; ruta = Ruta.FuenteDetalle },
-                            )
+                                alBuscarGlobal = { q -> consultaGlobal = q; ruta = Ruta.BusquedaGlobal },
+                                alAbrirOtro = { f2, m2 ->
+                                    fichasAnteriores.add(fid to mm)
+                                    fuenteId = f2.id; mangaSel = m2; reanudar = null
+                                },
+                            ) }
                         }
                         Ruta.LeerOnline -> LeerOnlineScreen(
                             ext, fuenteId ?: 0L, mangaSel?.titulo.orEmpty(), capsLectura, capIndice,
@@ -303,7 +650,10 @@ fun Inicio(
             }
         }
 
-        // Mini lector + barra flotante: se esconden hacia abajo cuando hay una página encima.
+      }
+
+        var hojaDescargas by remember { mutableStateOf(false) }
+        // Mini lector + barra flotante (de cristal): se esconden hacia abajo cuando hay una página encima.
         AnimatedVisibility(
             visible = !hayCapa,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -311,10 +661,19 @@ fun Inicio(
             exit = slideOutVertically(tween(200)) { it } + fadeOut(tween(160)),
         ) {
             Column(
-                Modifier.navigationBarsPadding().padding(horizontal = 16.dp).padding(bottom = 8.dp)
+                Modifier.navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 8.dp)
             ) {
                 // El botón de reanudar abre la ficha del último manga leído (no el capítulo).
-                if (tab != LectorTab.Library) {
+                // Solo donde tiene sentido seguir leyendo (Inicio e Historial): en Biblioteca, Explorar, Actualizaciones y
+                // Más tapaba contenido y la barra de selección. Entra y sale plegándose, sin saltos.
+                AnimatedVisibility(
+                    visible = (tab == LectorTab.Home && !com.example.lector.ui.home.SeleccionInicio.activa) || tab == LectorTab.History,
+                    // Living Flow: brota de la barra (crece desde abajo) y vuelve a fundirse en ella al salir.
+                    enter = expandVertically(tween(300, easing = EnfasisEasing), expandFrom = Alignment.Bottom) + fadeIn(tween(220, 60)) +
+                        scaleIn(tween(320, easing = EnfasisEasing), initialScale = 0.88f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)),
+                    exit = shrinkVertically(tween(220, easing = EnfasisEasing), shrinkTowards = Alignment.Bottom) + fadeOut(tween(140)) +
+                        scaleOut(tween(200), targetScale = 0.92f, transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)),
+                ) { Column {
                     if (ultimoLinea != null && (ultimo == null || ultimoLinea.leido >= ultimo.leido)) {
                         val e = ultimoLinea
                         // Cargar la extensión tarda: se pide en segundo plano y, mientras, se usa lo que ya haya en caché.
@@ -325,20 +684,95 @@ fun Inicio(
                             value = fuenteMini?.let { Motor.actual?.cabecerasCargando(it) }.orEmpty()
                         }
                         MiniReaderGenerico(
-                            e.titulo, e.capNombre,
+                            e.titulo, e.capNombre.trim().trimEnd(':').trim().ifBlank { "Seguir leyendo" },
                             onClick = { abrirEnLinea(e.fuenteId, e.urlManga, e.titulo, e.portadaUrl, null) },
-                        ) { m -> ImagenRemota(e.portadaUrl, m.clip(SuaveShape(12.dp)), cabeceras) }
+                            progreso = if (e.total > 0) ((e.pagina + 1).toFloat() / e.total).coerceIn(0f, 1f) else null,
+                        ) { m -> ImagenRemota(e.portadaUrl, m.clip(CircleShape), cabeceras, fuenteId = e.fuenteId) }
                         Spacer(Modifier.height(8.dp))
                     } else if (ultimo != null) {
                         MiniReader(ultimo, almacen, onClick = { abrirDetalle(ultimo) })
                         Spacer(Modifier.height(8.dp))
                     }
-                }
+                } }
+                // Indicador de descargas de BitChord (ui/bitchord/DownloadManagerSheet.kt): píldora a la izquierda, encima de
+                // la barra; solo mientras hay capítulos bajando o en cola. Se esconde con la barra (lector, fichas, pantallas encima).
+                com.example.lector.ui.bitchord.NavBarDownloadPill({ hojaDescargas = true })
                 FloatingNavBar(tab, onSelect = onTab)
             }
         }
 
-        // Avisos (en lugar de Toast): píldora que cae desde arriba.
-        AvisosHost(Modifier.align(Alignment.TopCenter))
+        // Avance de una copia de seguridad (píldora pequeña arriba) y su informe al terminar.
+        // «Ya lo tienes»: al añadir un manga que ya está en la biblioteca desde otra fuente.
+        DialogoDuplicado(ext, almacen, alRecargar) { c ->
+            if (ruta == Ruta.Ficha && mangaSel != null) {
+                // Desde una ficha: se abre encima, y «atrás» vuelve a la que estabas mirando.
+                fichasAnteriores.add((fuenteId ?: 0L) to mangaSel!!)
+                fuenteId = c.fuenteId; mangaSel = MangaFuente(c.urlManga.orEmpty(), c.titulo, c.portadaUrl); reanudar = null
+            } else abrirDetalle(c)
+        }
+        IslaCopia(Modifier.align(Alignment.TopCenter))
+        // Hoja del indicador de descargas (la píldora va acoplada encima de la barra flotante).
+        if (hojaDescargas) com.example.lector.ui.bitchord.DownloadManagerSheet({ hojaDescargas = false }) { ruta = Ruta.Descargas }
+        InformeCopia()
+
+        // Avisos (en lugar de Toast): píldora que cae desde arriba. Si hay una copia en marcha, debajo de su píldora.
+        val bajarAvisos by androidx.compose.animation.core.animateDpAsState(
+            if (com.example.lector.TareaCopia.estado != null) 46.dp else 0.dp, label = "bajarAvisos",
+        )
+        AvisosHost(Modifier.align(Alignment.TopCenter).padding(top = bajarAvisos))
     }
 }
+
+/** Curva de cierre de las páginas (empieza suave: un primer fotograma lento no se nota). */
+val CierreEasing = CubicBezierEasing(0.4f, 0f, 0.1f, 1f)
+
+/** Último punto tocado, como origen de la pantalla que se abre (efecto «la portada crece hasta ser la página»). */
+object OrigenToque {
+    /** Portada tocada (su rectángulo en la ventana), si el toque fue sobre una: la ficha crece desde ella. */
+    var rect: androidx.compose.ui.geometry.Rect? = null
+    var punto = androidx.compose.ui.geometry.Offset.Unspecified
+    var tam = androidx.compose.ui.unit.IntSize.Zero
+    fun origen(): androidx.compose.ui.graphics.TransformOrigin =
+        if (!punto.isSpecified || tam.width == 0 || tam.height == 0) androidx.compose.ui.graphics.TransformOrigin.Center
+        else androidx.compose.ui.graphics.TransformOrigin((punto.x / tam.width).coerceIn(0f, 1f), (punto.y / tam.height).coerceIn(0f, 1f))
+}
+
+const val ContenedorCierreMs = 560
+
+/** Marca una portada como origen del «container transform»: al pulsarla se guarda su rectángulo. */
+fun Modifier.origenTransicion(): Modifier = composed {
+    val c = remember { arrayOfNulls<androidx.compose.ui.layout.LayoutCoordinates>(1) }
+    this.then(androidx.compose.ui.Modifier.onGloballyPositioned { c[0] = it }).pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                if (ev.changes.any { it.pressed && !it.previousPressed }) c[0]?.takeIf { it.isAttached }?.let { OrigenToque.rect = it.boundsInRoot() }
+            }
+        }
+    }
+}
+
+/**
+ * Container transform (Mochy): con [p] = 0 la página ocupa exactamente la portada de origen (mismo ancho, recortada a
+ * su alto y con sus esquinas); con [p] = 1, la pantalla entera. Se escala por el ancho desde arriba.
+ */
+fun Modifier.contenedor(rect: androidx.compose.ui.geometry.Rect?, p: () -> Float): Modifier =
+    if (rect == null) this else this.graphicsLayer {
+        val t = p()
+        if (t >= 0.999f || size.width <= 0f) return@graphicsLayer
+        val e0 = rect.width / size.width
+        val e = e0 + (1f - e0) * t
+        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+        scaleX = e; scaleY = e
+        translationX = rect.left * (1f - t)
+        translationY = rect.top * (1f - t)
+        val altoVisible = (rect.height / e0) + (size.height - rect.height / e0) * t
+        val radio = (16.dp.toPx() / e0) * (1f - t)
+        shape = androidx.compose.foundation.shape.GenericShape { s, _ ->
+            addRoundRect(androidx.compose.ui.geometry.RoundRect(0f, 0f, s.width, altoVisible.coerceAtMost(s.height), androidx.compose.ui.geometry.CornerRadius(radio)))
+        }
+        clip = true
+    }
+
+private fun kotlinx.coroutines.CoroutineScope.launchGesto(bloque: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) =
+    this.launch(block = bloque)

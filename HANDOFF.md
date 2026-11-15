@@ -1,8 +1,8 @@
-# HANDOFF — Lector (app Android estilo Komikku) · Pasos 3 a 7: Explorar, Extensiones, Motor, Ficha/Lector online, Biblioteca online
+# HANDOFF — Lector (app Android estilo Komikku) · Pasos 3 a 15
 
 > Este archivo es el "pasaporte" del proyecto. Se lo puedes pasar a cualquier IA junto con el zip.
 > Al final hay un bloque **"Para la IA que continúe"** con las reglas para devolverlo (a Claude u otra).
-> Idioma de trabajo: **español**. Fecha de este traspaso: 2026-10-18.
+> Idioma de trabajo: **español**. Fecha de este traspaso: 2026-10-20 (PASO 15, ver 2o).
 
 ---
 
@@ -306,7 +306,336 @@ Origen: Komikku `BrowseSourceScreenModel.searchGenre` y la migración de fuentes
 - NO hace: mover descargas de la fuente vieja (quedan huérfanas en disco), copiar marcadores de capítulo, migrar varios mangas a la vez, ni la pantalla «Migrar» por fuente de Komikku. Si la fuente vieja ya no responde, `capsOrigen` es null y se usa el contador de leídos.
 - Sigue sin hacer: notificación de actualizaciones de extensiones (no hay WorkManager), extensiones privadas.
 
-## 3. PRÓXIMOS PASOS (en este orden; el punto 1 y parte del 2 ya están hechos arriba, ver 2b)
+## 2o. PASO 15 — «Todo lo de Komikku» + mejoras y optimización (2026-10-20, **COMPILA en GitHub Actions; NO probado en un móvil**)
+Rama de GitHub: `claude/komikku` (no se tocó `main`). El workflow compila el APK debug (y el release optimizado).
+
+### Verificación
+- Revisión de tipos local con Kotlin 2.0.21 + plugin de Compose: 0 errores.
+- **GitHub Actions: `assembleDebug` OK** (artefacto `lector-debug-apk`). Ver el estado del release en la pestaña Actions.
+- Nada de esto se ha abierto en un teléfono todavía: **hay que probarlo**.
+
+### Archivos NUEVOS
+- `Preferencias.kt`: delegados `prefBool/prefInt/prefLong/prefFloat/prefString/prefEnum` (estado de Compose sobre
+  SharedPreferences) y `enum Tri` (ignorar / incluir / excluir) para los filtros de tres estados.
+- `Descargas.kt`: cola de descargas **persistente** en un trabajo de WorkManager en primer plano (notificación con progreso),
+  simultáneas configurables, pausar / reanudar / cancelar / reintentar / mover al principio, solo con Wi‑Fi.
+- `Trabajos.kt`: `RevisorBiblioteca` + `TrabajoActualizar` (busca capítulos nuevos en segundo plano, periódico o manual,
+  con restricciones Wi‑Fi / cargando / saltar terminados, descarga automática de lo nuevo, errores guardados),
+  `TrabajoExtensiones` (aviso de extensiones con versión nueva), `TrabajoCopia` (copia automática) y `Programador`.
+- `Notificaciones.kt`: canales, ids y el extra `"destino"` que abre Actualizaciones / Descargas / Extensiones.
+- `CopiaSeguridad.kt`: copia versión 2 (biblioteca, categorías, progreso, historial, ajustes, leídos, marcas, listados,
+  fuentes ancladas, búsquedas guardadas). Se siguen restaurando las de versión 1.
+- `Portadas.kt` (`rememberPortada`), `Teclas.kt` (teclas de volumen), `Ayudas.kt` (compartir / guardar imágenes…).
+- `ui/Visor.kt`, `ui/VisorPaginas.kt`, `ui/VisorAjustes.kt`: **visor único** para cómics locales, descargas y online:
+  paginado ← / →, vertical, webtoon y continuo; zonas de toque (L, Kindle, bordes, izq./der.) con inversión; teclas de
+  volumen; autodesplazamiento; zoom con pellizco y doble toque; recorte de bordes; división de páginas dobles; relleno
+  lateral; transiciones entre capítulos; precarga configurable; filtros de color y brillo; modo propio por serie;
+  mantener pulsada una página = compartir / guardar / usar como portada.
+- `ui/Biblioteca.kt`: pestañas por categoría o **agrupada por fuente / estado**, hoja Filtro / Ordenar / Mostrar
+  (filtros de tres estados, orden por sin leer, total, último capítulo, última revisión, aleatorio…), insignias
+  (sin leer, descargados, idioma, Local), botón continuar, **búsqueda con operadores** (`"frase"`, `-excluir`,
+  `fuente:`, `autor:`, `genero:`), selección múltiple (categorías, leído / no leído, descargar, migrar, borrar),
+  deslizar hacia abajo = buscar capítulos nuevos.
+- `ui/Actualizaciones.kt` (rehecha): por día y agrupada por manga, selección múltiple, errores de revisión.
+- `ui/Historial.kt` (paquete `ui`, sustituye al viejo): por día, buscador, quitar uno o todo, aviso de incógnito.
+- `ui/ColaDescargas.kt`, `ui/BusquedaGlobal.kt` (buscar en todas las fuentes, solo ancladas, mantener pulsado = añadir),
+  `ui/Comunes.kt` (cabecera de selección, `BarraAcciones`, filas de filtro / orden / radio).
+- `app/proguard-rules.pro`, `res/drawable/ic_notificacion.xml`, `res/xml/archivos.xml` (FileProvider),
+  `eu/kanade/tachiyomi/network/DohProviders.kt` (copiado de Komikku).
+
+### Archivos MODIFICADOS (lo importante)
+- `Data.kt`: `Almacen.obtener(ctx)` es **singleton** (lo usan también los trabajos de fondo); contador `version` para
+  recomponer; `Comic` con autor / estado / géneros / descripción / edición propia / portada propia; índice de descargas;
+  muchos ajustes nuevos (tema, visor, biblioteca, descargas, actualizaciones, seguridad, DoH, copias…); historial que
+  respeta el modo incógnito.
+- `ui/FuenteManga.kt` → `FichaMangaScreen` rehecha: filtros / orden / modo de mostrar de capítulos, selección múltiple
+  (leído, no leído, anteriores leídos, marcar, descargar, borrar descarga), menú de descargas en lote, chips de
+  Seguimiento / **Editar información** / Migrar / Compartir / **Buscar en otras fuentes**, **visor de portada**
+  (compartir, guardar, cambiar), **recomendaciones de AniList**, datos actualizados al abrir. El lector online usa `Visor`.
+- `ui/ExtPantallas.kt` (`NavegarFuente`): desplazamiento infinito, vista cuadrícula / lista, insignia «En biblioteca»,
+  mantener pulsado = añadir / quitar, esconder lo que ya está en la biblioteca, **búsquedas guardadas** (solo el texto).
+- `ui/Explorar.kt`: pestaña **Migrar** real (series agrupadas por fuente), entrada a la búsqueda global; `ImagenRemota`
+  admite `escala` y `maxLado`; `Imagenes.bytes / tamanoDisco / vaciar`.
+- `ui/LectorApp.kt`: rutas nuevas (`AjVisor, AjDescargas, AjExplorar, AjSeguridad, AjAvanzado, AcercaDe, Descargas,
+  BusquedaGlobal, MigrarSerie`) y navegación desde notificaciones. Firmas nuevas de Biblioteca / Historial / Actualizaciones.
+- `MainActivity.kt`: tema **Sistema / Oscuro puro / Oscuro / Claro** (`TemaActual` + `LectorColors` dinámicos, barras del
+  sistema a juego), **bloqueo de la app** con el PIN / huella del sistema (`KeyguardManager`, tras N minutos fuera),
+  **pantalla segura** (`FLAG_SECURE`), permiso de notificaciones (Android 13+), canales y trabajos programados.
+- `ui/AjustesPantallas.kt`, `ui/Mas.kt`: Ajustes de Visor, Descargas, Explorar, Seguridad, Avanzado (DoH, cookies,
+  cachés), Acerca de; estadísticas ampliadas; pestaña Más con incógnito y cola de descargas.
+- `NetworkHelper.kt`: **DNS sobre HTTPS** (Cloudflare, Google, AdGuard, Quad9; se aplica al reiniciar).
+- `ui/Estilo.kt`: modificadores de pulsación con `Modifier.Node` (menos recomposiciones).
+- Borrados: `BibliotecaScreen.kt`, `Historial.kt` (raíz), `workflow-build.yml` (copia del workflow).
+
+### Dependencias / manifest (CAMBIOS)
+- `app/build.gradle.kts`: + `androidx.work:work-runtime-ktx:2.9.1`; `buildTypes.release` con R8 (`isMinifyEnabled`,
+  `isShrinkResources`, **sin ofuscar**, firmado con la clave debug); versión 0.2 (code 2).
+- Manifest: `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `WAKE_LOCK`,
+  `ACCESS_NETWORK_STATE`; `FileProvider` (`${applicationId}.archivos`); `SystemForegroundService` de WorkManager con
+  `foregroundServiceType="dataSync"`.
+- Workflow: compila en cualquier rama; si falla, los errores salen en el resumen del run.
+
+### Qué NO está (diferencias que quedan con Komikku)
+- Trackers distintos de AniList (MyAnimeList, Kitsu, MangaUpdates…), sincronización en la nube, combinar entradas
+  (merge), feed multi‑fuente, portada panorámica, extensiones privadas, búsquedas guardadas CON filtros.
+- La migración sigue sin mover las descargas de la fuente vieja.
+
+## 2p. PASO 16 — Arreglo de extensiones en el APK release + diseño de musicfy (2026-10-20)
+**Arreglo:** en el APK *release*, R8 marcaba como `final` métodos de la API de fuentes que la app no sobrescribe
+(p. ej. `HttpSource.fetchRelatedMangaList`) y las extensiones que sí los sobrescriben no cargaban
+(«overrides final method»). `proguard-rules.pro` ahora usa `-keep class … { *; }` SIN `allowoptimization`
+para `eu.kanade`, `tachiyomi`, `kotlin`, `okhttp3`, `okio`, `jsoup`, `rx`, `quickjs`, `injekt`, `androidx.preference`.
+
+**Diseño de musicfy** (https://github.com/realidkroo/musicfy, GPL‑3.0): se reprodujo su lenguaje visual con
+código PROPIO (no se copió código suyo):
+- `ui/Cristal.kt` (nuevo): cristal esmerilado. `Modifier.raizCristal(estado)` graba la app en un `GraphicsLayer`;
+  `FondoCristal` lo vuelve a dibujar desenfocado (RenderEffect, Android 12+) con tinte #131313 al 78 %, grano y
+  línea de 2 px; `CristalProgresivo` para cabeceras. `CristalApp` = lo que hay bajo la barra. En Android 8–11 no
+  hay desenfoque (tinte casi opaco). Una pieza de cristal NUNCA debe estar dentro de la raíz que dibuja.
+- `ui/Theme.kt` / `Theme.kt`: grises de musicfy (#141416 campos, #0B0B0C hojas, #2C2C2E botones…), Inter
+  SemiBold con interletrado −0.05 em, paleta por defecto **«Musicfy»** (gris claro monocromo; en tema claro, casi negro).
+- `ui/Components.kt`: barra flotante de cristal de 64 dp con píldora que se estira al cambiar de pestaña, iconos
+  contorno→relleno y rebote; mini lector de cristal con portada redonda y anillo de progreso.
+- `ui/Estilo.kt`: avisos como las tarjetas de musicfy (caen con muelle, se cierran arrastrando hacia arriba).
+- `ui/Filas.kt`: `PaginaAjustes` con título grande que se pliega junto al botón atrás (con desenfoque) sobre una
+  cabecera de cristal; filas en tarjetas con icono en círculo claro; `Interruptor` y `Marca` propios; `ChipSel`
+  con esquinas que rebotan; `TituloSeccion` en mayúsculas grises.
+- `ui/Comunes.kt`: `HojaLector` (hojas #0B0B0C, asa gris) y `Hojas`: con una hoja abierta la app se aleja (MainActivity).
+- `ui/LectorApp.kt`: pestañas que se deslizan hacia su lado; al abrir una ficha la página de debajo retrocede
+  (escala 0.92, se apaga) y la ficha crece con muelle; al cerrar, curva de 560 ms.
+- `ui/Explorar.kt`: `CampoBusqueda` como el de musicfy (48 dp, foco más claro, botón borrar).
+- Sin probar en móvil. Pendiente si se quiere más parecido: cabeceras plegables con buscador en Explorar /
+  Biblioteca (el `SearchGlassTopBar` de musicfy) y la transición «la portada crece hasta la página» (shared element).
+
+## 2q. PASO 17 — Cierres al abrir catálogos (2026-10-20, **probado en emulador** con el APK release)
+- Release: R8 quitaba clases con métodos nativos (zstd/brotli) → SIGABRT al recibir la respuesta. `proguard-rules.pro`
+  conserva `native <methods>`, `com.squareup.zstd`, `org.brotli`.
+- Las extensiones de Keiyoushi están compiladas contra **kotlinx-coroutines 1.11.0** (llaman a `runBlockingK`): con
+  1.10.2 había `NoSuchMethodError`. Ahora las librerías coinciden con Komikku (coroutines 1.11.0, okio 3.17.0,
+  serialization json/protobuf 1.11.0, xmlutil 0.91.3). **Regla: al actualizar Komikku, igualar estas versiones.**
+- `Fallos.kt`: guarda el último cierre (traza) y lo enseña al abrir la app con botón «Copiar».
+- `Pdf.kt`: importar PDF (cada página → JPEG dentro de un .cbz).
+- `.github/workflows/probar.yml` + `.github/scripts/probar.sh`: en cada push a `claude/**` arranca un emulador
+  (API 34), instala el APK release (compilado con `-Pprueba`, que lo hace depurable) y 5 extensiones, abre el
+  catálogo con el intent `--es destino probar:<paquete>` (solo funciona en APK depurables) y publica en el resumen
+  del run los títulos que se ven, si la app sigue abierta y las trazas de cierre.
+- Versión 0.3 (code 3).
+
+## 2r. PASO 18 — WebView en el catálogo + copias de Mihon/Komikku (2026-10-20)
+- **WebView en el catálogo** (`ExtPantallas.kt` → `NavegarFuente`): chip «WebView» y, si falla la carga, botones
+  «Abrir en WebView» / «Reintentar». Al volver se recarga. `WebViewScreen` ahora recibe las cabeceras de la fuente y
+  usa su MISMO User-Agent (Cloudflare ata `cf_clearance` al navegador) y guarda las cookies al cerrar.
+- **Copias .tachibk** (Mihon, Komikku, TachiyomiSY, J2K…): `Proto.kt` (protobuf mínimo propio, sin plugin de
+  serialización), `TachibkFormato.kt` (formato puro, sin Android) y `Tachibk.kt` (biblioteca ↔ formato).
+  Ajustes → Datos: «Restaurar copia» detecta solo si es .json de Lector o .tachibk; «Exportar para Mihon / Komikku».
+  Pasa: mangas de fuentes, capítulos leídos/marcados/página, categorías (por «order»), historial, AniList, datos
+  editados (Komikku 602/800-805) y, al importar, los listados de extensiones (campo 106). No pasan los .cbz locales.
+  **Probado** en el ordenador con la librería de Mihon y sus modelos, en los dos sentidos: `pruebas/tachibk/`.
+- Versión 0.4 (code 4).
+
+## 2s. PASO 19 — Avance e informe de las copias + restauración rápida (2026-10-20, **probado en emulador**)
+- `TareaCopia.kt`: crear/restaurar corren en segundo plano (sigue aunque cambies de pantalla), con avance en
+  `estado`, notificación con barra (canal «copias», id 105) e `Informe` (bien / avisos / errores + duración).
+  Al terminar: notificación con resumen (tocarla abre el informe, destino `copia`) y `terminadas++` (MainActivity
+  relee la biblioteca).
+- `ui/IslaCopia.kt`: píldora pequeña arriba con anillo y «líquido» de avance; tocarla despliega el paso actual; al
+  terminar muestra el resultado 8 s y abre `InformeCopia` (hoja con Correcto / Avisos / Errores).
+- Rapidez: antes la restauración de Mihon reescribía la biblioteca, los leídos y el historial POR CADA MANGA.
+  Ahora todo se calcula en memoria y se guarda en lote: `Almacen.anadirVariosEnLinea`, `registrarConocidosVarios`,
+  `anadirCategoriasVarios`, `anadirHistorialVarios`; `ExtManager.importarEstados`. Medido en el emulador con
+  `pruebas/tachibk/grande.tachibk` (600 mangas, 48.000 capítulos): restaurar < 4 s; crear la .tachibk 2 s.
+- Hooks de prueba (solo APK depurable): `--es destino probar-restaurar:<ruta>` y `--es destino probar-copia`.
+- Versión 0.5 (code 5).
+
+## 2t. PASO 20 — Bibliotecas enormes (6.000+ mangas) sin quedarse sin memoria (2026-10-20, **probado en emulador**)
+Cierre por `OutOfMemoryError` en un móvil con >6.000 mangas. Cambios:
+- `Persistencia.kt`: lo que crece con la biblioteca sale de SharedPreferences (Android lo carga entero y lo reescribe
+  entero en cada cambio). Escrituras en un hilo de fondo, agrupadas, línea a línea, con .tmp + renombrar.
+  - Capítulos leídos: `ConjuntoLargo` (huellas de 64 bits de «fuente|url», sin objetos por elemento) en
+    `filesDir/estado_capitulos/leidos.bin`. Antes era un Set<String> que se COPIABA ENTERO en cada capítulo leído.
+    `ExtManager.leidos` ahora es un Int (versión) para claves de remember; `esLeido()`, `totalLeidos`.
+  - Marcados y páginas: `estado_capitulos/marcados.txt` y `paginas.txt`.
+  - Capítulos conocidos: un archivo por manga en `filesDir/conocidos/` (`CapitulosConocidos`).
+  - Biblioteca: `filesDir/biblioteca.json` (antes la clave «comics» de las preferencias).
+  - Todo se migra solo la primera vez desde el formato anterior.
+- `.tachibk`: restaurar lee la copia por partes desde el gzip (`Proto.recorrerFlujo` + `Proto.Cursor`, sin copias)
+  y solo crea textos de los capítulos con progreso; exportar escribe manga a manga (`TachibkFormato.EscritorFlujo`).
+- Copia .json: los leídos van como binario en base64 (`leidos_b64`); se siguen leyendo `leidos` y `leidos_h`.
+- Medido en el emulador (APK release) con `pruebas/tachibk/enorme.tachibk` (6.500 mangas, 975.000 capítulos,
+  145 MB sin comprimir): restaurar 25 s, Java heap ~100 MB; reabrir y exportar 29 s (622.600 capítulos con progreso).
+- Versión 0.6 (code 6).
+
+## 2u. PASO 21 — Catálogo y biblioteca (2026-10-20, versión 0.7)
+- Error rojo «The coroutine scope left the composition» en el catálogo: la carga infinita era un `LaunchedEffect`
+  con `cargando` como clave, que se reiniciaba y cancelaba su propia carga; la cancelación se enseñaba como error.
+  Ahora es un `snapshotFlow` en un solo `LaunchedEffect(Unit)` y las `CancellationException` se relanzan (no son error).
+- Catálogo: hoja Filtro (en la biblioteca, filtros de la fuente) / Ordenar (fuente o título, asc/desc) / Mostrar
+  (cuadrícula cómoda, compacta, solo portadas, lista; columnas). Ajustes en `Almacen.explorar*` y `vistaExplorar`.
+- Explorar → Extensiones: «Confiar en todas» (con confirmación).
+- Biblioteca: recuerda la última pestaña (`Almacen.ultimaPestanaBiblioteca`, por la clave del grupo).
+
+## 2v. PASO 22 — Listados, portadas, barra rápida, icono y arranque (2026-10-20, versión 0.8)
+- «No se pudo leer el listado (no protocol: null)» con repo.json que traen `"index_v2": null` (p. ej. Nyora):
+  `optString` de org.json devuelve el texto "null" para un null; ahora `ExtRepos` usa `txt()` (null = vacío).
+  Prueba en el emulador: destino `probar-repo:<url>` (solo depurable) y paso en `probar.sh`.
+- Portadas que no salían (MyReadingManga y otras con Cloudflare/cookies): `Imagenes` descarga primero con el
+  cliente OkHttp de la propia fuente (`MotorFuentes.bytesImagen`: sus cabeceras, cookies e interceptores), luego
+  con el cliente general de la app y por último con HttpURLConnection. Todas las `ImagenRemota` pasan `fuenteId`.
+- `BarraDesplazamiento` (Comunes.kt): pulgar arrastrable para listas largas, con burbuja de sección (el
+  `contentType` del primer elemento visible). Puesta en Explorar → Extensiones (secciones = idioma).
+- Icono nuevo: agujero negro en blanco y negro (halo, arco curvado por encima y disco por delante) sobre fondo negro;
+  el horizonte (r 17,6 de 108) es transparente. Monocromo a juego. `LogoApp(conFondo)` le pone el disco negro debajo.
+- Arranque: el primer fotograma es igual que la pantalla de inicio del sistema (sin parpadeo); el agujero «inspira» y
+  se abre: el icono crece acelerando y la app aparece por dentro del horizonte (máscara con BlendMode.Clear).
+
+## 2w. PASO 23 — Fuente no disponible y actualizaciones de la app (2026-10-20, versión 0.9)
+- «La fuente no está disponible» ya no es un aviso sin salida: `FuenteNoDisponible` (ui/Reencontrar.kt) dice por qué
+  falta (extensión sin confianza / que no carga / no instalada pero en tus listados / desconocida, vía
+  `ExtManager.extensionDeFuente`) con su botón (Confiar, Actualizar, Instalar) y busca el título en todas tus demás
+  fuentes con filas como Novedades (`FilaResultados`/`rememberResultadosGlobales`, sacadas de BusquedaGlobal.kt).
+  Los de título igual van primero con la insignia «Mismo título». Si el manga está en la biblioteca, tocar un
+  resultado ofrece «Migrar aquí» (`migrarComic`, en Migrar.kt, ya sin necesitar la fuente vieja) o «Solo abrir».
+  «Migrar» desde la biblioteca de una serie sin fuente abre esta pantalla.
+- Firma fija: `app/firma/shiori.jks` (contraseña `shiori-lector`, alias `shiori`) para debug y release. Antes cada
+  compilación de GitHub firmaba con una clave de depuración nueva y Android exigía desinstalar. La clave está en el
+  repositorio a propósito (el repo es público: cualquiera podría firmar un APK «Shiori»; si se quiere evitar, pasarla
+  a un secreto de GitHub). Las versiones 0.8 y anteriores llevan otra firma: hay que desinstalar UNA vez.
+- `versionCode` = 1000 + número de ejecución de «Build APK» (sube solo); a mano, 9.
+- build.yml publica cada compilación release de `claude/komikku` y `main` como versión de GitHub
+  (`v<versionName>-<versionCode>`, APK adjunto, notas = mensaje del commit; guarda las 10 últimas).
+- `NuevaVersion` (NuevaVersion.kt; ojo, `Actualizador` en Trabajos.kt es el de la biblioteca): al abrir la app
+  (no en compilaciones depurables) mira `releases/latest`; si su número es mayor sale `DialogoActualizacion`
+  (novedades, descarga con %, instala con PackageInstaller vía `ExtManager.abrirSesion`, explica los errores de
+  firma). También cada 12 h con la revisión de extensiones (notificación una vez por versión) y en Ajustes → Acerca de.
+- Pruebas en el emulador: `probar-huerfano:<título>`, `probar-version` y la instalación de la versión publicada
+  encima de la instalada (`adb install -r`).
+
+## 2x. PASO 24 — Recomendaciones (2026-10-21, versión 0.10)
+- Tocar una recomendación (AniList) la busca en la fuente de la ficha abierta (`buscarEnFuente`, FuenteManga.kt:
+  prueba inglés, romaji, sinónimos y original; prefiere el título exacto) y abre su ficha directamente. Si no está,
+  un aviso con botón «Buscar en todas» (`Avisos.mostrar(texto, accion) { … }`, nuevo) lleva a la búsqueda global.
+- Pila de fichas en LectorApp (`fichasAnteriores`): abrir otro manga desde una ficha (recomendación o «Fuente no
+  disponible») guarda la actual; «atrás» (`volverDeFicha`) vuelve a ella. Se vacía al salir de la ficha. Cada ficha
+  va en un `AnimatedContent` con clave fuente|url (antes el estado de la ficha anterior podía quedarse).
+- Prueba: `probar:<pkg>|autorec` (`PruebaAuto`) abre sola la primera recomendación; la ficha anima sin parar y
+  uiautomator no puede leerla, así que se comprueba con los registros «ficha abierta: …».
+
+## 2y. PASO 25 — memo, fichas guardadas y deslizar para recargar (2026-10-22, versión 0.11)
+- «Refresh the chapter list.»: las extensiones nuevas (tachiyomix 1.6; p. ej. todo lib-multisrc/madara) guardan datos
+  en `SManga.memo` / `SChapter.memo` y los piden al abrir un capítulo. La app los tiraba. Ahora `MangaFuente.memo`,
+  `CapituloFuente.memo` y `FichaManga.memo` (JSON en texto) van y vuelven en MotorExt (`sManga`/`sCapitulo`).
+- `CacheFichas` (CacheFichas.kt): cada `motor.ficha()` se guarda en `files/fichas/<sha1>.json.gz` (JsonWriter/Reader
+  en flujo, gzip rápido). La ficha se abre de ahí; deslizar hacia abajo (`PullToRefreshBox`) la pide a la fuente.
+  Capítulos reconstruidos sin memo (Actualizaciones, cola de descargas) lo recuperan con `CacheFichas.conMemo`.
+- Novedades (`NovedadesGuardadas`, Explorar.kt): una carga por sesión; deslizar para recargar; se olvidan al abrir
+  la app (MainActivity.onCreate).
+- .tachibk: memo del manga (112) y del capítulo (13) y orden (10), en los dos sentidos. Al restaurar se guarda la
+  ficha de cada manga con TODOS sus capítulos (3 hilos en paralelo); al exportar, si hay ficha guardada, van todos
+  sus capítulos. Emulador, 6.500 mangas: restaurar ~28 s, exportar ~36 s.
+- Pruebas: `probar-url:<pkgs>` (direcciones de los listados) y `probar:<pkg>|capitulo` (populares → ficha →
+  páginas del primer capítulo con el memo recuperado); BarManga (Madara) da 21 páginas.
+
+## 2z. PASO 26 — Tacto y movimiento reducido (2026-10-24, versión 0.12)
+Auditoría con las skills de diseño (design-engineering, ui-animation, apple-design/game-feel):
+- `Tacto` (ui/Tacto.kt): vocabulario háptico central (tic, alternar, umbral, confirmar, rechazar) con efectos del
+  sistema (respeta «Vibración al tocar»). Disparos: chips, interruptores, deslizar para recargar (ficha y
+  Novedades), añadir/quitar de la biblioteca, migrar, y todo aviso de error.
+- `MovimientoReducido`: con «Quitar animaciones» de Android se salta la animación de arranque, sin inclinación 3D,
+  sin entradas escalonadas y esqueletos sin ola. Se relee en `onResume`.
+- Avisos de error: sacudida de 280 ms (keyframes 80/160/220 ms, amplitud decreciente) + vibración de rechazo.
+
+## 2aa. PASO 27 — Duplicados, búsqueda más rápida, mini lector (2026-10-24, versión 0.13)
+- Mini lector solo en Inicio e Historial (tapaba la barra de selección de Actualizaciones y Más); entra/sale plegándose.
+- Búsqueda en todas las fuentes (`rememberResultadosGlobales`): 12 a la vez, 12 s máx. por fuente, `CacheBusquedas` en
+  memoria (10 min). Migrar: el paso 1 ya busca en todas las fuentes a la vez (filas como Novedades).
+- `Duplicados` (ui/Duplicado.kt): al añadir un manga con el mismo título que uno de la biblioteca en otra fuente,
+  ventanita animada (escala desde 0,94 + fundido; sale más rápido) con las dos portadas y «Ver el que tengo»,
+  «Migrar aquí (con tu progreso)», «Añadir igualmente» y «Cancelar». Desde la ficha y al mantener pulsada una portada.
+
+## 2ab. PASO 28 — «Living Flow Design» de ColorOS 17 (2026-10-24, versión 0.14)
+Principios (oppo.com/es/coloros17 y su nota «Flow Everywhere»): luz como respuesta, capas translúcidas con luz,
+movimiento continuo que funde y transforma, rebote elástico y ritmo que sigue la velocidad del gesto.
+- Luz bajo el dedo en todo lo pulsable (`PulsacionNode`, Estilo.kt): brillo radial que nace al tocar, sigue al dedo y
+  se apaga en 520 ms; recortado a la forma (píldora, portada 14 dp, fila).
+- `Modifier.luzTactil()` (Components.kt) en la barra flotante de cristal.
+- Indicador de la barra: si se cambia de pestaña en < 450 ms, muelles más rígidos (ritmo del gesto).
+- Mini lector: brota de la barra (escala desde abajo + plegado) y se funde en ella al salir.
+
+## 2ac. PASO 29 — Extensiones que desaparecían, carpeta de la app y Apariencia (2026-10-25, versión 0.15)
+- Bug: `ExtManager.fuentes` hacía `distinctBy { id }` y las fuentes sin id del listado (clásicos, o antes de cargar
+  la extensión) tenían id 0 → solo quedaba una. Ahora id 0 → hash estable de pkg|nombre|idioma.
+- `CarpetaApp`: carpeta elegida (selector del sistema → ruta real; permiso «todos los archivos» en Android 11+) con
+  `descargas/` y `copias/`. `Almacen.recargarCarpeta()`; al cambiar se mueven las descargas. Datos y almacenamiento.
+- `Aspecto` (ui/Aspecto.kt, prefs «aspecto»): Superficie (Cristal / Liquid glass / Sólido, en `FondoCristal` y
+  `lineaCristal`), Fondo (`FondoVivo`: aurora a 15 fps detrás de las pestañas, dentro de `raizCristal`), Animación de
+  inicio (Agujero negro / Rápida / Ninguna) y Luz al tocar. Apariencia las enseña con previsualizaciones.
+- Arranque: más ágil (40 + 200 + 560 ms) y la app emerge (escala 1,08 → 1) con `ArranqueRevelado`; «Ver animación».
+
+## 2ad. PASO 30 — Extensiones 1.5 y diagnóstico (2026-10-25, versión 0.16)
+- Bug: `CargadorExt.LIBS_SOPORTADAS` era `listOf(1.4, 1.6)` (valores exactos): las extensiones con librería 1.5 se
+  marcaban «no soportadas» y no salían. Ahora rango 1.2..1.69 (como Komikku).
+- Re-escaneo de extensiones en cada `onResume`.
+- Ajustes → Avanzado → «Diagnóstico de extensiones»: `ExtManager.informe()` lista todo paquete que parezca extensión
+  con su estado (no declara la característica, no soportada y por qué, sin confianza, error al cargar, nº de
+  fuentes); se puede copiar para enviarlo.
+
+## 2ae. PASO 31 — Estado, WebView en el lector, búsquedas en Novedades, parecidos y rendimiento (versión 0.17)
+- Pestañas con `rememberSaveableStateHolder`: al cambiar no se pierde desplazamiento ni estado.
+- Lector: «Auto» → «WebView» del capítulo actual (`AccionesVisor.cabecerasWeb`; al volver recarga). Barras del
+  lector según `Aspecto.superficie`.
+- Novedades: búsquedas guardadas como filas propias (`ExtManager.novedadesBusq`, elegibles en el diálogo) y chips
+  de las guardadas en cada fuente (`BusquedaPendiente` → abre la extensión ya buscada).
+- Ficha: «Parecidos en <fuente>» siempre (`MotorFuentes.relacionados` = `Source.getRelatedMangaList`, 15 s; si no
+  hay, búsqueda por el primer género), además de las recomendaciones de AniList.
+- Rendimiento: `instaladas`/`fuentes` con `derivedStateOf` (antes se recalculaban en cada lectura); `FondoVivo`
+  con `withFrameMillis` (se para en segundo plano); `CacheBusquedas` 400 entradas.
+
+## 2af. PASO 32 — Tema en lector e Inicio, leídos, biblioteca en Novedades, capítulo completo (versión 0.18)
+- Inicio: el degradado del destacado se funde con `LectorColors.Bg` (antes negro fijo, horrible en claro).
+- Capítulos leídos: fila al 42 % (animado) y visto en vez del número; no leídos con acento más fuerte.
+- Novedades: lo que está en la biblioteca sale apagado con la insignia «En biblioteca».
+- Lector: barras con `LectorColors` (claro/oscuro) y el estilo de superficie (`TintaBarra`, `SubBarra`).
+- `CacheBytes` (VisorPaginas.kt): bytes de cada página en `cache/paginas/<sha1>/<n>` (400 MB, por antigüedad);
+  al abrir un capítulo en línea se bajan TODAS sus páginas (3 a la vez); volver a una página ya no usa la red.
+
+## 2ag. PASO 33 — Búsquedas con filtros, «Más reciente», instalación en cola, ajustes de fuente (versión 0.19)
+- `FiltrosTexto` (FiltrosFuente.kt): FilterList ↔ JSON por posición; `BusquedaGuardada.filtros` se guarda ya. Guardar
+  búsqueda (también solo filtros) con «Mostrar en Novedades»; Novedades y los chips la aplican con filtros
+  (`BusquedaPendiente.guardada`).
+- «Más reciente» (chip del catálogo y botón del panel de filtros): `ponerMasReciente` elige la opción de fecha /
+  actualización del orden de la fuente; si no hay, modo Recientes.
+- Extensiones: instalación en cola (`colaInstalacion`, Android confirma de una en una) y «Actualizar todas».
+- «Páginas por carga» por fuente (hoja Vista del catálogo; `paginasPorCarga`).
+- Ajustes de fuente: `DialogoShiori` + `OpcionPildora` (en lugar de AlertDialog) e `Interruptor`.
+
+## 2ah. PASO 34 — «HTTP error 429» en descargas (versión 0.20)
+- Cola: un solo capítulo a la vez por fuente (las simultáneas se reparten entre fuentes).
+- `MotorExt.imagenPagina`: máx. 2 peticiones a la vez por fuente (`semaforo`) y `conReintentos` (429/503 → esperas
+  2-4-8-16-30 s); grupos de 2 páginas en `descargarCbz`.
+
+## 2ai. PASO 35 — Descargador al estilo Komikku (versión 0.21)
+- `descargarCbz`: páginas a archivos en `<destino>.partes/` (3 a la vez); las ya hechas se saltan (reintento solo de
+  lo que falta); se reutiliza `CacheBytes` del lector; `reintentar3` (2/4/8 s) + `conReintentos` (429/503); una
+  página fallida no para el resto; al final se empaqueta el .cbz y se borra la carpeta.
+- «Fuentes a la vez» (antes «Descargas a la vez»): un capítulo por fuente, como `parallelSourceLimit` de Komikku.
+
+## 2aj. PASO 36 — Funciones de Komikku que faltaban (versiones 0.22–0.25)
+- 0.22 grupos de traducción ocultos (`ExtManager.gruposOcultos`). 0.23 lectura continua (Visor: transición → capítulo
+  siguiente/anterior solo) y «Abrir en Shiori» (SEND text/plain → `abrir-url:`; fuentes de ese dominio, si no búsqueda
+  global). 0.24 vista previa de páginas (8 miniaturas, `miniatura()`) y ahorro de datos (wsrv.nl, pref «ahorro_datos»).
+- 0.25 `Seguidores.kt`: MAL (OAuth PKCE con Client ID del usuario, vuelta lector://mal), Kitsu (password grant),
+  MangaUpdates (sesión); `Seguidores.avanzar` al terminar capítulo. UI: Ajustes → Seguimiento (`CuentasSeguimiento`)
+  y chip «MAL · Kitsu · MU» en la ficha (`DialogoServicios`). Fusión: `ExtManager.fusionar/unidas/principalDe`
+  (pref «fusiones»); las unidas se ocultan en la biblioteca; chips «Fuentes combinadas» en la ficha.
+
+## 3. PRÓXIMOS PASOS
+**Actuales (tras el PASO 15):**
+1. Instalar el APK de la rama `claude/komikku` y probar: visor (todos los modos), descargas en segundo plano,
+   actualizaciones periódicas + notificaciones, copia / restauración, tema claro, bloqueo, búsqueda global, migrar.
+2. Corregir lo que falle en el móvil. Luego fusionar `claude/komikku` en `main`.
+3. Lo que falta de la lista «Qué NO está» del PASO 15.
+
+**Históricos (de los primeros pasos, ya hechos):**
 1. **Compilar** y corregir errores del paso 3. Probar en móvil: añadir listado → instalar una extensión → Confiar →
    ver sus fuentes en la pestaña Fuentes. Confirmar que `index.pb` de Keiyoushi se lee.
 2. **Motor de fuentes (lo grande).** Camino recomendado: **vendorizar (copiar) de Komikku/Mihon** (licencia Apache-2.0)
@@ -328,7 +657,11 @@ Origen: Komikku `BrowseSourceScreenModel.searchGenre` y la migración de fuentes
 ---
 
 ## 4. Cómo se compila / prueba
-Proyecto Gradle (no incluido). Copiar `app/src/main/**` sobre el proyecto existente (los zips se pisan en este orden:
+**Ahora:** el repo es un proyecto Gradle completo. Cada push a GitHub ejecuta `.github/workflows/build.yml`
+(Gradle 8.9, JDK 17) y deja el APK en *Actions → el run → Artifacts* (`lector-debug-apk`, `lector-release-apk`).
+En local: `gradle assembleDebug` (no hay wrapper; el workflow instala Gradle 8.9).
+
+**Antes (histórico):** Proyecto Gradle (no incluido). Copiar `app/src/main/**` sobre el proyecto existente (los zips se pisan en este orden:
 `codigo-completo` → `paso2` → `paso3`). El paquete completo de este traspaso (`lector-paquete-para-otra-IA.zip`)
 ya trae todo fusionado en `app/src/main/`.
 
@@ -354,3 +687,227 @@ Reglas:
 ## 6. Contenido de `referencias/`
 Capturas de Komikku v1.14.1 que definen el diseño objetivo: `…005824` (Extensiones instaladas), `…005829` (Novedades),
 `…005833` (Añadir listado de extensiones), `…005846` (Fuentes con "Usado recientemente" y "Ancladas").
+
+## 2ak. PASO 37 (0.26)
+- Visor: lectura continua sin botón. Tira: pasa de capítulo en cuanto asoma la transición mientras desplazas (o al tope), hacia delante y hacia atrás. Paginado: la transición solo destella (120 ms) y salta. Quitado el botón «Siguiente/Anterior capítulo».
+- Actualizaciones: tocar la portada abre la ficha del manga (alAbrirManga); el resto de la fila sigue abriendo el capítulo.
+- ExtManager: la página guardada se conserva aunque el capítulo esté leído (paginaDe/guardarPagina/marcarLeido(s)/carga), así al reabrirlo sigue donde se dejó, también al final.
+
+## 2al. PASO 38 (0.27)
+- «Unable to resolve host raw.githubusercontent.com»: DnsRespaldo (sistema → DoH Cloudflare → DoH Google, IPs fijas) en ExtRepos (ahora OkHttp) y en NetworkHelper cuando no se eligió DoH. Si GitHub raw sigue fallando, espejo jsDelivr (cdn.jsdelivr.net/gh/u/r@rama/ruta) para listados y APKs.
+
+## 2am. PASO 39 (0.28)
+- Historial: tocar la portada de una entrada en línea abre la ficha del manga (alAbrirManga), como en Actualizaciones.
+
+## 2an. PASO 40 (0.29)
+- Migrar: paso 0 «Seleccionar fuentes» (Elegidas/Disponibles, buscar, ★ ancladas, ✓ todas, ✕ ninguna; se recuerda en prefs `migrar_fuentes`). Paso 1 ahora en LazyColumn (antes Column con scroll pintaba cientos de filas → cierre).
+- Búsqueda global: 6 a la vez en un grupo propio de 8 hilos (IO.limitedParallelism), máx. 20 resultados por fuente y captura Throwable (errores de extensiones rotas cerraban la app).
+- Ficha: menú ⋮ como Komikku: Actualizar, Editar categorías, Migrar, Compartir, Notas (prefs `notas`, se ven en la ficha), Unir, Editar información, Ver recomendaciones (desplaza a la sección), Abrir carpeta, Limpiar manga (descargas + leídos), Ajustes de la fuente.
+
+## 2ao. PASO 41 (0.30)
+- OOM al migrar (0.28): una extensión llenaba un HashSet dentro de getSearchManga. FuentesOmitidas (BusquedaGlobal.kt) anota en prefs las fuentes que están buscando; si la app muere, al reabrir quedan omitidas en búsquedas globales (chip «Volver a incluir» en Migrar). Cada búsqueda corre aparte (ambitoBusqueda.async) y se deja de esperar a los 12 s sin retener el turno. android:largeHeap="true".
+
+## 2ap. PASO 42 (0.31)
+- «Fuente no disponible»: primero «Seleccionar fuentes» (componente compartido SeleccionFuentes/fuentesBuscables/elegidasGuardadas en Migrar.kt); chip «Fuentes (N)» para volver a elegir.
+
+## 2aq. PASO 43 (0.32)
+- Tira continua real (Komikku): en modo tira los items son anterior+actual+siguiente (ItemVisor.Pagina/Transicion con índice de capítulo c, claves p{c}_{i}); los totales de los vecinos se cargan aparte (totales). Al centrar una página de otro capítulo, ci cambia con porScroll=true y no se recoloca: LazyColumn conserva la posición por clave. Quitados los saltos automáticos de la tira.
+
+## 2ar. PASO 44 (0.33)
+- Slider en la tira: irAPagina buscaba el índice con el desfase viejo y caía en el capítulo anterior (que pasaba a ser el actual → saltos hacia atrás). Ahora busca la página del capítulo actual en items.
+
+## 2as. PASO 45 (0.34)
+- OOM (heap 512 MB lleno; la traza cae en una animación cualquiera). FuentesEnUso (MotorExt) anota las fuentes en populares/recientes/buscar; Fallos añade «Memoria: X de Y MB» y «Fuentes trabajando: …» y, si fue OOM, las pasa a omitidas de la búsqueda global.
+
+## 2at. PASO 46 (0.35)
+- Búsqueda global como Komikku (SearchScreenModel): grupo fijo de 5 hilos (Executors.newFixedThreadPool(5)) y 5 a la vez. Komikku no protege contra extensiones que agotan la memoria; lo nuestro (FuentesOmitidas/FuentesEnUso/timeout) va más allá.
+
+## 2au. PASO 47 (0.36)
+- Freno de fuentes descontroladas sin cerrar nada: FuentesEnUso registra el hilo de cada llamada; al pasar el timeout de la búsqueda global o si la memoria supera el 80 % (vigía cada 0,5 s solo mientras hay fuentes trabajando), el hilo queda marcado y CorteRed (primer interceptor de NetworkHelper) hace fallar su siguiente petición → el bucle de la extensión termina con IOException. Además se vacían CacheVisor/Imagenes (también en onTrimMemory).
+
+## 2av. PASO 48 (0.37) — Unificación de diseño y movimiento (auditado por 3 revisores + 1 verificador)
+- Nuevo ui/Unificado.kt: Mov (tiempos/curvas; con MovimientoReducido todo es fundido corto), CapaEncima (pantallas encima con la transición de las capas, bloquea «atrás» mientras sale), DialogoAlerta (sustituye a los ~40 AlertDialog de Material: tarjeta Shiori animada), MenuShiori, CasillaShiori, CampoTextoShiori, itemsAnimados/itemsIndexedAnimados (animateItem).
+- Sustituidos en todos los ui/*.kt; botones atrás unificados en BotonAtras; rojo de error → LectorColors.Error.
+- Capas sin animación (WebView, Editar categorías, Ajustes de fuente, Migrar en la ficha; WebView del lector) → CapaEncima. LectorApp (pestañas, capas, pila) respeta MovimientoReducido. Pliegue de títulos 900 → 340 ms.
+- Listas con animación de entrada/recolocación y contentType: Historial, Actualizaciones (grupos), Biblioteca (lista y cuadrícula), capítulos de la ficha. Biblioteca: idioma por fuente en un mapa (antes búsqueda lineal por manga).
+- De Komikku: guardar progreso al salir del lector (solo si ya se colocó), precarga de las 2 primeras páginas del capítulo siguiente, slider con toque háptico y salto solo al cambiar de página, contentType en la tira, caché de portadas sensible al tamaño (la portada grande ya no sale borrosa).
+- Pendiente (de la auditoría): cancelar cargas fuera de pantalla con prioridad a lo visible, barra de desplazamiento rápido en biblioteca/capítulos, búsqueda en Ajustes, hojas como diálogo en tablet, ficha a dos columnas en tablet, aviso de capítulos que faltan en las transiciones, CampoBusqueda/Deslizador compartidos, cabecera plegable para pantallas con listas.
+
+## 2aw. PASO 49 (0.38) — Mochy + pendientes de la auditoría (verificado por revisor independiente)
+- Mochy (realidkroo/Mochy-Music) ya estaba portado en su mayoría (rebote 0.4/520, resalte 90/70/340, press3D, SmoothCornerShape, luz de barra 700/320, pliegue con desenfoque, aviso con muelle, hoja que aleja la app). Añadido: Ajustes como burbujas (64 dp, 22 dp, icono en círculo de 40 dp, 17 sp) con buscador de ajustes (AJUSTES_BUSCABLES); la ficha crece desde el punto tocado (OrigenToque como transformOrigin del muelle 0.88/150); RevealOnAppear 520 ms / 60 ms / máx. 6; pliegue 1000 ms con CubicBezier(0.59,0.53,0,1).
+- Pendientes: TareasCompartidas (cargas de páginas y portadas que se cancelan al salir de pantalla, sin carreras), «Faltan N capítulos» en la tira, barra de desplazamiento rápido en biblioteca (lista) y capítulos, HojaLector como ventana centrada en tablet (≥ 600 dp).
+- Queda: ficha a dos columnas en tablet, cuadrícula de biblioteca con barra rápida (falta versión LazyGridState), cabecera plegable para pantallas con listas.
+
+## 2ax. PASO 50 (0.39) — Iteración 1: efectos visuales
+- ui/Polvo.kt: «Polvo» (desintegrar/reconstruir). Modifier.polvo(id) graba el elemento en una GraphicsLayer; Polvo.desintegrar(id) lo captura (toImageBitmap) y CapaPolvo (encima de todo, en LectorApp) lo dibuja troceado volando con el viento de izquierda a derecha (1,1 s); reconstruir lo hace al revés ocultando el real. Usado en: quitar del historial, quitar actualizaciones, quitar/añadir a la biblioteca desde la ficha (cabecera). Con MovimientoReducido no hace nada.
+- BonesRejilla: esqueletos con ola en el catálogo de una fuente mientras llega la primera página.
+
+## 2ay. PASO 51 (0.40) — Iteraciones 2 y 3 (revisadas por un revisor independiente)
+- Estadísticas: anillo animado (terminados / en curso / sin empezar) con total contando, tarjetas con entrada escalonada y barras de fuentes que crecen una tras otra. Acerca de: cabecera con halo de acento que «respira», nombre y versión en píldora.
+- Ficha a dos columnas en tablet (≥ 840 dp, como MangaScreenLargeImpl de Komikku): el contenido de la lista es la lambda `contenido(info, caps)`; la cabecera, el parallax y «Ver recomendaciones» siguen a la columna de información (listaCab).
+- BarraDesplazamiento generalizada (BarraBase) con versión para LazyGridState: barra rápida también en la biblioteca en cuadrícula.
+- Correcciones de la revisión: Polvo.reconstruir siempre vuelve a mostrar el elemento (finally), máx. 12 efectos y ≤ ~1400 trozos por efecto, ids de cabecera por manga, sin fotograma fantasma; el total del anillo ya no usa Odometro por fotograma.
+
+## 2az. PASO 52 (0.41)
+- Quitado el efecto Polvo (al usuario no le gustó: «parece PowerPoint»). Próximo: rehacer desde cero la capa de diseño/animaciones (sin tocar la lógica).
+
+## 2ba. PASO 53 (0.42) — Rediseño, entrega 1: base (mezcla Mochy + Material 3 Expressive)
+- Decisión del usuario: «Mezcla» (movimiento y cristal de Mochy + componentes y formas de M3 Expressive), entregas por pantallas. Se queda en Compose BOM 2024.10 (sin APIs Expressive oficiales): las piezas se hacen a mano en ui/Expresivo.kt.
+- Expresivo.kt: Muelles (MotionScheme expressive: espacial 0.8/380, rápido 0.6/800, efectos 1/1600), BotonExpresivo (píldora que cuadra esquinas al pulsar; relleno/tonal/contorno/texto), GrupoBotones (botones conectados; el elegido se vuelve píldora y crece), IndicadorCarga (forma de lóbulos que gira y cambia de figura; sustituye a todos los CircularProgressIndicator), DeslizadorExpresivo (pista de 16 dp con asa vertical; Ajustes del visor y barra del lector).
+- PillButton → BotonExpresivo; PestanasPildora → GrupoBotones; Interruptor → estilo Expressive (botón que crece con visto).
+- Container transform (Mochy): Modifier.origenTransicion() en portadas (catálogo, biblioteca en cuadrícula, búsqueda global) guarda su rectángulo; la ficha nace recortada a esa portada y se expande con muelle 0.88/150, y vuelve a ella al cerrar (560 ms, CierreEasing). Modifier.contenedor en LectorApp.
+
+## 2bb. PASO 54 (0.43)
+- Correcciones de la revisión de la entrega 1: slider con rememberUpdatedState (los gestos llamaban a callbacks viejos y un toque podía no cambiar de página), asa dentro de la pista en los extremos, ficha sin portada de origen cierra sin esperar 380 ms, la portada de origen se consume al abrir (no se reutiliza una vieja), al taparla el detalle se funde; interruptor centrado apagado; indicador quieto con «Quitar animaciones».
+
+## 2bc. PASO 55 (0.45) — Rediseño completo «de una vez» (DISENO.md)
+- El usuario no notó la base (0.43): se hizo todo de una vez y visible. Especificación en DISENO.md. 4 agentes en paralelo (cada uno con sus archivos) + capa global:
+  - Global: barra inferior con píldora de acento, icono que salta y nombre de la pestaña activa; atrás predictivo (PredictiveBackHandler + Modifier.gestoAtras: la página se encoge al 90 %, se corre y redondea siguiendo el dedo; enableOnBackInvokedCallback); Display 36 sp ExtraBold.
+  - Inicio: carrusel héroe ~56 % con portada desenfocada, auto-avance, puntos que se estiran, parallax; secciones 22 sp; Más con cabecera y burbujas agrupadas.
+  - Biblioteca: título 40 sp con contador, pestañas con indicador de acento que sigue al deslizamiento (gota), tarjetas con insignias en píldora y barra de progreso; Historial/Actualizaciones con cabeceras de día fijas y filas en tarjeta.
+  - Ficha: cabecera inmersiva (portada desenfocada a sangre en API 31+), portada nítida 156 dp, título 31 sp, metadatos en píldoras, acción principal Expressive, sinopsis expandible, capítulos con punto de no leído.
+  - Explorar: título 40 sp, sub-pestañas con indicador que se desliza, fuentes/extensiones en tarjetas, catálogo y búsqueda global rediseñados.
+- La prueba del emulador ahora saca capturas de todas las pantallas (probar-pantalla:<Tab|Ruta>) y un vídeo de la transición biblioteca → ficha.
+
+## 2bd. PASO 56 (0.46)
+- Revisión independiente del rediseño: gestoAtras lee el progreso solo al dibujar (antes recomponía la página en cada fotograma), carrusel de Inicio en pausa con una página encima (GestoAtras.hayEncima), gesto cancelado sin carreras (Job compartido), vuelta entre fichas encadenadas con muelle, CoverCarousel vuelve a abrir al tocar el título, idiomas con el mismo nombre ya no se pierden en Explorar.
+- Capturas del emulador: títulos grandes cortados → TituloAjustable (encoge hasta caber); «Novedades» de la barra → «Nuevos»; etiquetas de StatCard sin letra monoespaciada.
+
+## 2be. PASO 57 (0.47)
+- Ficha: el botón principal (Leer / Continuar cap. N) ocupa todo el ancho y los botones redondos van debajo, centrados (en el móvil se cortaba el texto).
+- Nota: el emulador de CI corre con las animaciones del sistema desactivadas (Mov.reducido = true), así que los vídeos no muestran el movimiento; las capturas sí sirven para el diseño.
+
+## 2bf. PASO 58 (0.48) — Lector: rediseño + auditoría funcional
+- Rediseño (agente, solo capa visual): barras flotantes de cristal en píldora (arriba: título + «Manga · 12 de 40»; abajo: capítulo anterior/siguiente, contador, slider Expressive y acciones con etiqueta), muelles al mostrar/ocultar; transiciones de capítulo como tarjeta (sin botones; «Faltan N» también en paginado); esqueletos y tarjeta de error con «Reintentar»; hoja de ajustes con modos como tarjetas grandes, GrupoBotones, sliders en tarjetas.
+- Auditoría (revisor independiente) y arreglos: cambiar de modo a mitad de capítulo vuelve a tu página (paginaVista); la tira no salta ni cambia de capítulo al cargar el anterior (clave estable de la transición superior, guarda `posicionado` en el cambio de ci); centrar la transición del capítulo anterior ya no marca el actual como leído; menú de página (mantener pulsado) usa el capítulo de esa página; páginas fallidas de la tira se reintentan al volver del WebView; el paginado no salta al capítulo anterior al abrir (auto-avance solo tras posicionar); la descarga del capítulo empieza por la página actual; quitada la compensación manual al partir páginas dobles; primeraCarga sobrevive a la muerte del proceso; se guarda la última página y la vuelta a la primera.
+
+## 2bg. PASO 59 (0.49)
+- Verificación del lector: recargar / volver del WebView / recrear la pantalla vuelve a la última página vista (paginaVista rememberSaveable, antes saltaba a la 1); la unión con el capítulo anterior cuenta como principio (no guarda la última página al cerrar ahí); la descarga del capítulo empieza por la página de destino real; cambiar de modo antes del primer guardado usa la página actual.
+
+## 2bh. PASO 60 (0.51)
+- Búsqueda: sin filtros elegidos se pasan los de la fuente por defecto (getFilterList()), como Mihon/Komikku. Con FilterList() vacía, LectorTMO y otras fallaban con «Collection contains no element matching the predicate».
+
+## 2bi. PASO 61 (0.52)
+- Capturas del lector en el emulador (el gancho «|capitulo» ahora abre el capítulo en el lector): barras nuevas OK. Fallo hallado: páginas/portadas incrustadas («data:image/…;base64,…», BarManga) daban «Expected URL scheme http or https but was data» → datosIncrustados() las decodifica (imagenPagina e Imagenes.descargar).
+
+## 2bj. PASO 62 (0.53)
+- Al leer se respetan los filtros y el tipo de orden de la lista de capítulos (como Mihon/Komikku): leerCap pasa al lector solo los capítulos visibles, en orden de lectura; si el capítulo no está en la lista filtrada, se usa la lista completa.
+- Filtro y orden de capítulos POR MANGA (ExtManager.FiltroCaps, prefs «filtros_caps» por fuenteId|url); los globales cap* quedan como predeterminado para mangas sin filtro propio, con botón «Usar como predeterminado» en Ordenar.
+
+## 2bk. PASO 63 (0.54) — Personalización portada de Mochy
+- ui/Personalizacion.kt: la pantalla «Customisation» de Mochy (GestureScreen + CustomisationCards + CustomisationEffects + Previews) portada casi literal: mismas medidas, tarjeta de redondeo con la esquina de muestra y su arco, TarjetaSlider con SliderFino (BareSlider), CarruselEstilos (StylePagerSection/StyleCard/PreviewFrame con borde del elegido), TarjetaEfecto (EffectCard), SelectorMini (MiniSegmented), buscador y líneas entre secciones. Contenido de Shiori: redondeo de portadas (Aspecto.radioPortada → FormaPortada en biblioteca, catálogos, carruseles, ComicCover), vista de la biblioteca, modo de lectura (previa animada), tema, acento, cristal, fondo, animación (encendida + velocidad 0.5–2x), animación de inicio, luz al tocar, color de la portada.
+- MovimientoApp (AppMotion de Mochy): MotionDurationScale propia entregada al Recomposer de la ventana (createLifecycleAwareWindowRecomposer en MainActivity) → la velocidad y el apagado afectan a todas las animaciones de Compose; MovimientoReducido también se activa al apagarlas.
+- Ruta.Apariencia abre PersonalizacionScreen; el apartado de Ajustes se llama «Personalización».
+
+## 2bl. PASO 64 (0.55) — Código de Mochy copiado (GPL-3.0)
+- Shiori pasa a GPL-3.0 (LICENSE) con créditos en CREDITOS.md. Paquete `ui/mochy/`: copias casi literales de Mochy (TouchFeedback, Press3D, SmoothCornerShape, RevealOnAppear, AppSwitch, FrostedGlass, GlassKit, OdometerText, ContainerTransform, ChipsRow, TopToast, SettingsGroup, SearchBar, NavigationTitle, PageWipe, MochyType, AppMotion→MovimientoApp, SettingsHighlight, AgslShader, BlurEffectCache, SharedElementTransition, AppNavigation, SubSettingsScaffold, ScrollCollapse, AudioLabKit, SwipeActions, SwipePreview) + MochyCompat y ChapterSwipeBox.
+- Componentes compartidos delegan en ese código: pressable/resaltable/press3D, SuaveShape, entrada (RevealOnAppear), Interruptor (AppSwitch), ChipSel (FilterChip), FilaAjuste/FilaSwitch/TituloSeccion (SettingsGroup), Avisos (TopToast), LectorType (Type de Mochy), FloatingNavBar (AppNavigation), PaginaAjustes (SubSettingsScaffold), Ajustes raíz (MochySettingsScreen).
+- Deslizamientos de Mochy en las filas de capítulos (SwipeActionsBox): acciones configurables en Personalización → Gestos (marcar leído, marcador, descargar/borrar, marcar anteriores, nada); GestosCapitulos en prefs «gestos».
+- Transiciones con los valores de Mochy (pestañas, capas, pila; detalle como página de portada).
+
+## 2bm. PASO 65 (0.56) — Interfaz de Mochy en todas las pantallas
+- ui/mochy/library, home, detail (ficha = álbum), search (búsqueda/Explorar), artist (catálogo de fuente = artista), sheet (hojas/menús/diálogos).
+- Material You retirado: paleta monocroma de Mochy en Theme.kt, sin ripple, cristal líquido (shader API 33+, blur 31-32, tinte <31).
+
+## 2bn. PASO 66 (0.57)
+- Título grande de Biblioteca se encoge (34→24sp) si no cabe, en vez de cortarse.
+
+## 2bo. PASO 67 (0.58)
+- Menús (MenuShiori): con desplazamiento (no se cortan), y solo las filas reales llevan fondo/hueco (separadores y títulos ya no salen como píldoras).
+- Lector: barras estilo iOS 26 — botones redondos de cristal sueltos y cápsula de título; abajo cápsula de avance y cápsula de herramientas solo con iconos (se quitó el duplicado Modo/Ajustes).
+
+## 2bp. PASO 68 (0.59)
+- Menús y hojas: altura máxima explícita (62 % / 80 % de pantalla). Antes se medían más altas que la pantalla: las últimas opciones quedaban fuera, no desplazaba y al arrastrar se movía la hoja entera.
+
+## 2bq. PASO 69 (0.60)
+- MenuShiori vuelve a ser desplegable anclado (DropdownMenu) con aspecto de Mochy; la hoja en ventana propia fallaba.
+- Deslizar capítulos también en Actualizaciones e Historial (en línea). Color por acción en Personalización → Gestos (prefs gestos/color_*).
+- «No se pudieron revisar»: por fuente dice qué extensión/repositorio la tiene (caché de repos, sin red) y tocar un título lo busca en las fuentes instaladas.
+
+## 2br. PASO 70 (0.61)
+- Descargas por manga (como Komikku fuente/manga/capítulo): clave fuente|urlManga|capUrl en archivo, cola, progreso y caché del lector. Las viejas se siguen usando si el índice dice que son de ese manga. Arregla capítulos bajados que salían (y se leían) en todos los mangas de la fuente (fuentes con memo y URLs repetidas).
+- HojaLector pasa a ModalBottomSheet de Material con el aspecto de Mochy (la ventana propia fallaba).
+- Ficha: descripción a 3 líneas (ya no crece tapando la portada); tocarla abre hoja con texto seleccionable, géneros, copiar y buscar. Título: tocar = búsqueda global, mantener = copiar.
+
+## 2bs. PASO 71 (0.62)
+- Búsqueda global y lista de cada fuente conservan su estado al ir a un manga y volver (SaveableStateHolder en LectorApp + EstadoListaFuente en memoria con lista, página y filtros).
+- Migrar: lógica de Komikku (mayor número leído en la vieja marca <= en la nueva; marcadores por número; número reconocido del nombre si la fuente no lo da). Sin lista de la fuente vieja se usa la de CacheFichas.
+- Fuente no instalada: primero InfoSinFuente (portada, autor, N capítulos · M leídos, descripción y capítulos de la copia); buscar/migrar es opcional.
+
+## 2bt. PASO 72 (0.63)
+- Descargas (ExtRepos.abrir): 2 reintentos con espera ante 5xx. Actualizar la app: si el enlace de la release falla (HTTP 504), se baja por la API de GitHub (asset url + Accept octet-stream).
+
+## 2bu. PASO 73 (0.64)
+- Ventana de actualización portada de BitChord (ui/bitchord/UpdateAvailableDialog.kt, GPL-3.0) en DialogoActualizacion.kt.
+- Migrar (Explorar): tocar una serie abre su info guardada (ui/migrar/InfoGuardada.kt, estilo MangaScreen de Komikku; carga fuera del hilo principal y usa los datos de la biblioteca si falta caché). fuentesBuscables como Komikku: todas las instaladas de idiomas activos (incluye +18, idioma base y extensiones all/multi).
+- Inicio: menú al mantener (Mochy), selección múltiple con barra, «Quitar de Inicio» persistente (prefs inicio) y más acciones (ui/home/AccionesInicio.kt).
+- Ideas de BitChord pendientes: menú contextual que eleva el elemento con desenfoque, esquinas continuas, indicador de descargas en barra, WebDAV, estadísticas tipo Replay.
+
+## 2bv. PASO 74 (0.65)
+- Inicio: pulsar largo selecciona y activa el modo selección (barra superior + BarraAcciones con ⋮ → HojaMasInicio).
+- Historial de migraciones (ui/migrar/HistorialMigraciones.kt, Ruta.MigracionesRecientes, desde Más y Explorar→Migrar). Selección de fuentes: «Todas las fuentes (todos los idiomas)», extensión original con Confiar/Instalar, no confiables en gris.
+- BitChord: HeldContextMenu en el catálogo de fuentes, SuaveShape = ContinuousCornerShape, indicador + hoja de descargas, WebDAV (bitchord/WebDav*, Ajustes→Datos), Replay (bitchord/ReplayEstadisticas.kt, en Estadísticas).
+
+## 2bw. PASO 75 (0.66)
+- Inicio: en selección la barra de acciones ocupa el sitio del mini lector (SeleccionInicio.activa).
+- Actualizaciones: filtros triestado + fuentes ocultas + agrupar (ui/actualizaciones/FiltroActualizaciones.kt) y Próximos con calendario (Proximos.kt, cálculo de Komikku).
+- Indicador de descargas: pastilla sobre la barra de navegación (izquierda). HeldContextMenu también en Novedades.
+- ModoContenido (SFW/NSFW, prefs modo_contenido) en Seguridad bajo incógnito; filtra Inicio, Biblioteca, Historial, Actualizaciones, Explorar y búsqueda global.
+- Extensiones: setRequireUserAction(NOT_REQUIRED) en API 31+ (+permiso UPDATE_PACKAGES_WITHOUT_USER_ACTION); «Actualizar todas» en segundo plano y seguidas.
+
+## 2bx. PASO 76 (0.67)
+- Modos SFW/NSFW también en Más → Lectura.
+- Actualizaciones: hoja de filtros desplazable y rediseñada; Próximos con calendario estilo Mochy (pager, portadas en días) y estado en EstadoActualizaciones.
+- Personalización → Estilo (EstiloElegido, prefs aspecto): esquinas Mochy/Continuas, pulsación larga Mochy/Elevado/Directo, ventana de actualización Mochy (HojaActualizacion.kt)/BitChord, indicador de descargas on/off + posición. Todo por defecto Mochy. WebDAV/Replay/descargas restilizados a Mochy.
+
+## 2by. PASO 77 (0.68)
+- Leídos, marcadores y página guardada por manga (fuente|urlManga|capUrl), como Komikku: archivos estado_capitulos/*_m.*; migración única al arrancar (prefs estado_por_manga) solo a capítulos conocidos; perezosa con migrarMangaSiHace al cargar la ficha. Copias Tachibk/JSON por manga. Arregla capítulos nuevos que salían leídos.
+- Cancelar la revisión de biblioteca la corta del todo (Actualizador.trabajo/cancelado, descarta lo que llegue después).
+
+## 2bz. PASO 78 (0.69)
+- Ficha: salir mientras se actualiza ya no muestra «No se pudo actualizar: The coroutine scope left the composition» (se relanza la CancellationException).
+
+## 2ca. PASO 79 (0.70) — Lógica de capítulos como Komikku (compilado y con tests locales)
+- `ext/ReconocerCapitulo.kt`: copia de ChapterRecognition de Mihon (+ «Capítulo/Cap./Episodio/Tomo/Temporada»). `MotorExt.ficha` da número a cada capítulo si la fuente no lo trae (antes -1: sin orden por número, insignia «#», seguimiento por conteo). `CacheFichas.leer` completa las fichas viejas. Tests: `app/src/test/.../ReconocerCapituloTest.kt` (los de Mihon; `gradle testDebugUnitTest`).
+- Capítulos resubidos con otra dirección (SyncChaptersWithSource): `ExtManager.heredarEstado` pasa leído/marcador/página por número y `Almacen.darPorConocidos` evita que salgan como novedad.
+- Lector: «Saltar capítulos duplicados» (prefs saltar_duplicados; al terminar marca leídas las otras versiones del mismo número).
+- Revisión de biblioteca: «Saltar los que tienen capítulos sin leer» y «Saltar los no empezados» (apagados por defecto).
+- Pendiente de Komikku: update_strategy (ONLY_FETCH_ONCE), intervalo inteligente de revisión, portada panorámica, sincronización, extensiones privadas.
+
+## 2cb. PASO 80 (0.71) — Lo que faltaba de Komikku (compilado; tests locales)
+- Revisión inteligente: `Comic.soloUnaVez` (UpdateStrategy.ONLY_FETCH_ONCE, vía `DetalleManga.soloUnaVez`) y `Comic.proximaRevision` (`proximaRevision()` en ui/actualizaciones/Proximos.kt, FetchInterval de Mihon; los parados cada 28 días como mucho). Interruptor «Revisión inteligente» (prefs act_inteligente, apagado). Test: ProximaRevisionTest.
+- Extensiones privadas (ExtensionLoader de Komikku): APK en `filesDir/exts/<pkg>.ext`, `CargadorExt.info/privadas/instalarPrivada/quitarPrivada`, `ExtInstalada.privada`. Ajustes → Explorar: interruptor (prefs ext_privadas) e «Instalar desde un archivo». Sin probar en un dispositivo.
+- Portada panorámica: `EstiloApp.panoramica` (Personalización → Estilo), filas de Historial y Actualizaciones 1,6× de ancho si la portada es apaisada.
+- Prueba de recomendaciones: toca la primera portada si el título no está en pantalla.
+- Sigue faltando: sincronización entre dispositivos (solo hay copias y WebDAV).
+
+## 2cc. PASO 81 (0.72) — Comparación completa y remates
+- `COMPARACION_KOMIKKU.md`: opciones que faltan por menú, código copiable y optimizaciones, con orden sugerido.
+- Lector: «Saltar capítulos leídos» (prefs saltar_leidos). Descargas: «borrar al leer» respeta los capítulos con marcador (prefs borrar_marcados).
+- Avanzado: «Borrar los datos de WebView» y «Revocar la confianza en extensiones desconocidas» (`ExtManager.revocarConfianza`).
+- Revisión de biblioteca agrupada por fuente (5 fuentes a la vez, cada una en serie), como LibraryUpdateJob.
+- Prueba: «autorec» abre la primera recomendación que la fuente tenga (hasta 8).
+
+## 2cd. PASO 82 (0.73) — Opciones que faltaban de los menús de Komikku (compilado; sin probar en dispositivo)
+- Almacen: `catDefecto` (""/"-"/id, se aplica en `anadirEnLinea`), `actCatExcluidas`, `descCatExcluidas` (ids con coma, `idsDe`), `marcarDuplicadosNuevos` (MotorExt.ficha), `borrarAlMarcar` y `segAlMarcar` (`trasMarcarLeidos` en FuenteManga), `rotarAnchas` (mitad 3 en `decodificar`), `limpiarHuerfanos`, `bibliotecaCsv`, `restablecerModosDeSerie`, `ocultarNotificaciones`.
+- Descargas.encolar: no encola con menos de 200 MB libres. NetworkHelper: agente de usuario de prefs `user_agent`.
+- `FilaCategoriasExcluidas` (AjustesPantallas) reutiliza `DialogoAsignarCategorias`.
+- Lo que queda está en `COMPARACION_KOMIKKU.md` §4.
+
+## 2ce. PASO 83 (0.74) — Menús fuera de Ajustes + prueba de todas las pantallas de ajustes
+- WebView con menú ⋮, «Solo descargados» en Más (usa `fDescargados`), «Borrar cookies» en el detalle de extensión, `copiarImagen` en el menú de página.
+- Prueba: intent `probar-ruta:<Ruta>` (LectorApp) y bloque «Ajustes» en probar.sh: abre 15 pantallas, las desplaza, detecta cierres y comprueba que están las opciones nuevas (`falta`). Aviso «Ajustes» en el run.
+- `COMPARACION_KOMIKKU.md` §3b: menús cotejados y lo que sigue faltando.
+
+## 2cf. PASO 84 (0.75) — Thinking orbs
+- `ui/orbes/MotorOrbes.kt`: port exacto del motor de thinking-orbs (MIT, Jakub Antalik): 9 estados × tamaños 64/20, StrictMath para coincidir con V8. `OrbesTest` + `src/test/resources/orbes-golden.txt` (72 casos, 1e-4).
+- `ui/orbes/OrbePensante.kt`: Composable (reloj por withFrameNanos, solo redibuja; quieto con Mov.reducido; tinta invertida en oscuro; tinte de acento opcional).
+- `IndicadorCarga(..., estado)` usa el orbe si `EstiloApp.orbes` (por defecto sí). Estados: WORKING revisión de biblioteca y acciones de página, SEARCHING búsquedas (también `SearchLoadingDots`), CONNECTING extensiones/listados/seguimiento/catálogo, COMPOSING cargar capítulo y lista de capítulos, BREATHING página y lector local, WEAVING migraciones, SOLVING copias (IslaCopia), SHAPING importar.
+- Personalización → Estilo: «Thinking orbs» (prefs aspecto estilo_orbes), «Con el color de acento» (estilo_orbes_acento) y vista previa de los nueve.
+
+## 2cg. PASO 85 (0.76) — Orbes en todas las cargas y variando
+- `EstiloApp.variarOrbes` (prefs estilo_orbes_variar): CAMBIANDO (por defecto: cada indicador pasa por los 9 tipos cada 3,2 s con fundido, empezando en uno al azar), AZAR, TAREA (el estado semántico de cada sitio).
+- `IndicadorTirar` (Expresivo.kt) en los 4 «tirar para recargar» (Novedades, Actualizaciones, Biblioteca, ficha).
+- `BonesHost` (Estilo.kt) pone un orbe sobre todos los esqueletos (catálogo, novedades, búsqueda global, portadas, capítulos; PlaylistTrackBones pasa por él).
+- Barras sin avance → orbe: carga de extensiones (Explorar), instalar extensión (Reencontrar), descarga que aún no empieza (ColaDescargas). Vacío de Actualizaciones mientras revisa e «Cargando lo guardado…» con orbe.
+- Se dejan las barras/anillos con porcentaje real (descargas, copias, WebView).

@@ -1,0 +1,1572 @@
+package com.example.lector.ui
+
+import com.example.lector.fx.*
+import android.app.Activity
+import android.content.ContentValues
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.net.Uri
+import android.os.Build
+import android.os.SystemClock
+import android.provider.MediaStore
+import android.view.WindowManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.example.lector.Almacen
+import com.example.lector.EscalaPagina
+import com.example.lector.InvertirZonas
+import com.example.lector.ModoVisor
+import com.example.lector.Orientacion
+import com.example.lector.Teclas
+import com.example.lector.Tinte
+import com.example.lector.ZonasToque
+import com.example.lector.colorFondo
+import com.example.lector.colorTinte
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+/** Un capítulo que el visor sabe abrir. */
+class CapVisor(val clave: String, val nombre: String, val origen: OrigenPaginas)
+
+/** Lo que el visor puede hacer además de leer (depende de si es un cómic local o un manga de una fuente). */
+class AccionesVisor(
+    /** Dirección web del capítulo (null = no tiene). */
+    val urlWeb: ((Int) -> String?)? = null,
+    val estaMarcado: ((Int) -> Boolean)? = null,
+    val alternarMarca: ((Int) -> Unit)? = null,
+    /** Usar una página como portada de la serie (solo si está en la biblioteca). */
+    val usarComoPortada: (suspend (ByteArray) -> Unit)? = null,
+    val esLeido: ((Int) -> Boolean)? = null,
+    /** Cabeceras de la fuente para abrir el capítulo en el WebView (Cloudflare, captchas). */
+    val cabecerasWeb: Map<String, String> = emptyMap(),
+)
+
+private data class RefPagina(val indice: Int, val mitad: Int)
+
+private sealed interface ItemVisor {
+    // [c]: índice del capítulo al que pertenece (en la tira continua conviven varios; -1 = el actual).
+    data class Pagina(val ref: RefPagina, val c: Int = -1) : ItemVisor
+    data class Transicion(val siguiente: Boolean, val c: Int = -1) : ItemVisor
+}
+
+private enum class AccionToque { SIGUIENTE, ANTERIOR, MENU }
+
+private val ModoVisor.paginado: Boolean
+    get() = this == ModoVisor.DERECHA_IZQUIERDA || this == ModoVisor.IZQUIERDA_DERECHA || this == ModoVisor.VERTICAL
+
+fun nombreModoVisor(m: ModoVisor) = when (m) {
+    ModoVisor.DERECHA_IZQUIERDA -> "Paginado, de derecha a izquierda (manga)"
+    ModoVisor.IZQUIERDA_DERECHA -> "Paginado, de izquierda a derecha (cómic)"
+    ModoVisor.VERTICAL -> "Paginado vertical"
+    ModoVisor.WEBTOON -> "Webtoon (tira continua)"
+    ModoVisor.CONTINUO -> "Vertical continuo (con separación)"
+}
+
+/**
+ * Zonas de toque de Mihon/Komikku. Las coordenadas son relativas (0..1). En los modos de derecha a izquierda la
+ * pantalla se invierte en horizontal, igual que en Komikku.
+ */
+private fun zonaDe(fx0: Float, fy0: Float, zonas: ZonasToque, invertir: InvertirZonas, modo: ModoVisor): AccionToque {
+    if (zonas == ZonasToque.DESACTIVADO) return AccionToque.MENU
+    val rtl = modo == ModoVisor.DERECHA_IZQUIERDA
+    val invH = (invertir == InvertirZonas.HORIZONTAL || invertir == InvertirZonas.AMBOS) xor rtl
+    val invV = invertir == InvertirZonas.VERTICAL || invertir == InvertirZonas.AMBOS
+    val x = if (invH) 1f - fx0 else fx0
+    val y = if (invV) 1f - fy0 else fy0
+    fun en(l: Float, t: Float, r: Float, b: Float) = x in l..r && y in t..b
+    val t = 1f / 3f
+    return when (zonas) {
+        ZonasToque.AUTOMATICO, ZonasToque.L -> when {
+            en(0f, t, t, 2 * t) || en(0f, 0f, 1f, t) -> AccionToque.ANTERIOR
+            en(2 * t, t, 1f, 2 * t) || en(0f, 2 * t, 1f, 1f) -> AccionToque.SIGUIENTE
+            else -> AccionToque.MENU
+        }
+        ZonasToque.KINDLE -> when {
+            en(t, t, 1f, 1f) -> AccionToque.SIGUIENTE
+            en(0f, t, t, 1f) -> AccionToque.ANTERIOR
+            else -> AccionToque.MENU
+        }
+        ZonasToque.BORDES -> when {
+            en(0f, 0f, t, 1f) || en(2 * t, 0f, 1f, 1f) -> AccionToque.SIGUIENTE
+            en(t, 2 * t, 2 * t, 1f) -> AccionToque.ANTERIOR
+            else -> AccionToque.MENU
+        }
+        ZonasToque.IZQUIERDA_DERECHA -> when {
+            en(0f, 0f, t, 1f) -> AccionToque.ANTERIOR
+            en(2 * t, 0f, 1f, 1f) -> AccionToque.SIGUIENTE
+            else -> AccionToque.MENU
+        }
+        ZonasToque.DESACTIVADO -> AccionToque.MENU
+    }
+}
+
+/**
+ * Visor de Lector (como el de Komikku). El MISMO para cómics locales, capítulos descargados y lectura online.
+ *  - Modos: paginado ← / →, paginado vertical, webtoon y vertical continuo.
+ *  - Zonas de toque (L, Kindle, bordes, izquierda/derecha) con inversión, teclas de volumen, autodesplazamiento.
+ *  - Zoom con pellizco y doble toque (también en webtoon), recorte de bordes, división de páginas dobles,
+ *    relleno lateral, transiciones entre capítulos, precarga, filtros de color y brillo.
+ *  - Mantener pulsada una página: compartir, guardar o usarla como portada.
+ *
+ * [capitulos] van en orden de lectura (el 0 es el primero). [claveSerie] guarda el modo propio de la serie.
+ */
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun Visor(
+    almacen: Almacen,
+    titulo: String,
+    capitulos: List<CapVisor>,
+    inicial: Int,
+    paginaInicial: Int,
+    claveSerie: String?,
+    // Modo propuesto si la serie no tiene uno propio (p. ej. webtoon detectado por la forma de las páginas).
+    modoSugerido: ModoVisor? = null,
+    alPagina: (cap: Int, pagina: Int, total: Int) -> Unit,
+    alTerminarCapitulo: (cap: Int) -> Unit,
+    acciones: AccionesVisor = AccionesVisor(),
+    onBack: () -> Unit,
+) {
+    if (capitulos.isEmpty()) {
+        Box(Modifier.fillMaxSize().background(Color.Black), Alignment.Center) {
+            LText("No se puede abrir el capítulo.", LectorType.Body, color = Color(0xFF9A9AA0))
+        }
+        return
+    }
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val densidad = LocalDensity.current
+    val conf = LocalConfiguration.current
+
+    var ci by rememberSaveable { mutableIntStateOf(inicial.coerceIn(0, capitulos.lastIndex)) }
+    if (ci > capitulos.lastIndex) ci = capitulos.lastIndex
+    val cap = capitulos[ci]
+    var modo by remember { mutableStateOf(claveSerie?.let { almacen.modoVisorDe(it) } ?: modoSugerido ?: almacen.modoVisor) }
+    val paginado = modo.paginado
+
+    var total by remember(cap.clave) { mutableStateOf<Int?>(null) }
+    var error by remember(cap.clave) { mutableStateOf<String?>(null) }
+    var recarga by remember(cap.clave) { mutableIntStateOf(0) }
+    // Al volver al capítulo anterior se empieza por su última página.
+    var irAlFinal by remember { mutableStateOf(false) }
+    var primeraCarga by rememberSaveable { mutableStateOf(true) }
+
+    var barras by remember { mutableStateOf(false) }
+    var hoja by remember { mutableStateOf(false) }
+    var dialogoCaps by remember { mutableStateOf(false) }
+    var auto by remember { mutableStateOf(false) }
+    var webCap by remember { mutableStateOf<String?>(null) }
+    // (capítulo, página): en la tira continua la página puede ser del capítulo anterior o del siguiente.
+    var menuPagina by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var tocando by remember { mutableStateOf(false) }
+
+    val refs = remember(cap.clave) { mutableStateListOf<RefPagina>() }
+    // Tira continua (como Komikku): páginas de cada capítulo ya conocido, para encadenar anterior, actual y siguiente.
+    val totales = remember { mutableStateMapOf<String, Int>() }
+    // El capítulo cambió porque se llegó a él desplazando la tira: no hay que recolocar nada.
+    var porScroll by remember { mutableStateOf(false) }
+    LaunchedEffect(cap.clave, recarga) {
+        total = null; error = null; refs.clear()
+        runCatching { cap.origen.total() }
+            .onSuccess { n ->
+                if (n <= 0) error = "El capítulo no tiene páginas"
+                else { refs.addAll((0 until n).map { RefPagina(it, 0) }); total = n; totales[cap.clave] = n }
+            }
+            .onFailure { if (it is CancellationException) throw it; error = it.message ?: "No se pudieron cargar las páginas" }
+    }
+
+    val hayAnterior = ci > 0
+    val haySiguiente = ci < capitulos.lastIndex
+    LaunchedEffect(ci, paginado) {
+        if (paginado) return@LaunchedEffect
+        for (c in listOf(ci + 1, ci - 1)) {
+            val cv = capitulos.getOrNull(c) ?: continue
+            if (totales[cv.clave] == null) runCatching { cv.origen.total() }.getOrNull()?.takeIf { it > 0 }?.let { totales[cv.clave] = it }
+        }
+    }
+    val items by remember(hayAnterior, refs, paginado, ci) {
+        derivedStateOf {
+            if (!paginado) buildList<ItemVisor> {
+                // Anterior, actual y siguiente en la misma lista; al pasar de uno a otro las claves no cambian y la
+                // tira no salta (LazyColumn conserva la posición por clave).
+                val rango = (ci - 1..ci + 1).filter { it in capitulos.indices && totales[capitulos[it].clave] != null }
+                if (rango.isEmpty()) return@buildList
+                add(ItemVisor.Transicion(false, rango.first()))
+                rango.forEach { c ->
+                    repeat(totales[capitulos[c].clave]!!) { add(ItemVisor.Pagina(RefPagina(it, 0), c)) }
+                    add(ItemVisor.Transicion(true, c))
+                }
+            } else buildList<ItemVisor> {
+                if (hayAnterior) add(ItemVisor.Transicion(false))
+                refs.forEach { add(ItemVisor.Pagina(it)) }
+                add(ItemVisor.Transicion(true))
+            }
+        }
+    }
+    val desfase = if (hayAnterior) 1 else 0
+
+    val pager = rememberPagerState { items.size }
+    val lista = rememberLazyListState()
+
+    // Tamaño al que se decodifican las páginas: ancho de pantalla (con margen para el zoom), con tope.
+    val anchoPx = with(densidad) { conf.screenWidthDp.dp.roundToPx() }
+    val altoPx = with(densidad) { conf.screenHeightDp.dp.roundToPx() }
+    val anchoDecodificar = remember(anchoPx, altoPx, paginado) {
+        (if (paginado) (maxOf(anchoPx, altoPx) * 1.3f) else (anchoPx * 1.5f)).roundToInt().coerceIn(720, 2560)
+    }
+    val recortar = if (paginado) almacen.recortarBordes else almacen.recortarWebtoon
+    val dividir = paginado && almacen.dividirDobles
+
+    // Al cargar un capítulo: salta a la página que toca (la guardada, la última si se vuelve atrás, o la primera).
+    var posicionado by remember(cap.clave) { mutableStateOf(false) }
+    // Última página vista de este capítulo: al recargar (WebView, Cloudflare) o recrear la pantalla se vuelve a ella.
+    var paginaVista by rememberSaveable(cap.clave) { mutableIntStateOf(-1) }
+    val destinoDescarga = remember(cap.clave) { intArrayOf(0) }
+    LaunchedEffect(cap.clave, total) {
+        val n = total ?: return@LaunchedEffect
+        val pagina = when {
+            irAlFinal -> n - 1
+            primeraCarga -> paginaInicial.coerceIn(0, n - 1)
+            paginaVista >= 0 -> paginaVista.coerceIn(0, n - 1)
+            else -> 0
+        }
+        destinoDescarga[0] = pagina
+        irAlFinal = false
+        primeraCarga = false
+        if (porScroll) { porScroll = false; posicionado = true; return@LaunchedEffect }
+        if (modo.paginado) {
+            val idx = desfase + refs.indexOfFirst { it.indice == pagina }.coerceAtLeast(0)
+            runCatching { pager.scrollToPage(idx) }
+        } else {
+            val idx = items.indexOfFirst { it is ItemVisor.Pagina && it.c == ci && it.ref.indice == pagina }
+            if (idx >= 0) runCatching { lista.scrollToItem(idx) }
+        }
+        posicionado = true
+    }
+
+    // Elemento actual (página o transición).
+    var itemActual by remember { mutableIntStateOf(0) }
+    LaunchedEffect(modo, cap.clave) {
+        if (modo.paginado) {
+            snapshotFlow { pager.settledPage }.collect { itemActual = it }
+        } else {
+            // En la tira, la página "actual" es la que ocupa el centro de la pantalla.
+            snapshotFlow {
+                val info = lista.layoutInfo
+                val centro = (info.viewportStartOffset + info.viewportEndOffset) / 2
+                info.visibleItemsInfo.firstOrNull { it.offset <= centro && it.offset + it.size > centro }?.index
+                    ?: lista.firstVisibleItemIndex
+            }.distinctUntilChanged().collect { i ->
+                itemActual = i
+                // Al entrar en las páginas de otro capítulo de la tira, ese pasa a ser el actual (sin recolocar).
+                val c = when (val it = items.getOrNull(i)) { is ItemVisor.Pagina -> it.c; else -> -1 }
+                if (posicionado && c >= 0 && c != ci) { porScroll = true; ci = c }
+            }
+        }
+    }
+    val actual = items.getOrNull(itemActual)
+    val paginaReal = when (actual) {
+        is ItemVisor.Pagina -> actual.ref.indice
+        // La unión con el capítulo anterior (Transicion(true, ci-1)) es el principio de este, no su final.
+        is ItemVisor.Transicion -> if (actual.siguiente && (actual.c < 0 || actual.c == ci)) (total ?: 1) - 1 else 0
+        null -> 0
+    }
+
+    fun irCapitulo(nuevo: Int, alFinal: Boolean) {
+        if (nuevo !in capitulos.indices || nuevo == ci) return
+        irAlFinal = alFinal
+        ci = nuevo
+    }
+
+    // Progreso: se anota la página (con una pequeña espera) y el capítulo se da por leído en la última.
+    val terminados = remember { mutableSetOf<Int>() }
+    LaunchedEffect(cap.clave, paginaReal, total, posicionado) {
+        val n = total ?: return@LaunchedEffect
+        if (!posicionado) return@LaunchedEffect
+        // En la tira, la transición entre el capítulo anterior y este no cuenta como «final» de este.
+        val a = actual
+        if (a is ItemVisor.Transicion && a.c >= 0 && a.c != ci) return@LaunchedEffect
+        delay(450)
+        paginaVista = paginaReal
+        alPagina(ci, paginaReal.coerceIn(0, n - 1), n)
+        if (paginaReal >= n - 1 && terminados.add(ci)) alTerminarCapitulo(ci)
+    }
+    // Al salir del lector se guarda la página al momento (la espera de arriba podía perderla, como no pasa en Komikku).
+    // (Solo si ya se colocó en su página: si no, guardaría la 0 encima del progreso.)
+    val ultimoProgreso = rememberUpdatedState(Triple(ci, paginaReal, if (posicionado) total else null))
+    DisposableEffect(Unit) {
+        onDispose { val (c, p, n) = ultimoProgreso.value; if (n != null) alPagina(c, p.coerceIn(0, n - 1), n) }
+    }
+
+    // Lectura continua (como Komikku): al llegar a la página de transición se pasa solo al capítulo siguiente, y al
+    // volver a la del principio, al anterior (por su última página). Se ve un instante el «Siguiente: …».
+    LaunchedEffect(actual, total, posicionado) {
+        val a = actual
+        if (total == null || a !is ItemVisor.Transicion || !paginado || !posicionado) return@LaunchedEffect
+        delay(120) // sin parada: se ve solo un destello del «Siguiente: …»
+        if (a.siguiente && haySiguiente) irCapitulo(ci + 1, false)
+        else if (!a.siguiente && hayAnterior) irCapitulo(ci - 1, true)
+    }
+    // Webtoon: al entrar en la transición final, sigue con el siguiente capítulo (como la tira infinita de Komikku).
+    // (La tira ya no salta de capítulo: los encadena en la misma lista.)
+
+    // El capítulo COMPLETO se descarga al abrirlo (a disco, sin decodificar: casi no gasta memoria), 3 a la vez.
+    LaunchedEffect(cap.clave, total) {
+        val n = total ?: return@LaunchedEffect
+        val origen = cap.origen as? OrigenFuente ?: return@LaunchedEffect
+        if (!origen.enRed) return@LaunchedEffect
+        val cupo = kotlinx.coroutines.sync.Semaphore(3)
+        kotlinx.coroutines.coroutineScope {
+            // Empieza por donde lees (no por la página 1) para no retrasar la que ves.
+            val desde = destinoDescarga[0].coerceIn(0, n - 1)
+            for (p in (desde until n) + (0 until desde)) launch(Dispatchers.IO) { cupo.acquire(); try { runCatching { origen.bytes(p) } } finally { cupo.release() } }
+        }
+    }
+
+    // Precarga de las páginas siguientes (y del total del capítulo siguiente al acercarse al final).
+    LaunchedEffect(cap.clave, paginaReal, total, anchoDecodificar, recortar) {
+        val n = total ?: return@LaunchedEffect
+        val cuantas = almacen.precargaPaginas.coerceIn(1, 10)
+        for (k in 1..cuantas) {
+            val p = paginaReal + k
+            if (p >= n) break
+            try {
+                CacheVisor.obtener(cap.origen, p, 0, anchoDecodificar, recortar)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
+        if (paginaReal >= n - 3 && haySiguiente) {
+            // Como Komikku: cerca del final se preparan ya las primeras páginas del capítulo siguiente.
+            val sig = capitulos[ci + 1].origen
+            val m = runCatching { sig.total() }.getOrNull() ?: 0
+            for (p in 0 until minOf(2, m)) try { CacheVisor.obtener(sig, p, 0, anchoDecodificar, recortar) } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+        }
+    }
+
+    // ---- Navegación ----
+    fun siguiente() {
+        scope.launch {
+            if (paginado) {
+                val a = items.getOrNull(pager.currentPage)
+                if (a is ItemVisor.Transicion && a.siguiente) { if (haySiguiente) irCapitulo(ci + 1, false); return@launch }
+                val destino = (pager.currentPage + 1).coerceAtMost(items.lastIndex)
+                if (almacen.animarPaginas) pager.animateScrollToPage(destino) else pager.scrollToPage(destino)
+            } else {
+                val alto = (lista.layoutInfo.viewportEndOffset - lista.layoutInfo.viewportStartOffset).toFloat()
+                if (almacen.animarPaginas) lista.animateScrollBy(alto * 0.75f) else lista.scrollBy(alto * 0.75f)
+            }
+        }
+    }
+
+    fun anterior() {
+        scope.launch {
+            if (paginado) {
+                val a = items.getOrNull(pager.currentPage)
+                if (a is ItemVisor.Transicion && !a.siguiente) { irCapitulo(ci - 1, true); return@launch }
+                val destino = (pager.currentPage - 1).coerceAtLeast(0)
+                if (almacen.animarPaginas) pager.animateScrollToPage(destino) else pager.scrollToPage(destino)
+            } else {
+                val alto = (lista.layoutInfo.viewportEndOffset - lista.layoutInfo.viewportStartOffset).toFloat()
+                if (almacen.animarPaginas) lista.animateScrollBy(-alto * 0.75f) else lista.scrollBy(-alto * 0.75f)
+            }
+        }
+    }
+
+    fun toque(pos: Offset, tam: IntSize) {
+        if (barras) { barras = false; return }
+        if (tam.width <= 0 || tam.height <= 0) { barras = true; return }
+        when (zonaDe(pos.x / tam.width, pos.y / tam.height, almacen.zonasVisor, almacen.invertirZonas, modo)) {
+            AccionToque.SIGUIENTE -> siguiente()
+            AccionToque.ANTERIOR -> anterior()
+            AccionToque.MENU -> barras = true
+        }
+    }
+
+    fun irAPagina(p: Int) {
+        // En la tira hay varios capítulos en la lista: se busca la página DEL CAPÍTULO ACTUAL (antes caía en el anterior).
+        val idx = if (paginado) desfase + refs.indexOfFirst { it.indice == p }.coerceAtLeast(0)
+            else items.indexOfFirst { it is ItemVisor.Pagina && it.c == ci && it.ref.indice == p }
+        if (idx < 0) return
+        scope.launch { if (paginado) pager.scrollToPage(idx) else lista.scrollToItem(idx) }
+    }
+
+    // Cambiar de modo (paginado ↔ tira) a mitad de capítulo: se vuelve a la página por la que ibas.
+    val modoPrevio = remember { booleanArrayOf(paginado) }
+    LaunchedEffect(paginado) {
+        if (modoPrevio[0] == paginado) return@LaunchedEffect
+        modoPrevio[0] = paginado
+        val p = paginaVista.takeIf { it >= 0 } ?: paginaReal
+        posicionado = false
+        snapshotFlow { items.any { it is ItemVisor.Pagina } }.first { it }
+        androidx.compose.runtime.withFrameNanos { }
+        irAPagina(p)
+        delay(80)
+        posicionado = true
+    }
+
+    // Páginas dobles: al descubrir que una página es apaisada se parte en dos (el orden depende del sentido).
+    fun dividirPagina(indice: Int) {
+        val pos = refs.indexOfFirst { it.indice == indice && it.mitad == 0 }
+        if (pos < 0) return
+        val rtl = modo == ModoVisor.DERECHA_IZQUIERDA
+        val primeraDerecha = rtl xor almacen.invertirDivision
+        val orden = if (primeraDerecha) listOf(RefPagina(indice, 2), RefPagina(indice, 1)) else listOf(RefPagina(indice, 1), RefPagina(indice, 2))
+        val antes = pager.currentPage
+        refs.removeAt(pos)
+        refs.addAll(pos, orden)
+        // Si la página partida estaba antes de la actual, todo se corre una posición: se compensa.
+        // (El pager conserva la página por clave: no hace falta compensar a mano.)
+    }
+
+    // ---- Teclas de volumen y autodesplazamiento ----
+    TeclasVolumen(activas = almacen.teclasVolumen)
+    LaunchedEffect(modo, total) {
+        Teclas.eventos.collect { d ->
+            val delta = if (almacen.invertirVolumen) -d else d
+            if (delta > 0) siguiente() else anterior()
+        }
+    }
+    LaunchedEffect(auto, barras, modo, total, tocando) {
+        if (!auto || barras || total == null || tocando) return@LaunchedEffect
+        if (paginado) {
+            while (true) {
+                delay(((11f - almacen.velocidadAuto.coerceIn(1f, 10f)) * 1000f).toLong())
+                val a = items.getOrNull(pager.currentPage)
+                if (a is ItemVisor.Transicion && a.siguiente) { auto = false; break }
+                siguiente()
+            }
+        } else {
+            val pxSeg = with(densidad) { (20f + almacen.velocidadAuto.coerceIn(1f, 10f) * 22f).dp.toPx() }
+            var antes = 0L
+            while (true) {
+                val ahora = withFrameNanos { it }
+                if (antes != 0L) {
+                    val dt = (ahora - antes) / 1_000_000_000f
+                    val movido = lista.scrollBy(pxSeg * dt.coerceAtMost(0.05f))
+                    if (movido == 0f && !lista.canScrollForward) { auto = false; break }
+                }
+                antes = ahora
+            }
+        }
+    }
+
+    // ---- Pantalla ----
+    PantallaCompleta(oculta = almacen.pantallaCompleta && !barras)
+    PantallaEncendida(activa = almacen.mantenerEncendida)
+    AjustesPantalla(almacen)
+    val vista = LocalView.current
+    // Tiempo de lectura (estadísticas).
+    DisposableEffect(Unit) {
+        val inicio = SystemClock.elapsedRealtime()
+        onDispose { almacen.sumarTiempoLectura(SystemClock.elapsedRealtime() - inicio) }
+    }
+    BackHandler(enabled = barras || hoja) { if (hoja) hoja = false else barras = false }
+
+    val fondo = colorFondo(almacen.fondoLector)
+    val filtro = remember(almacen.escalaGrises, almacen.invertirColores) {
+        construirFiltro(almacen.escalaGrises, almacen.invertirColores)
+    }
+
+    Box(
+        Modifier.fillMaxSize().background(fondo)
+            // Saber si hay un dedo en la pantalla (pausa el autodesplazamiento), sin consumir nada.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        val abajo = ev.changes.any { it.pressed }
+                        if (abajo != tocando) tocando = abajo
+                    }
+                }
+            }
+    ) {
+        val n = total
+        when {
+            n == null && (paginado || items.isEmpty() || error != null) -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                if (error == null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IndicadorCarga(Modifier.size(48.dp), color = MaterialTheme.colorScheme.primary, estado = com.example.lector.ui.orbes.EstadoOrbe.COMPOSING)
+                    Spacer(Modifier.height(16.dp))
+                    Text(cap.nombre, style = LectorType.Section, color = GrisNeutro, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 40.dp))
+                    Text("Cargando capítulo…", style = LectorType.Label, color = GrisNeutro.copy(alpha = 0.7f))
+                }
+                else Column(
+                    Modifier.padding(24.dp).widthIn(max = 420.dp).fillMaxWidth().clip(FormaTarjeta).background(LectorColors.Card)
+                        .border(1.dp, LectorColors.Linea, FormaTarjeta).padding(horizontal = 24.dp, vertical = 26.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(Modifier.size(56.dp).clip(CircleShape).background(LectorColors.Error.copy(alpha = 0.16f)), Alignment.Center) {
+                        Icon(Icons.Rounded.Warning, null, tint = LectorColors.Error, modifier = Modifier.size(28.dp))
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text("No se pudo abrir el capítulo", style = LectorType.Section.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold), color = LectorColors.Text, textAlign = TextAlign.Center)
+                    Spacer(Modifier.height(6.dp))
+                    Text(error!!, color = LectorColors.Muted, textAlign = TextAlign.Center, style = LectorType.Body)
+                    Spacer(Modifier.height(22.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        BotonExpresivo("Volver", Icons.Rounded.ArrowBack, { onBack() }, estilo = EstiloBoton.TONAL)
+                        BotonExpresivo("Reintentar", Icons.Rounded.Refresh, { recarga++ }, estilo = EstiloBoton.RELLENO)
+                    }
+                }
+            }
+            paginado -> {
+                val contenido: @Composable (Int) -> Unit = { i ->
+                    when (val it = items.getOrNull(i)) {
+                        is ItemVisor.Pagina -> PaginaPaginada(
+                            origen = cap.origen, ref = it.ref, anchoMax = anchoDecodificar, recortar = recortar,
+                            escala = almacen.escalaPagina, filtro = filtro, dobleToque = almacen.dobleToqueZoom,
+                            detectarAncha = dividir, onAncha = { dividirPagina(it.ref.indice) },
+                            onToque = ::toque, onLargo = { menuPagina = ci to it.ref.indice },
+                            rotarAnchas = almacen.rotarAnchas,
+                        )
+                        is ItemVisor.Transicion -> Transicion(
+                            siguiente = it.siguiente,
+                            actual = cap.nombre,
+                            otro = if (it.siguiente) capitulos.getOrNull(ci + 1)?.nombre else capitulos.getOrNull(ci - 1)?.nombre,
+                            modo = modo,
+                            onIr = { if (it.siguiente) irCapitulo(ci + 1, false) else irCapitulo(ci - 1, true) },
+                            onToque = ::toque,
+                        )
+                        null -> Box(Modifier.fillMaxSize())
+                    }
+                }
+                if (modo == ModoVisor.VERTICAL) {
+                    VerticalPager(
+                        state = pager, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1,
+                        key = { i -> claveItem(items.getOrNull(i), i) },
+                    ) { i -> contenido(i) }
+                } else {
+                    HorizontalPager(
+                        state = pager, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1,
+                        reverseLayout = modo == ModoVisor.DERECHA_IZQUIERDA,
+                        key = { i -> claveItem(items.getOrNull(i), i) },
+                    ) { i -> contenido(i) }
+                }
+            }
+            else -> Tira(
+                items = items, lista = lista, cap = cap, capitulos = capitulos, ci = ci,
+                anchoMax = anchoDecodificar, recortar = recortar, filtro = filtro, fondo = fondo,
+                relleno = (conf.screenWidthDp * almacen.rellenoLateral.coerceIn(0, 25) / 100f).dp,
+                separacion = if (modo == ModoVisor.CONTINUO) 14.dp else 0.dp,
+                dobleToque = almacen.dobleToqueZoom,
+                onToque = ::toque,
+                onLargo = { pg -> menuPagina = (if (pg.c >= 0) pg.c else ci) to pg.ref.indice },
+                recarga = recarga,
+                onIr = { sig -> if (sig) irCapitulo(ci + 1, false) else irCapitulo(ci - 1, true) },
+            )
+        }
+
+        // Capa de color (luz cálida, sepia…) sobre las páginas; no intercepta toques.
+        if (almacen.tinte != Tinte.NINGUNO) {
+            Box(Modifier.fillMaxSize().background(colorTinte(almacen.tinte).copy(alpha = almacen.intensidadTinte)))
+        }
+
+        // Biblioteca de animaciones: progreso, hora/batería y confeti al terminar el capítulo.
+        if (n != null && n > 0) {
+            if (Fx.on("scrollprogress")) BarraProgresoScroll((paginaReal + 1f) / n, Modifier.align(Alignment.TopCenter).statusBarsPadding(), MaterialTheme.colorScheme.primary)
+            if (Fx.on("battery") && !barras) RelojBateria(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp).pildoraCristal(CircleShape, sombra = false).padding(horizontal = 10.dp, vertical = 4.dp), color = TintaBarra)
+            val confeti = rememberConfeti()
+            LaunchedEffect(paginaReal) { if (Fx.on("confetti") && n > 1 && paginaReal == n - 1) confeti.disparar() }
+            Confeti(confeti, Modifier.fillMaxSize())
+        }
+
+        // Número de página cuando el menú está oculto.
+        AnimatedVisibility(
+            visible = !barras && n != null && almacen.mostrarNumeroPagina,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
+            enter = entraPildora(), exit = salePildora(),
+        ) {
+            if (Fx.on("nf_page")) NumeroFlowGrupo(paginaReal + 1, n ?: 0, EstiloContador, Modifier.pildoraCristal(CircleShape, sombra = false).padding(horizontal = 14.dp, vertical = 5.dp), TintaBarra)
+            else Text(
+                "${paginaReal + 1} / ${n ?: 0}",
+                style = EstiloContador, color = TintaBarra,
+                modifier = Modifier.pildoraCristal(CircleShape, sombra = false).padding(horizontal = 14.dp, vertical = 5.dp),
+            )
+        }
+        AnimatedVisibility(
+            visible = auto && !barras,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp),
+            enter = entraPildora(), exit = salePildora(),
+        ) {
+            Row(
+                Modifier.pildoraCristal(CircleShape, sombra = false).pressable { auto = false }
+                    .padding(start = 10.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                Spacer(Modifier.width(8.dp))
+                Text("Autodesplazamiento", style = LectorType.Label, color = TintaBarra)
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Rounded.Close, "Detener el autodesplazamiento", tint = SubBarra, modifier = Modifier.size(16.dp))
+            }
+        }
+
+        // ── Barra superior ──
+        AnimatedVisibility(
+            visible = barras, modifier = Modifier.align(Alignment.TopCenter),
+            enter = entraBarra(arriba = true),
+            exit = saleBarra(arriba = true),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BotonRedondo(Icons.Rounded.ArrowBack, "Atrás") { onBack() }
+                Spacer(Modifier.width(10.dp))
+                Column(
+                    Modifier.weight(1f).pildoraCristal(CircleShape).padding(horizontal = 18.dp, vertical = 7.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(cap.nombre, style = LectorType.Section.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold), color = TintaBarra, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(titulo, style = LectorType.Label.copy(fontSize = 12.sp), color = SubBarra, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.width(10.dp))
+                acciones.alternarMarca?.let { alternar ->
+                    val marcado = acciones.estaMarcado?.invoke(ci) == true
+                    BotonRedondo(if (marcado) Iconos.Marca else Iconos.MarcaBorde, if (marcado) "Quitar marca" else "Marcar capítulo", activo = marcado) { alternar(ci) }
+                } ?: acciones.urlWeb?.let { url ->
+                    BotonRedondo(Icons.Rounded.Share, "Compartir enlace") {
+                        val u = url(ci)
+                        if (u == null) Avisos.mostrar("Este capítulo no tiene dirección web")
+                        else compartirTexto(ctx, "$titulo - ${cap.nombre}\n$u")
+                    }
+                }
+            }
+        }
+
+        // ── Barra inferior: avance + acciones ──
+        AnimatedVisibility(
+            visible = barras, modifier = Modifier.align(Alignment.BottomCenter),
+            enter = entraBarra(arriba = false),
+            exit = saleBarra(arriba = false),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                val rtl = modo == ModoVisor.DERECHA_IZQUIERDA
+                Row(
+                    Modifier.fillMaxWidth().pildoraCristal(CircleShape).padding(6.dp)
+                        .graphicsLayer { if (rtl) scaleX = -1f },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val girar = Modifier.graphicsLayer { if (rtl) scaleX = -1f }
+                    BotonCapitulo(Icons.Rounded.KeyboardArrowLeft, "Capítulo anterior", hayAnterior, girar) { irCapitulo(ci - 1, false) }
+                    Spacer(Modifier.width(8.dp))
+                    Row(
+                        Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val tot = n ?: 0
+                        Text(
+                            "${if (tot > 0) paginaReal + 1 else 0} / $tot", style = EstiloContador, color = TintaBarra,
+                            modifier = girar.widthIn(min = 56.dp).padding(horizontal = 4.dp),
+                            textAlign = TextAlign.Center, maxLines = 1,
+                        )
+                        if (tot > 1) {
+                            var arrastre by remember { mutableStateOf<Float?>(null) }
+                            var ultimaP by remember { mutableIntStateOf(-1) }
+                            DeslizadorExpresivo(
+                                valor = arrastre ?: paginaReal.toFloat(),
+                                onCambio = {
+                                    arrastre = it
+                                    // Solo al cambiar de página (no en cada píxel), con un toque háptico como Komikku.
+                                    val p = it.roundToInt()
+                                    if (ultimaP == -1) ultimaP = paginaReal
+                                    if (p != ultimaP) { ultimaP = p; Tacto.tic(); irAPagina(p) }
+                                },
+                                alTerminar = { arrastre = null; ultimaP = -1 },
+                                rango = 0f..(tot - 1).toFloat(),
+                                modifier = Modifier.weight(1f).padding(start = 10.dp, end = 4.dp),
+                            )
+                        } else Spacer(Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    BotonCapitulo(Icons.Rounded.KeyboardArrowRight, "Capítulo siguiente", haySiguiente, girar) { irCapitulo(ci + 1, false) }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.pildoraCristal(CircleShape).padding(horizontal = 6.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (capitulos.size > 1) AccionVisor(Icons.Rounded.List, "Capítulos") { dialogoCaps = true }
+                    // WebView del capítulo que estás leyendo (en lugar de la reproducción automática).
+                    if (acciones.urlWeb != null) AccionVisor(Icons.Rounded.ArrowForward, "WebView") {
+                        val u = acciones.urlWeb.invoke(ci)
+                        if (u == null) Avisos.mostrar("Este capítulo no tiene dirección web") else webCap = u
+                    }
+                    AccionVisor(Icons.Rounded.Refresh, "Recargar") { CacheVisor.vaciar(); recarga++ }
+                    acciones.urlWeb?.takeIf { acciones.alternarMarca != null }?.let { url ->
+                        AccionVisor(Icons.Rounded.Share, "Compartir") {
+                            val u = url(ci)
+                            if (u == null) Avisos.mostrar("Este capítulo no tiene dirección web") else compartirTexto(ctx, "$titulo - ${cap.nombre}\n$u")
+                        }
+                    }
+                    AccionVisor(Icons.Rounded.Settings, "Ajustes del lector") { hoja = true }
+                }
+            }
+        }
+    }
+
+    // Al volver del WebView se recargan las páginas (por si se pasó un captcha o Cloudflare).
+    CapaEncima(webCap) { u -> WebViewScreen(u, titulo, acciones.cabecerasWeb) { webCap = null; CacheVisor.vaciar(); recarga++ } }
+
+    if (hoja) {
+        HojaLector({ hoja = false }) {
+            Column(Modifier.fillMaxWidth().heightIn(max = (conf.screenHeightDp * 0.75f).dp).verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Ajustes del lector", style = LectorType.Section.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold), color = LectorColors.Text)
+                        Text(nombreModoVisor(modo), style = LectorType.Label, color = LectorColors.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    BotonRedondoTema(Icons.Rounded.Close, "Cerrar", { hoja = false })
+                }
+                run {
+                    AjustesVisorContenido(
+                        almacen = almacen,
+                        modoActual = modo,
+                        paraSerie = claveSerie != null,
+                        alElegirModo = { m, soloSerie ->
+                            modo = m
+                            if (soloSerie && claveSerie != null) almacen.guardarModoVisor(claveSerie, m)
+                            else { almacen.modoVisor = m; if (claveSerie != null) almacen.guardarModoVisor(claveSerie, null) }
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    if (dialogoCaps) {
+        DialogoAlerta(
+            onDismissRequest = { dialogoCaps = false },
+            title = { Text("Capítulos") },
+            text = {
+                val estado = rememberLazyListState(initialFirstVisibleItemIndex = (ci - 3).coerceAtLeast(0))
+                val acento = MaterialTheme.colorScheme.primary
+                LazyColumn(Modifier.heightIn(max = 440.dp), state = estado, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    itemsIndexed(capitulos, key = { _, c -> c.clave }) { i, c ->
+                        val leido = acciones.esLeido?.invoke(i) == true
+                        val esActual = i == ci
+                        Row(
+                            Modifier.fillMaxWidth().pressableCon(0.98f) { irCapitulo(i, false); dialogoCaps = false }
+                                .clip(SuaveShape(16.dp)).background(if (esActual) acento.copy(alpha = 0.16f) else Color.Transparent)
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.size(8.dp).clip(CircleShape).background(
+                                    when { esActual -> acento; leido -> Color.Transparent; else -> LectorColors.Muted.copy(alpha = 0.5f) },
+                                ),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                c.nombre, Modifier.weight(1f),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = LectorType.Body,
+                                fontWeight = if (esActual) FontWeight.Bold else FontWeight.SemiBold,
+                                color = if (esActual) acento else if (leido) LectorColors.Muted.copy(alpha = 0.7f) else LectorColors.Text,
+                            )
+                            if (esActual) {
+                                Spacer(Modifier.width(8.dp))
+                                Text("Leyendo", style = LectorType.Label, color = acento)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { BotonExpresivo("Cerrar", null, { dialogoCaps = false }, estilo = EstiloBoton.TEXTO, alto = 40.dp) },
+        )
+    }
+
+    menuPagina?.let { (cm, p) ->
+        val capMenu = capitulos.getOrNull(cm) ?: cap
+        MenuPagina(
+            ctx = ctx, origen = capMenu.origen, pagina = p, titulo = "$titulo - ${capMenu.nombre}",
+            usarComoPortada = acciones.usarComoPortada,
+            onCerrar = { menuPagina = null },
+        )
+    }
+}
+
+private fun claveItem(i: ItemVisor?, pos: Int): Any = when (i) {
+    is ItemVisor.Pagina -> "p${i.c}_${i.ref.indice}_${i.ref.mitad}"
+    // La transición de arriba usa la clave que tendrá la unión con el capítulo anterior: al añadirlo, no salta.
+    is ItemVisor.Transicion -> if (i.siguiente || i.c < 0) (if (i.siguiente) "t_sig${i.c}" else "t_ant") else "t_sig${i.c - 1}"
+    null -> "x$pos"
+}
+
+// Las barras del lector siguen el tema (claro/oscuro) y el estilo de superficie de Apariencia, como el resto de la app.
+private val ColorBarra: Color
+    get() = when (Aspecto.superficie) {
+        Superficie.SOLIDO -> LectorColors.Cristal
+        Superficie.LIQUIDO -> LectorColors.Cristal.copy(alpha = 0.62f)
+        Superficie.CRISTAL -> LectorColors.Cristal.copy(alpha = 0.92f)
+    }
+private val BordeBarra: Color
+    get() = when {
+        Aspecto.superficie == Superficie.LIQUIDO -> Color.White.copy(alpha = if (TemaActual.oscuro) 0.33f else 0.8f)
+        else -> LectorColors.Linea
+    }
+private val TintaBarra: Color get() = LectorColors.Text
+private val SubBarra: Color get() = LectorColors.Muted
+
+// Formas y colores fijos del lector (constantes: nada se reserva en cada fotograma).
+private val FormaBarra = SuaveShape(28.dp)
+private val FormaTarjeta = SuaveShape(28.dp)
+private val FormaEsqueleto = SuaveShape(24.dp)
+private val GrisNeutro = Color(0xFF9A9AA0)
+private val ColorEsqueleto = Color(0x1F8E8E93)
+private val EstiloContador = LectorType.Label.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
+
+/** Píldora de cristal flotante: tinte de la barra, línea finísima y una sombra suave (salvo en «Líquido»). */
+@Composable
+private fun Modifier.pildoraCristal(forma: Shape, sombra: Boolean = true): Modifier {
+    val conSombra = sombra && Aspecto.superficie != Superficie.LIQUIDO
+    return this
+        .then(if (conSombra) Modifier.shadow(10.dp, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.28f)) else Modifier)
+        .clip(forma).background(ColorBarra).border(1.dp, BordeBarra, forma)
+}
+
+// Barras: entran deslizándose con el muelle espacial (algo de rebote) y salen con uno sin rebote.
+private fun entraBarra(arriba: Boolean): EnterTransition =
+    if (Mov.reducido) fadeIn(tween(120))
+    else fadeIn(Muelles.efectosLento()) + slideInVertically(Muelles.espacial()) { if (arriba) -it else it } +
+        scaleIn(Muelles.espacial(), initialScale = 0.94f, transformOrigin = TransformOrigin(0.5f, if (arriba) 0f else 1f))
+
+private fun saleBarra(arriba: Boolean): ExitTransition =
+    if (Mov.reducido) fadeOut(tween(100))
+    else fadeOut(Muelles.efectos()) + slideOutVertically(Muelles.efectosLento()) { if (arriba) -it else it } +
+        scaleOut(Muelles.efectosLento(), targetScale = 0.96f, transformOrigin = TransformOrigin(0.5f, if (arriba) 0f else 1f))
+
+private fun entraPildora(): EnterTransition =
+    if (Mov.reducido) fadeIn(tween(120)) else fadeIn(Muelles.efectosLento()) + scaleIn(Muelles.espacial(), initialScale = 0.85f)
+
+private fun salePildora(): ExitTransition =
+    if (Mov.reducido) fadeOut(tween(100)) else fadeOut(Muelles.efectos()) + scaleOut(Muelles.efectos(), targetScale = 0.9f)
+
+/** Botón redondo tonal de 48 dp; [activo] lo pinta con el acento tonal. */
+@Composable
+private fun BotonRedondo(icono: ImageVector, desc: String, activo: Boolean = false, onClick: () -> Unit) {
+    val acento = MaterialTheme.colorScheme.primary
+    val fondo by animateColorAsState(if (activo) acento.copy(alpha = 0.2f) else Color.Transparent, Muelles.efectos(), label = "fondoBoton")
+    Box(Modifier.size(48.dp).pressable(onClick).pildoraCristal(CircleShape).background(fondo), Alignment.Center) {
+        Icon(icono, desc, tint = if (activo) acento else TintaBarra, modifier = Modifier.size(22.dp))
+    }
+}
+
+@Composable
+private fun BotonCapitulo(
+    icono: ImageVector, desc: String, activo: Boolean, extra: Modifier, onClick: () -> Unit,
+) {
+    Box(
+        Modifier.size(48.dp).then(if (activo) Modifier.pressable(onClick) else Modifier)
+            .graphicsLayer { alpha = if (activo) 1f else 0.38f }
+            .clip(CircleShape),
+        Alignment.Center,
+    ) { Icon(icono, desc, tint = TintaBarra, modifier = extra.size(26.dp)) }
+}
+
+/** Acción de la barra inferior (cápsula de herramientas): icono de 48 dp sin rótulo, como las barras de iOS. */
+@Composable
+private fun AccionVisor(icono: ImageVector, texto: String, onClick: () -> Unit) {
+    Box(Modifier.size(48.dp).clip(CircleShape).pressable(onClick), Alignment.Center) {
+        Icon(icono, texto, tint = TintaBarra, modifier = Modifier.size(23.dp))
+    }
+}
+
+/** Esqueleto de una página que aún carga: bloque redondeado con el indicador y el número de página. */
+@Composable
+private fun EsqueletoPagina(numero: Int, modifier: Modifier) {
+    Box(modifier.clip(FormaEsqueleto).background(ColorEsqueleto), Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            IndicadorCarga(Modifier.size(40.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f), estado = com.example.lector.ui.orbes.EstadoOrbe.BREATHING)
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "$numero", style = EstiloContador, color = GrisNeutro,
+                modifier = Modifier.clip(CircleShape).background(ColorEsqueleto).padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+/** Tarjeta de error de una página con su botón «Reintentar». */
+@Composable
+private fun FalloPagina(numero: Int, mensaje: String, onReintentar: () -> Unit) {
+    Column(
+        Modifier.padding(24.dp).widthIn(max = 380.dp).fillMaxWidth().clip(FormaTarjeta).background(LectorColors.Card)
+            .border(1.dp, LectorColors.Linea, FormaTarjeta).padding(horizontal = 22.dp, vertical = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(48.dp).clip(CircleShape).background(LectorColors.Error.copy(alpha = 0.16f)), Alignment.Center) {
+            Icon(Icons.Rounded.Warning, null, tint = LectorColors.Error, modifier = Modifier.size(24.dp))
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("Página $numero", style = LectorType.Section.copy(fontWeight = FontWeight.Bold), color = LectorColors.Text)
+        Spacer(Modifier.height(4.dp))
+        Text(mensaje, style = LectorType.Label, color = LectorColors.Muted, textAlign = TextAlign.Center, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(16.dp))
+        BotonExpresivo("Reintentar", Icons.Rounded.Refresh, onReintentar, estilo = EstiloBoton.RELLENO)
+    }
+}
+
+/** Tarjeta de paso entre capítulos (paginado y tira): sin botones, la lectura sigue sola. */
+@Composable
+private fun TarjetaTransicion(siguiente: Boolean, actual: String, otro: String?, modifier: Modifier = Modifier) {
+    val falta = remember(actual, otro) { if (otro == null) 0 else huecoCapitulos(actual, otro) }
+    val acento = MaterialTheme.colorScheme.primary
+    val nombre = LectorType.Section.copy(fontSize = 19.sp, lineHeight = 25.sp, fontWeight = FontWeight.Bold)
+    Column(
+        modifier.widthIn(max = 440.dp).fillMaxWidth().clip(FormaTarjeta).background(LectorColors.Card)
+            .border(1.dp, LectorColors.Linea, FormaTarjeta).padding(horizontal = 24.dp, vertical = 24.dp),
+    ) {
+        Text(if (siguiente) "Finalizado" else "Actual", style = LectorType.Label, color = LectorColors.Muted)
+        Spacer(Modifier.height(4.dp))
+        Text(actual, style = nombre, color = LectorColors.Text, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.padding(vertical = 18.dp).fillMaxWidth().height(1.dp).background(LectorColors.Linea))
+        if (otro != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (siguiente) Icons.Rounded.ArrowForward else Icons.Rounded.ArrowBack, null, tint = acento, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (siguiente) "Siguiente:" else "Anterior:", style = LectorType.Label.copy(fontWeight = FontWeight.Bold), color = acento)
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(otro, style = nombre, color = LectorColors.Text, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            // Como Komikku: avisa si entre los dos capítulos faltan algunos.
+            if (falta > 0) {
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    Modifier.clip(CircleShape).background(LectorColors.Error.copy(alpha = 0.14f)).padding(start = 10.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Warning, null, tint = LectorColors.Error, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Faltan $falta capítulo${if (falta > 1) "s" else ""}", style = LectorType.Label, color = LectorColors.Error)
+                }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (siguiente) Icons.Rounded.CheckCircle else Icons.Rounded.Info, null, tint = LectorColors.Muted, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (siguiente) "No hay más capítulos" else "Es el primer capítulo", style = LectorType.Body, color = LectorColors.Muted)
+            }
+        }
+    }
+}
+
+// ───────────────────── Páginas en los modos paginados ─────────────────────
+
+@Composable
+private fun PaginaPaginada(
+    origen: OrigenPaginas, ref: RefPagina, anchoMax: Int, recortar: Boolean, escala: EscalaPagina,
+    filtro: ColorFilter?, dobleToque: Boolean, detectarAncha: Boolean,
+    onAncha: () -> Unit, onToque: (Offset, IntSize) -> Unit, onLargo: () -> Unit,
+    rotarAnchas: Boolean = false,
+) {
+    // Girar las páginas anchas: al ver que lo es, se vuelve a pedir girada (mitad 3).
+    var girada by remember(origen.id, ref.indice) { mutableStateOf(false) }
+    val mitadReal = if (girada && ref.mitad == 0) 3 else ref.mitad
+    val clave = CacheVisor.clave(origen, ref.indice, mitadReal, anchoMax, recortar)
+    var pag by remember(clave) { mutableStateOf(CacheVisor.enMemoria(clave)) }
+    var fallo by remember(clave) { mutableStateOf<String?>(null) }
+    var intento by remember(clave) { mutableIntStateOf(0) }
+    LaunchedEffect(clave, intento) {
+        if (pag == null) {
+            fallo = null
+            try {
+                pag = CacheVisor.obtener(origen, ref.indice, mitadReal, anchoMax, recortar)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fallo = e.message ?: "Error al cargar la página"
+            }
+        }
+        val p = pag
+        if (p != null && rotarAnchas && !detectarAncha && mitadReal == 0 && p.ancha) girada = true
+        if (p != null && detectarAncha && ref.mitad == 0 && p.ancha) onAncha()
+    }
+
+    val p = pag
+    when {
+        p == null -> Box(
+            Modifier.fillMaxSize().pointerInput(clave, fallo) {
+                detectTapGestures(onTap = { if (fallo != null) intento++ else onToque(it, size) }, onLongPress = { onLargo() })
+            },
+            Alignment.Center,
+        ) {
+            if (fallo == null) EsqueletoPagina(ref.indice + 1, Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 64.dp))
+            else FalloPagina(ref.indice + 1, fallo ?: "") { intento++ }
+        }
+        p.partes.size == 1 && escala != EscalaPagina.AJUSTAR_ANCHO ->
+            ZoomPagina(p, escala, filtro, dobleToque, onToque, onLargo)
+        else -> {
+            // Ajustar al ancho (o página muy alta): se desplaza dentro de la página.
+            Box(
+                Modifier.fillMaxSize().pointerInput(clave) {
+                    detectTapGestures(onTap = { onToque(it, size) }, onLongPress = { onLargo() })
+                }
+            ) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
+                    p.partes.forEach { Image(it, null, Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth, colorFilter = filtro) }
+                }
+            }
+        }
+    }
+}
+
+private const val ZOOM_MAXIMO = 5f
+private const val ZOOM_DOBLE_TOQUE = 2.5f
+
+/** Página con zoom (pellizco y doble toque). Con zoom, al llegar al borde se deja pasar el gesto al paginador. */
+@Composable
+private fun ZoomPagina(
+    p: PaginaLista, escalaModo: EscalaPagina, filtro: ColorFilter?, dobleToque: Boolean,
+    onToque: (Offset, IntSize) -> Unit, onLargo: () -> Unit,
+) {
+    var escala by remember(p) { mutableFloatStateOf(1f) }
+    var desplazamiento by remember(p) { mutableStateOf(Offset.Zero) }
+    val contentScale = when (escalaModo) {
+        EscalaPagina.AJUSTAR -> ContentScale.Fit
+        EscalaPagina.AJUSTAR_ALTO -> ContentScale.FillHeight
+        EscalaPagina.ORIGINAL -> ContentScale.None
+        EscalaPagina.AJUSTAR_ANCHO -> ContentScale.FillWidth
+    }
+    Box(
+        Modifier.fillMaxSize()
+            .pointerInput(p, dobleToque) {
+                detectTapGestures(
+                    onTap = { onToque(it, size) },
+                    onLongPress = { onLargo() },
+                    onDoubleTap = if (!dobleToque) null else { t ->
+                        if (escala > 1f) {
+                            escala = 1f; desplazamiento = Offset.Zero
+                        } else {
+                            val centro = Offset(size.width / 2f, size.height / 2f)
+                            escala = ZOOM_DOBLE_TOQUE
+                            desplazamiento = limitar((centro - t) * (escala - 1f), escala, size)
+                        }
+                    },
+                )
+            }
+            // Pellizco y arrastre. Con un dedo y sin zoom no se consume nada: el paginador pasa de página.
+            .pointerInput(p) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val ev = awaitPointerEvent()
+                        val dedos = ev.changes.count { it.pressed }
+                        if (dedos >= 2 || escala > 1f) {
+                            val zoom = ev.calculateZoom()
+                            val pan = ev.calculatePan()
+                            val centro = Offset(size.width / 2f, size.height / 2f)
+                            val foco = ev.calculateCentroid() - centro
+                            val nueva = (escala * zoom).coerceIn(1f, ZOOM_MAXIMO)
+                            val z = nueva / escala
+                            val deseado = desplazamiento * z + foco * (1f - z) + pan
+                            val limitado = limitar(deseado, nueva, size)
+                            // Un dedo, con zoom, empujando contra el borde: se deja pasar para cambiar de página.
+                            val contraBorde = dedos == 1 && abs(pan.x) > abs(pan.y) && abs(limitado.x - desplazamiento.x) < 0.5f && zoom == 1f
+                            desplazamiento = limitado
+                            escala = nueva
+                            if (!contraBorde) ev.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                    } while (ev.changes.any { it.pressed })
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            bitmap = p.partes[0], contentDescription = null, contentScale = contentScale, colorFilter = filtro,
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                scaleX = escala; scaleY = escala
+                translationX = desplazamiento.x; translationY = desplazamiento.y
+            },
+        )
+    }
+}
+
+// Evita que la imagen se arrastre más allá de sus bordes al ampliarla.
+private fun limitar(desplazamiento: Offset, escala: Float, tamano: IntSize): Offset {
+    val maxX = tamano.width * (escala - 1f) / 2f
+    val maxY = tamano.height * (escala - 1f) / 2f
+    return Offset(desplazamiento.x.coerceIn(-maxX, maxX), desplazamiento.y.coerceIn(-maxY, maxY))
+}
+
+/** Página de transición entre capítulos (como la de Komikku). Arrastrar otra vez hacia delante cambia de capítulo. */
+@Composable
+private fun Transicion(
+    siguiente: Boolean, actual: String, otro: String?, modo: ModoVisor,
+    onIr: () -> Unit, onToque: (Offset, IntSize) -> Unit,
+) {
+    val umbral = with(LocalDensity.current) { 60.dp.toPx() }
+    Box(
+        Modifier.fillMaxSize()
+            .pointerInput(siguiente, otro) { detectTapGestures(onTap = { onToque(it, size) }) }
+            .pointerInput(siguiente, otro, modo) {
+                if (otro == null) return@pointerInput
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var acumulado = Offset.Zero
+                    do {
+                        val ev = awaitPointerEvent()
+                        val c = ev.changes.firstOrNull() ?: break
+                        acumulado += c.position - c.previousPosition
+                        // Hacia delante: ← en cómic, → en manga, ↑ en vertical (al revés en la transición anterior).
+                        val avance = when (modo) {
+                            ModoVisor.DERECHA_IZQUIERDA -> acumulado.x
+                            ModoVisor.VERTICAL -> -acumulado.y
+                            else -> -acumulado.x
+                        }
+                        val haciaDondeToca = if (siguiente) avance else -avance
+                        if (haciaDondeToca > 0) c.consume() // en el sentido contrario lo maneja el paginador
+                        if (haciaDondeToca > umbral) { onIr(); break }
+                    } while (ev.changes.any { it.pressed })
+                }
+            },
+        Alignment.Center,
+    ) {
+        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            TarjetaTransicion(siguiente, actual, otro)
+            if (otro != null) {
+                Spacer(Modifier.height(14.dp))
+                Text("Desliza para continuar", color = GrisNeutro.copy(alpha = 0.7f), style = LectorType.Label)
+            }
+        }
+    }
+}
+
+// ───────────────────── Tira vertical (webtoon / continuo) ─────────────────────
+
+@Composable
+private fun Tira(
+    items: List<ItemVisor>, lista: androidx.compose.foundation.lazy.LazyListState,
+    cap: CapVisor, capitulos: List<CapVisor>, ci: Int,
+    anchoMax: Int, recortar: Boolean, filtro: ColorFilter?, fondo: Color, relleno: Dp, separacion: Dp,
+    dobleToque: Boolean,
+    onToque: (Offset, IntSize) -> Unit, onLargo: (ItemVisor.Pagina) -> Unit, onIr: (Boolean) -> Unit,
+    recarga: Int = 0,
+) {
+    // Zoom de toda la tira (pellizco o doble toque) con desplazamiento lateral.
+    var escala by remember { mutableFloatStateOf(1f) }
+    var panX by remember { mutableFloatStateOf(0f) }
+    var ancho by remember { mutableIntStateOf(1) }
+    Box(
+        Modifier.fillMaxSize()
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    do {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        val dedos = ev.changes.count { it.pressed }
+                        if (dedos >= 2) {
+                            escala = (escala * ev.calculateZoom()).coerceIn(1f, 3f)
+                        }
+                        if (escala > 1f) {
+                            val max = ancho * (escala - 1f) / 2f
+                            panX = (panX + ev.calculatePan().x).coerceIn(-max, max)
+                        } else panX = 0f
+                    } while (ev.changes.any { it.pressed })
+                }
+            }
+            .pointerInput(dobleToque, items.size) {
+                detectTapGestures(
+                    onTap = { onToque(it, size) },
+                    onDoubleTap = if (!dobleToque) null else { t ->
+                        if (escala > 1f) { escala = 1f; panX = 0f } else {
+                            escala = 2f
+                            panX = ((size.width / 2f - t.x) * (escala - 1f)).coerceIn(-size.width / 2f, size.width / 2f)
+                        }
+                    },
+                    onLongPress = { pos ->
+                        // ¿Qué página hay bajo el dedo?
+                        val y = pos.y.roundToInt()
+                        val info = lista.layoutInfo.visibleItemsInfo.firstOrNull { y >= it.offset && y < it.offset + it.size }
+                        (items.getOrNull(info?.index ?: -1) as? ItemVisor.Pagina)?.let { onLargo(it) }
+                    },
+                )
+            }
+    ) {
+        LazyColumn(
+            state = lista,
+            modifier = Modifier.fillMaxSize()
+                .onSizeChanged { ancho = it.width.coerceAtLeast(1) }
+                .graphicsLayer {
+                    scaleX = escala; scaleY = escala; translationX = panX
+                    transformOrigin = TransformOrigin(0.5f, 0.5f)
+                },
+            contentPadding = PaddingValues(horizontal = relleno),
+            verticalArrangement = Arrangement.spacedBy(separacion),
+        ) {
+            items(items.size, key = { claveItem(items.getOrNull(it), it) }, contentType = { if (items.getOrNull(it) is ItemVisor.Pagina) 0 else 1 }) { i ->
+                when (val it = items[i]) {
+                    is ItemVisor.Pagina -> PaginaTira((capitulos.getOrNull(it.c) ?: cap).origen, it.ref.indice, anchoMax, recortar, filtro, fondo, recarga)
+                    is ItemVisor.Transicion -> {
+                        val este = capitulos.getOrNull(it.c) ?: cap
+                        val k = if (it.c >= 0) it.c else ci
+                        val otro = if (it.siguiente) capitulos.getOrNull(k + 1)?.nombre else capitulos.getOrNull(k - 1)?.nombre
+                        Column(
+                            Modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 24.dp).navigationBarsPadding(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            TarjetaTransicion(it.siguiente, este.nombre, otro)
+                            if (it.siguiente && otro == null) Spacer(Modifier.height(160.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaginaTira(origen: OrigenPaginas, indice: Int, anchoMax: Int, recortar: Boolean, filtro: ColorFilter?, fondo: Color, recarga: Int = 0) {
+    val clave = CacheVisor.clave(origen, indice, 0, anchoMax, recortar)
+    // [recarga]: al volver del WebView (Cloudflare) las páginas que fallaron se vuelven a pedir solas.
+    var pag by remember(clave, recarga) { mutableStateOf(CacheVisor.enMemoria(clave)) }
+    var fallo by remember(clave, recarga) { mutableStateOf<String?>(null) }
+    var intento by remember(clave, recarga) { mutableIntStateOf(0) }
+    LaunchedEffect(clave, intento, recarga) {
+        if (pag != null) return@LaunchedEffect
+        fallo = null
+        try {
+            pag = CacheVisor.obtener(origen, indice, 0, anchoMax, recortar)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            fallo = e.message ?: "Error al cargar la página"
+        }
+    }
+    val p = pag
+    if (p != null) {
+        Column(Modifier.fillMaxWidth()) {
+            p.partes.forEach { Image(it, null, Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth, colorFilter = filtro) }
+        }
+    } else {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(1f / CacheVisor.proporcion).background(fondo)
+                .then(if (fallo != null) Modifier.clickable { intento++ } else Modifier),
+            Alignment.Center,
+        ) {
+            if (fallo == null) EsqueletoPagina(indice + 1, Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp))
+            else FalloPagina(indice + 1, fallo ?: "") { intento++ }
+        }
+    }
+}
+
+// ───────────────────── Menú de una página (mantener pulsado) ─────────────────────
+
+@Composable
+private fun MenuPagina(
+    ctx: Context, origen: OrigenPaginas, pagina: Int, titulo: String,
+    usarComoPortada: (suspend (ByteArray) -> Unit)?, onCerrar: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var trabajando by remember { mutableStateOf(false) }
+    fun conBytes(accion: suspend (ByteArray) -> Unit) {
+        if (trabajando) return
+        trabajando = true
+        scope.launch {
+            val bytes = runCatching { origen.bytes(pagina) }.getOrNull()
+            if (bytes == null) Avisos.mostrar("No se pudo leer la página")
+            else runCatching { accion(bytes) }.onFailure { Avisos.mostrar(it.message ?: "No se pudo completar") }
+            trabajando = false
+            onCerrar()
+        }
+    }
+    DialogoAlerta(
+        onDismissRequest = onCerrar,
+        title = { Text("Página ${pagina + 1}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (trabajando) Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), Arrangement.Center, Alignment.CenterVertically) {
+                    IndicadorCarga(Modifier.size(32.dp), estado = com.example.lector.ui.orbes.EstadoOrbe.WORKING)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Preparando la página…", style = LectorType.Body, color = LectorColors.Muted)
+                }
+                else {
+                    OpcionPagina(Icons.Rounded.Share, "Compartir página") { conBytes { compartirImagen(ctx, it, titulo) } }
+                    OpcionPagina(Icons.Rounded.Add, "Copiar al portapapeles") { conBytes { copiarImagen(ctx, it) } }
+                    OpcionPagina(Iconos.Descargar, "Guardar en el teléfono") { conBytes { Avisos.mostrar(guardarImagen(ctx, it, titulo, pagina)) } }
+                    if (usarComoPortada != null) {
+                        OpcionPagina(Icons.Rounded.Star, "Usar como portada") { conBytes { usarComoPortada(it); Avisos.mostrar("Portada cambiada") } }
+                    }
+                }
+            }
+        },
+        confirmButton = { BotonExpresivo("Cerrar", null, onCerrar, estilo = EstiloBoton.TEXTO, alto = 40.dp) },
+    )
+}
+
+/** Opción del menú de página: fila tipo tarjeta con el icono en un círculo tonal. */
+@Composable
+private fun OpcionPagina(icono: ImageVector, texto: String, onClick: () -> Unit) {
+    val acento = MaterialTheme.colorScheme.primary
+    Row(
+        Modifier.fillMaxWidth().pressableCon(0.98f, onClick).clip(SuaveShape(18.dp)).background(LectorColors.CardHigh)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(acento.copy(alpha = 0.18f)), Alignment.Center) {
+            Icon(icono, null, tint = acento, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Text(texto, style = LectorType.Body.copy(fontSize = 15.sp), color = LectorColors.Text)
+    }
+}
+
+private fun extensionImagen(b: ByteArray): String = when {
+    b.size > 4 && b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() -> "png"
+    b.size > 12 && b[0] == 'R'.code.toByte() && b[8] == 'W'.code.toByte() -> "webp"
+    b.size > 3 && b[0] == 'G'.code.toByte() && b[1] == 'I'.code.toByte() -> "gif"
+    else -> "jpg"
+}
+
+private fun mimeDe(ext: String) = when (ext) { "png" -> "image/png"; "webp" -> "image/webp"; "gif" -> "image/gif"; else -> "image/jpeg" }
+
+/** Copia una imagen al portapapeles (como «Copy to clipboard» del lector de Mihon). */
+suspend fun copiarImagen(ctx: Context, bytes: ByteArray) {
+    val ext = extensionImagen(bytes)
+    val archivo = withContext(Dispatchers.IO) {
+        File(File(ctx.cacheDir, "compartir").apply { mkdirs() }, "copiada.$ext").apply { writeBytes(bytes) }
+    }
+    val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.archivos", archivo)
+    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    cm.setPrimaryClip(android.content.ClipData.newUri(ctx.contentResolver, "Página", uri))
+    if (android.os.Build.VERSION.SDK_INT < 33) Avisos.mostrar("Página copiada")
+}
+
+/** Comparte una imagen con otras apps (vía FileProvider). */
+suspend fun compartirImagen(ctx: Context, bytes: ByteArray, texto: String) {
+    val ext = extensionImagen(bytes)
+    val archivo = withContext(Dispatchers.IO) {
+        File(File(ctx.cacheDir, "compartir").apply { mkdirs() }, "pagina.$ext").apply { writeBytes(bytes) }
+    }
+    val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.archivos", archivo)
+    val envio = Intent(Intent.ACTION_SEND).setType(mimeDe(ext))
+        .putExtra(Intent.EXTRA_STREAM, uri).putExtra(Intent.EXTRA_TEXT, texto)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    ctx.startActivity(Intent.createChooser(envio, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+}
+
+fun compartirTexto(ctx: Context, texto: String) {
+    val envio = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, texto)
+    runCatching { ctx.startActivity(Intent.createChooser(envio, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+/** Guarda una imagen en Imágenes/Lector (Android 10+) o en la carpeta de la app. Devuelve el aviso para el usuario. */
+suspend fun guardarImagen(ctx: Context, bytes: ByteArray, titulo: String, pagina: Int): String = withContext(Dispatchers.IO) {
+    val ext = extensionImagen(bytes)
+    val nombre = (titulo.replace(Regex("[^\\p{L}\\p{N} ._-]"), "").take(60).trim().ifBlank { "pagina" }) + " - ${pagina + 1}.$ext"
+    if (Build.VERSION.SDK_INT >= 29) {
+        val valores = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, nombre)
+            put(MediaStore.Images.Media.MIME_TYPE, mimeDe(ext))
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Lector")
+        }
+        val uri: Uri = ctx.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, valores)
+            ?: error("No se pudo crear la imagen")
+        ctx.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: error("No se pudo escribir la imagen")
+        "Guardada en Imágenes/Lector"
+    } else {
+        val dir = File(ctx.getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES), "Lector").apply { mkdirs() }
+        File(dir, nombre).writeBytes(bytes)
+        "Guardada en ${dir.path}"
+    }
+}
+
+// ───────────────────── Pantalla: barras del sistema, brillo, orientación, filtros ─────────────────────
+
+// Oculta las barras del sistema (estado y navegación) mientras `oculta` sea true. Al salir, las vuelve a mostrar.
+@Composable
+fun PantallaCompleta(oculta: Boolean) {
+    val vista = LocalView.current
+    DisposableEffect(oculta) {
+        val ventana = (vista.context as? Activity)?.window
+        val control: WindowInsetsControllerCompat? =
+            if (ventana != null) WindowCompat.getInsetsController(ventana, vista) else null
+        if (oculta) {
+            control?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            control?.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            control?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { control?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+}
+
+// Mantiene la pantalla encendida mientras lees.
+@Composable
+fun PantallaEncendida(activa: Boolean) {
+    val vista = LocalView.current
+    DisposableEffect(activa) {
+        vista.keepScreenOn = activa
+        onDispose { vista.keepScreenOn = false }
+    }
+}
+
+// Avisa a la actividad de que debe interceptar las teclas de volumen.
+@Composable
+fun TeclasVolumen(activas: Boolean) {
+    DisposableEffect(activas) {
+        Teclas.activo = activas
+        onDispose { Teclas.activo = false }
+    }
+}
+
+// Matriz de color para escala de grises y/o colores invertidos (null si no hay ninguno).
+fun construirFiltro(grises: Boolean, invertir: Boolean): ColorFilter? {
+    if (!grises && !invertir) return null
+    val matriz = ColorMatrix()
+    if (grises) matriz.setToSaturation(0f)
+    if (invertir) {
+        matriz *= ColorMatrix(
+            floatArrayOf(
+                -1f, 0f, 0f, 0f, 255f,
+                0f, -1f, 0f, 0f, 255f,
+                0f, 0f, -1f, 0f, 255f,
+                0f, 0f, 0f, 1f, 0f,
+            ),
+        )
+    }
+    return ColorFilter.colorMatrix(matriz)
+}
+
+// Orientación y brillo propios mientras el visor está abierto. Al salir se restauran.
+@Composable
+fun AjustesPantalla(almacen: Almacen) {
+    val vista = LocalView.current
+    val actividad = vista.context as? Activity
+
+    DisposableEffect(almacen.orientacion) {
+        actividad?.requestedOrientation = when (almacen.orientacion) {
+            Orientacion.LIBRE -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            Orientacion.VERTICAL -> ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+            Orientacion.HORIZONTAL -> ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+        }
+        onDispose { actividad?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+    }
+
+    DisposableEffect(almacen.brilloPersonalizado, almacen.brillo) {
+        val ventana = actividad?.window
+        if (ventana != null) {
+            val atributos = ventana.attributes
+            atributos.screenBrightness = if (almacen.brilloPersonalizado) almacen.brillo.coerceIn(0.01f, 1f)
+            else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            ventana.attributes = atributos
+        }
+        onDispose {
+            if (ventana != null) {
+                val atributos = ventana.attributes
+                atributos.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                ventana.attributes = atributos
+            }
+        }
+    }
+}
+
+/** Número de capítulo sacado del nombre («Capítulo 12.5: …» → 12.5), con el reconocedor de Komikku. */
+private fun numeroCapitulo(nombre: String): Float? =
+    com.example.lector.ext.ReconocerCapitulo.numero("", nombre).takeIf { it >= 0f }
+
+/** Cuántos capítulos enteros faltan entre dos (0 si son seguidos o no se sabe). */
+private fun huecoCapitulos(a: String, b: String): Int {
+    val x = numeroCapitulo(a) ?: return 0
+    val y = numeroCapitulo(b) ?: return 0
+    return (kotlin.math.floor(maxOf(x, y)) - kotlin.math.floor(minOf(x, y)) - 1).toInt().coerceIn(0, 999)
+}
+
+/** Copia [texto] al portapapeles y lo avisa (Android 13+ ya muestra su propio aviso). */
+fun copiarTexto(ctx: Context, texto: String) {
+    if (texto.isBlank()) return
+    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    cm.setPrimaryClip(android.content.ClipData.newPlainText("Shiori", texto))
+    if (android.os.Build.VERSION.SDK_INT < 33) Avisos.mostrar("Copiado")
+}

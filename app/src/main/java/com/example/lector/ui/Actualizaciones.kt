@@ -1,143 +1,80 @@
 package com.example.lector.ui
 
-import android.content.Context
-import android.widget.Toast
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.example.lector.ui.mochy.library.GeneratedGroupHeader
+import com.example.lector.ui.mochy.library.HomeTrackRow
+import com.example.lector.ui.mochy.library.LibraryColors
+import com.example.lector.ui.mochy.library.LibraryEmptyState
+import com.example.lector.ui.mochy.library.LibraryIconButton
+import com.example.lector.ui.mochy.library.LibraryRowCoverCorner
+import com.example.lector.ui.mochy.library.LibraryRowCoverSize
+import com.example.lector.ui.mochy.library.LibraryTitleBlock
+import com.example.lector.ui.mochy.library.SearchHorizontalPadding
+import kotlinx.coroutines.launch
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lector.ActualizacionCap
+import com.example.lector.Actualizador
 import com.example.lector.Almacen
+import com.example.lector.Comic
+import com.example.lector.Descargas
 import com.example.lector.ext.CapituloFuente
 import com.example.lector.ext.ExtManager
-import com.example.lector.ext.MangaFuente
-import com.example.lector.ext.Motor
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
-
-/**
- * Revisa los mangas en línea de la biblioteca buscando capítulos nuevos (como "Actualizar biblioteca" de Komikku).
- * Vive fuera de las pantallas: si cambias de pestaña, la revisión sigue y el progreso se ve al volver.
- */
-object Actualizador {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private var trabajo: Job? = null
-
-    var corriendo by mutableStateOf(false)
-        private set
-    var hechas by mutableStateOf(0)
-        private set
-    var total by mutableStateOf(0)
-        private set
-
-    /** Cada cuánto se revisa sola al abrir la pestaña. */
-    const val INTERVALO_MS = 6L * 60 * 60 * 1000
-
-    fun iniciar(ctx: Context, almacen: Almacen, ext: ExtManager, avisar: Boolean = true) {
-        if (corriendo) return
-        val app = ctx.applicationContext
-        val motor = Motor.actual
-        if (motor == null) {
-            if (avisar) Avisos.mostrar("El motor de fuentes no está listo")
-            return
-        }
-        val lista = almacen.cargar().filter { it.enLinea }
-        if (lista.isEmpty()) {
-            almacen.marcarActualizado()
-            if (avisar) Avisos.mostrar("Tu biblioteca no tiene mangas de fuentes en línea")
-            return
-        }
-        corriendo = true; hechas = 0; total = lista.size
-        trabajo = scope.launch {
-            var nuevos = 0
-            var fallos = 0
-            try {
-                // De tres en tres, para no saturar las fuentes.
-                for (grupo in lista.chunked(3)) {
-                    val r = grupo.map { c ->
-                        async(Dispatchers.IO) {
-                            runCatching {
-                                val url = c.urlManga.orEmpty()
-                                val f = ext.fuentes.firstOrNull { it.id == c.fuenteId }
-                                    ?: error("fuente no disponible")
-                                val ficha = motor.ficha(f, MangaFuente(url, c.titulo, c.portadaUrl))
-                                val n = almacen.registrarCapitulos(
-                                    c.fuenteId, url, c.titulo, ficha.detalle.portadaUrl ?: c.portadaUrl, ficha.capitulos,
-                                )
-                                almacen.actualizarProgresoEnLinea(
-                                    c.fuenteId, url, ficha.capitulos.count { ext.esLeido(c.fuenteId, it.url) },
-                                    ficha.capitulos.size,
-                                )
-                                n
-                            }.getOrNull()
-                        }
-                    }.awaitAll()
-                    for (n in r) {
-                        if (n == null) fallos++
-                        else nuevos += n
-                    }
-                    hechas += grupo.size
-                }
-            } finally {
-                corriendo = false
-                almacen.marcarActualizado()
-            }
-            if (avisar || nuevos > 0) {
-                val msg = buildString {
-                    append(if (nuevos == 0) "Sin capítulos nuevos" else "$nuevos capítulo(s) nuevo(s)")
-                    if (fallos > 0) append(" · $fallos manga(s) no se pudieron revisar")
-                }
-                Avisos.mostrar(msg)
-            }
-        }
-    }
-
-    fun cancelar() {
-        trabajo?.cancel()
-    }
-}
 
 private fun inicioDelDia(ms: Long): Long = Calendar.getInstance().apply {
     timeInMillis = ms
     set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
 }.timeInMillis
 
-private fun etiquetaDia(inicio: Long): String {
+fun etiquetaDia(inicio: Long): String {
     val hoy = inicioDelDia(System.currentTimeMillis())
     val dia = 24L * 60 * 60 * 1000
-    return when (inicio) {
-        hoy -> "Hoy"
-        hoy - dia -> "Ayer"
+    return when {
+        inicio >= hoy -> "Hoy"
+        inicio >= hoy - dia -> "Ayer"
+        inicio >= hoy - 6 * dia -> "Hace ${(hoy - inicio + dia - 1) / dia} días"
         else -> DateFormat.getDateInstance(DateFormat.LONG).format(Date(inicio))
     }
 }
 
-private fun hace(ms: Long): String {
+fun hace(ms: Long): String {
     if (ms == 0L) return "nunca"
     val min = (System.currentTimeMillis() - ms) / 60_000
     return when {
@@ -148,157 +85,475 @@ private fun hace(ms: Long): String {
     }
 }
 
+private fun clave(a: ActualizacionCap) = "${a.fuenteId}|${a.urlManga}|${a.capUrl}"
+
 /**
- * Pestaña "Actualizaciones": los capítulos nuevos que han salido de los mangas de tu biblioteca,
- * agrupados por día. Tocar uno abre ese capítulo; el círculo de la derecha lo descarga.
+ * Pestaña "Actualizaciones" (como la de Komikku): capítulos nuevos de los mangas de tu biblioteca, por día y
+ * agrupados por manga. Tocar abre el capítulo; mantener pulsado selecciona (marcar leído, descargar, quitar).
+ * Deslizar hacia abajo busca capítulos nuevos. Si hubo mangas que no se pudieron revisar, se ven sus errores.
  */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ActualizacionesScreen(
     almacen: Almacen,
     ext: ExtManager,
     alAbrir: (ActualizacionCap) -> Unit,
-    cabecerasDe: (Long) -> Map<String, String>,
+    alAbrirManga: (ActualizacionCap) -> Unit = {},
     modifier: Modifier = Modifier,
+    alBuscarGlobal: (String) -> Unit = {},
 ) {
     val ctx = LocalContext.current
-    val lista = almacen.actualizaciones
-    val grupos = remember(lista) {
-        lista.sortedByDescending { it.detectado }.groupBy { inicioDelDia(it.detectado) }
+    val lista = run {
+        val todas = almacen.actualizaciones
+        val modoC = com.example.lector.ModoContenido.modo
+        remember(todas, modoC, almacen.version) {
+            if (modoC == com.example.lector.ModoContenido.Modo.NORMAL) todas else {
+                val gen = almacen.cargar().filter { it.enLinea }.associate { "${it.fuenteId}|${it.urlManga}" to it.generos }
+                todas.filter { com.example.lector.ModoContenido.permite(it.fuenteId, gen["${it.fuenteId}|${it.urlManga}"]) }
+            }
+        }
     }
-    val formatoHora = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
+    abrirMangaAct = alAbrirManga
+    var seleccion by remember { mutableStateOf(emptySet<String>()) }
+    var abiertos by remember { mutableStateOf(emptySet<String>()) }
+    var menu by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var confirmarLimpiar by remember { mutableStateOf(false) }
+    var verErrores by remember { mutableStateOf(false) }
+    var verFiltros by remember { mutableStateOf(false) }
+    val estadoAct = com.example.lector.ui.actualizaciones.EstadoActualizaciones
+    val filtros = com.example.lector.ui.actualizaciones.FiltrosActualizaciones
+    remember { filtros.iniciar(ctx) }
 
-    // Al abrir la pestaña, si hace más de 6 horas que no se revisa, se revisa sola.
+    // Sin revisión automática: al abrir la pestaña, si hace más de 6 horas, se revisa sola.
     LaunchedEffect(Unit) {
-        if (System.currentTimeMillis() - almacen.ultimaActualizacion > Actualizador.INTERVALO_MS) {
-            Actualizador.iniciar(ctx, almacen, ext, avisar = false)
+        if (almacen.intervaloActualizacion == 0 &&
+            System.currentTimeMillis() - almacen.ultimaActualizacion > Actualizador.INTERVALO_MS
+        ) Actualizador.iniciar(ctx, avisar = false)
+    }
+    BackHandler(enabled = seleccion.isNotEmpty()) { seleccion = emptySet() }
+
+    val leidosV = ext.leidos
+    val visibles = remember(lista, leidosV, Descargas.version.value, filtros.descargados, filtros.noLeidos, filtros.empezados, filtros.marcados, filtros.fuentesOcultas) {
+        filtros.aplicar(lista, almacen, ext)
+    }
+    val grupos = remember(visibles, filtros.agrupar) {
+        visibles.sortedByDescending { it.detectado }
+            .groupBy { inicioDelDia(it.detectado) }
+            .map { (dia, filas) -> dia to filas.groupBy { if (filtros.agrupar) "${it.fuenteId}|${it.urlManga}" else clave(it) }.values.toList() }
+    }
+    val comics: Map<String, Comic> = remember(almacen.version) {
+        almacen.cargar().filter { it.enLinea }.associateBy { "${it.fuenteId}|${it.urlManga}" }
+    }
+    val leidos = ext.leidos
+
+    fun alternar(a: ActualizacionCap) {
+        val k = clave(a)
+        seleccion = if (k in seleccion) seleccion - k else seleccion + k
+    }
+
+    fun seleccionadas() = lista.filter { clave(it) in seleccion }
+
+    fun recalcularProgreso(filas: List<ActualizacionCap>) {
+        filas.map { it.fuenteId to it.urlManga }.distinct().forEach { (f, url) ->
+            val conocidos = almacen.capitulosConocidos(f, url)
+            if (conocidos.isNotEmpty()) almacen.actualizarProgresoEnLinea(f, url, conocidos.count { ext.esLeido(f, url, it) }, conocidos.size)
         }
     }
 
-    Column(modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                LText("Actualizaciones", LectorType.Display.copy(fontSize = 30.sp, letterSpacing = (-1).sp), maxLines = 1)
-                LText(
-                    if (Actualizador.corriendo) "Revisando ${Actualizador.hechas} de ${Actualizador.total}…"
-                    else "Última revisión: ${hace(almacen.ultimaActualizacion)}",
-                    LectorType.Label, color = LectorColors.Muted, maxLines = 1,
+    Box(modifier.fillMaxSize()) {
+        val acento = MaterialTheme.colorScheme.primary
+        Column(Modifier.fillMaxSize()) {
+            if (seleccion.isNotEmpty()) {
+                CabeceraSeleccion(
+                    seleccion.size, onCerrar = { seleccion = emptySet() },
+                    onTodo = { seleccion = visibles.map { clave(it) }.toSet() },
+                    onInvertir = { seleccion = visibles.map { clave(it) }.toSet() - seleccion },
                 )
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = SearchHorizontalPadding, end = 16.dp, top = 14.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LibraryTitleBlock(
+                        "Actualizaciones",
+                        if (Actualizador.corriendo) {
+                            if (Actualizador.total > 0) "Revisando ${Actualizador.hechas} de ${Actualizador.total}…" else "Preparando la revisión…"
+                        } else "Última revisión: ${hace(almacen.ultimaActualizacion)}",
+                        Modifier.weight(1f),
+                    )
+                    Box(
+                        Modifier.size(42.dp).clip(CircleShape).background(acento.copy(alpha = 0.22f))
+                            .clickable { if (Actualizador.corriendo) Actualizador.cancelar(ctx) else Actualizador.iniciar(ctx) },
+                        Alignment.Center,
+                    ) {
+                        if (Actualizador.corriendo) IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.5.dp, estado = com.example.lector.ui.orbes.EstadoOrbe.WORKING)
+                        else Icon(Icons.Rounded.Refresh, "Buscar capítulos nuevos", tint = acento, modifier = Modifier.size(21.dp))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    LibraryIconButton(Icons.Rounded.DateRange, "Próximos", false) { estadoAct.abrirProximos() }
+                    Spacer(Modifier.width(8.dp))
+                    LibraryIconButton(com.example.lector.ui.actualizaciones.IconoFiltrar, "Filtrar", filtros.hayFiltros) { verFiltros = true }
+                    Spacer(Modifier.width(8.dp))
+                    Box {
+                        LibraryIconButton(Icons.Rounded.MoreVert, "Más", false) { menu = true }
+                        MenuShiori(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (almacen.erroresActualizacion.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("Errores de la última revisión (${almacen.erroresActualizacion.size})") },
+                                    onClick = { menu = false; verErrores = true },
+                                )
+                            }
+                            DropdownMenuItem(text = { Text("Próximas actualizaciones") }, onClick = { menu = false; estadoAct.abrirProximos() })
+                            if (filtros.hayFiltros) {
+                                DropdownMenuItem(text = { Text("Quitar los filtros") }, onClick = { menu = false; filtros.limpiar() })
+                            }
+                            if (lista.isNotEmpty()) {
+                                DropdownMenuItem(text = { Text("Borrar la lista") }, onClick = { menu = false; confirmarLimpiar = true })
+                            }
+                            DropdownMenuItem(
+                                text = { Text(if (Actualizador.corriendo) "Cancelar la revisión" else "Buscar capítulos nuevos") },
+                                onClick = { menu = false; if (Actualizador.corriendo) Actualizador.cancelar(ctx) else Actualizador.iniciar(ctx) },
+                            )
+                        }
+                    }
+                }
+                if (almacen.erroresActualizacion.isNotEmpty() && !Actualizador.corriendo) {
+                    Row(
+                        Modifier.padding(horizontal = SearchHorizontalPadding, vertical = 6.dp).clip(CircleShape)
+                            .background(LectorColors.Error.copy(alpha = 0.16f)).pressable { verErrores = true }
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.Warning, null, tint = LectorColors.Error, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        LText("${almacen.erroresActualizacion.size} no se pudieron revisar · ver", LectorType.Label, color = LectorColors.Error)
+                    }
+                }
             }
-            if (lista.isNotEmpty() && !Actualizador.corriendo) {
-                TextButton(onClick = { confirmarLimpiar = true }) { Text("Borrar") }
-            }
-            Box(
-                Modifier.size(48.dp).clip(CircleShape)
-                    .pressable { if (Actualizador.corriendo) Actualizador.cancelar() else Actualizador.iniciar(ctx, almacen, ext) },
-                Alignment.Center,
+
+            val estadoTirar = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+            PullToRefreshBox(
+                state = estadoTirar,
+                indicator = { IndicadorTirar(estadoTirar, Actualizador.corriendo, Modifier.align(Alignment.TopCenter), com.example.lector.ui.orbes.EstadoOrbe.WORKING) },
+                isRefreshing = Actualizador.corriendo,
+                onRefresh = { if (!Actualizador.corriendo) Actualizador.iniciar(ctx) },
+                modifier = Modifier.weight(1f),
             ) {
-                if (Actualizador.corriendo) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                if (lista.isEmpty()) {
+                    VacioActualizaciones(
+                        "Todo al día",
+                        "Aquí saldrán los capítulos nuevos de los mangas que añadas a tu biblioteca desde Explorar. " +
+                            if (almacen.intervaloActualizacion > 0) "Se revisan solos cada ${almacen.intervaloActualizacion} h; desliza hacia abajo para revisar ya."
+                            else "Desliza hacia abajo para revisar.",
+                        enMarcha = Actualizador.corriendo,
+                    ) { Actualizador.iniciar(ctx) }
+                } else if (visibles.isEmpty()) {
+                    VacioActualizaciones(
+                        "Nada con estos filtros",
+                        "Hay ${lista.size} capítulos nuevos, pero ninguno cumple los filtros elegidos.",
+                        enMarcha = false, accion = "Quitar los filtros",
+                    ) { filtros.limpiar() }
                 } else {
-                    Icon(Icons.Rounded.Refresh, "Buscar capítulos nuevos", tint = LectorColors.Text)
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
+                        var base = 0
+                        grupos.forEach { (dia, mangas) ->
+                            val inicioDia = base
+                            base += 1
+                            stickyHeader(key = "d_$dia", contentType = 0) {
+                                mangas.sumOf { it.size }.let { n ->
+                                    GeneratedGroupHeader(etiquetaDia(dia), Modifier.entrada(escalonAct(inicioDia)), count = if (n == 1) "1 nuevo" else "$n nuevos")
+                                }
+                            }
+                            mangas.forEach { filas ->
+                                val primera = filas.first()
+                                val kGrupo = "$dia|${primera.fuenteId}|${primera.urlManga}"
+                                val comic = comics["${primera.fuenteId}|${primera.urlManga}"]
+                                val pos = base
+                                base += 1
+                                if (filas.size == 1) {
+                                    item(key = "c_${clave(primera)}", contentType = 1) {
+                                        FilaActualizacion(
+                                            primera, comic, almacen, ext, leidos, clave(primera) in seleccion, seleccion.isNotEmpty(),
+                                            onClick = { if (seleccion.isNotEmpty()) alternar(primera) else alAbrir(primera) },
+                                            onLargo = { alternar(primera) },
+                                            modifier = Modifier.entrada(escalonAct(pos)),
+                                            alCambiarLeido = { recalcularProgreso(listOf(primera)) },
+                                        )
+                                    }
+                                } else {
+                                    val abierto = kGrupo in abiertos
+                                    item(key = "g_$kGrupo", contentType = 2) {
+                                        CabeceraGrupo(
+                                            primera, comic, almacen, filas.size, filas.count { ext.esLeido(it.fuenteId, it.urlManga, it.capUrl) }, abierto,
+                                            seleccionado = filas.all { clave(it) in seleccion },
+                                            onClick = {
+                                                if (seleccion.isNotEmpty()) {
+                                                    val ks = filas.map { clave(it) }.toSet()
+                                                    seleccion = if (ks.all { it in seleccion }) seleccion - ks else seleccion + ks
+                                                } else abiertos = if (abierto) abiertos - kGrupo else abiertos + kGrupo
+                                            },
+                                            onLargo = { seleccion = seleccion + filas.map { clave(it) } },
+                                            modifier = Modifier.entrada(escalonAct(pos)),
+                                        )
+                                    }
+                                    if (abierto) itemsAnimados(filas, key = { "c_${clave(it)}" }, contentType = { 1 }) { a ->
+                                        FilaActualizacion(
+                                            a, comic, almacen, ext, leidos, clave(a) in seleccion, seleccion.isNotEmpty(),
+                                            onClick = { if (seleccion.isNotEmpty()) alternar(a) else alAbrir(a) },
+                                            onLargo = { alternar(a) }, sangria = true,
+                                            alCambiarLeido = { recalcularProgreso(listOf(a)) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        if (lista.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
-                LText(
-                    "Aquí saldrán los capítulos nuevos de los mangas que añadas a tu biblioteca desde Explorar. " +
-                        "Se revisan al abrir esta pestaña (cada 6 horas) o con el botón de actualizar.",
-                    LectorType.Body, color = LectorColors.Muted,
-                )
-            }
-        } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-                grupos.forEach { (dia, filas) ->
-                    item(key = "d_$dia") {
-                        LText(
-                            etiquetaDia(dia), LectorType.Section.copy(fontSize = 16.sp),
-                            Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 6.dp),
-                            color = LectorColors.Muted, maxLines = 1,
+        BarraAcciones(
+            visible = seleccion.isNotEmpty(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+            acciones = listOf(
+                AccionBarra(Icons.Rounded.Check, "Leído") {
+                    val sel = seleccionadas()
+                    sel.groupBy { it.fuenteId to it.urlManga }.forEach { (k, filas) -> ext.marcarLeidos(k.first, k.second, filas.map { it.capUrl }) }
+                    recalcularProgreso(sel)
+                    seleccion = emptySet()
+                },
+                AccionBarra(Iconos.OjoTachado, "No leído") {
+                    val sel = seleccionadas()
+                    sel.groupBy { it.fuenteId to it.urlManga }.forEach { (k, filas) -> ext.desmarcarLeidos(k.first, k.second, filas.map { it.capUrl }) }
+                    recalcularProgreso(sel)
+                    seleccion = emptySet()
+                },
+                AccionBarra(Iconos.Descargar, "Descargar") {
+                    var n = 0
+                    seleccionadas().groupBy { it.fuenteId to it.urlManga }.forEach { (k, filas) ->
+                        val f = ext.fuentes.firstOrNull { it.id == k.first } ?: return@forEach
+                        n += Descargas.encolar(
+                            ctx, f, k.second, filas.first().titulo,
+                            filas.map { com.example.lector.CacheFichas.conMemo(it.fuenteId, it.urlManga, CapituloFuente(it.capUrl, it.capNombre, it.capFecha, it.scanlator, it.capNumero)) }.asReversed(),
+                            avisar = false,
                         )
                     }
-                    items(filas, key = { "${it.fuenteId}|${it.capUrl}" }) { a ->
-                        FilaActualizacion(a, almacen, ext, formatoHora.format(Date(a.detectado)), cabecerasDe, alAbrir)
-                    }
-                }
-            }
+                    Avisos.mostrar(if (n == 0) "Ya estaban descargados" else "$n capítulo(s) en la cola de descargas")
+                    seleccion = emptySet()
+                },
+                AccionBarra(Icons.Rounded.Delete, "Quitar") {
+                    almacen.quitarActualizaciones(seleccion)
+                    seleccion = emptySet()
+                },
+            ),
+        )
+
+        if (estadoAct.verProximos) {
+            com.example.lector.ui.actualizaciones.ProximosScreen(
+                almacen, onVolver = { estadoAct.cerrarProximos() },
+                onAbrir = { c ->
+                    alAbrirManga(ActualizacionCap(c.fuenteId, c.urlManga.orEmpty(), c.titulo, c.portadaUrl, "", "", -1f, 0L, null, 0L))
+                },
+            )
         }
+    }
+
+    if (verFiltros) {
+        com.example.lector.ui.actualizaciones.HojaFiltroActualizaciones(lista, ext) { verFiltros = false }
     }
 
     if (confirmarLimpiar) {
-        AlertDialog(
+        DialogoAlerta(
             onDismissRequest = { confirmarLimpiar = false },
             title = { Text("¿Borrar las actualizaciones?") },
             text = { Text("Solo se vacía esta lista. Tu biblioteca y tu progreso no cambian.") },
-            confirmButton = {
-                TextButton(onClick = { almacen.limpiarActualizaciones(); confirmarLimpiar = false }) { Text("Borrar") }
-            },
+            confirmButton = { TextButton(onClick = { almacen.limpiarActualizaciones(); confirmarLimpiar = false }) { Text("Borrar") } },
             dismissButton = { TextButton(onClick = { confirmarLimpiar = false }) { Text("Cancelar") } },
+        )
+    }
+
+    if (verErrores) {
+        DialogoAlerta(
+            onDismissRequest = { verErrores = false },
+            title = { Text("No se pudieron revisar") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    almacen.erroresActualizacion.groupBy { it.motivo }.forEach { (motivo, errs) ->
+                        Text(motivo, color = MaterialTheme.colorScheme.error, style = LectorType.Body)
+                        // Por fuente: si la extensión está en algún repositorio, se dice cuál instalar; tocar un título
+                        // lo busca en las fuentes instaladas (búsqueda global). Nada corre en segundo plano.
+                        errs.groupBy { it.fuente }.forEach { (fuente, deFuente) ->
+                            val id = Regex("\\d{5,}").find(fuente)?.value?.toLongOrNull()
+                            val enRepo = id?.let { i -> ext.disponibles.firstOrNull { d -> d.fuentes.any { it.id == i } } }
+                            val fi = enRepo?.fuentes?.firstOrNull { it.id == id }
+                            Text(
+                                when {
+                                    enRepo != null -> "${fi?.nombre ?: enRepo.nombre} · instala «${enRepo.nombre}» (${enRepo.repoSigla})" + (fi?.baseUrl?.takeIf { it.isNotBlank() }?.let { "\n$it" } ?: "")
+                                    else -> "$fuente · no está en tus repositorios"
+                                },
+                                style = LectorType.Label.copy(fontWeight = FontWeight.Bold),
+                                color = if (enRepo != null) MaterialTheme.colorScheme.primary else LectorColors.Muted,
+                                modifier = Modifier.padding(start = 8.dp, top = 6.dp),
+                            )
+                            deFuente.forEach { e ->
+                                Text(
+                                    "• ${e.titulo}  ⌕", style = LectorType.Label,
+                                    modifier = Modifier.fillMaxWidth().clickable { verErrores = false; alBuscarGlobal(e.titulo) }.padding(start = 8.dp, top = 3.dp, bottom = 3.dp),
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { verErrores = false }) { Text("Cerrar") } },
+            dismissButton = { TextButton(onClick = { almacen.guardarErrores(emptyList()); verErrores = false }) { Text("Olvidar") } },
+        )
+    }
+}
+
+private var abrirMangaAct: (ActualizacionCap) -> Unit = {}
+
+/** Solo la primera pantalla aparece escalonada; lo que llega luego al hacer scroll aparece sin retraso. */
+private fun escalonAct(i: Int): Int = if (i < 10) i else 0
+
+@Composable
+private fun VacioActualizaciones(titulo: String, texto: String, enMarcha: Boolean, accion: String = "Buscar ahora", onRevisar: () -> Unit) {
+    Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        if (enMarcha) Box(Modifier.fillMaxWidth().padding(top = 8.dp), Alignment.TopCenter) { IndicadorCarga(Modifier.size(44.dp), estado = com.example.lector.ui.orbes.EstadoOrbe.WORKING) }
+        LibraryEmptyState(
+            Modifier.entrada(0).padding(top = 24.dp, bottom = 160.dp), texto, titulo,
+            if (enMarcha) "Revisando…" else accion, onRevisar.takeIf { !enMarcha } ?: {},
         )
     }
 }
 
 @Composable
+private fun PortadaActualizacion(a: ActualizacionCap, comic: Comic?, almacen: Almacen) {
+    // Tocar la portada abre el manga (su ficha), no el capítulo.
+    val forma = SuaveShape(LibraryRowCoverCorner)
+    val factor = com.example.lector.ui.mochy.EstiloApp.factorAncho(comic?.let { "c:" + it.id }, comic?.portadaUrl, a.portadaUrl)
+    Box(Modifier.size(LibraryRowCoverSize * factor, LibraryRowCoverSize).clip(forma).background(LibraryColors.TileHigh).clickable { abrirMangaAct(a) }) {
+        if (comic != null) ComicCover(comic, almacen, Modifier.fillMaxSize(), forma)
+        else ImagenRemota(a.portadaUrl, Modifier.fillMaxSize(), rememberCabeceras(a.fuenteId), fuenteId = a.fuenteId)
+    }
+}
+
+/** Selección con muelle: la fila se tiñe como la luz de pulsación de Mochy, pero fija. */
+@Composable
+private fun seleccionAct(seleccionado: Boolean): Float {
+    val s by animateFloatAsState(if (seleccionado) 1f else 0f, if (Mov.reducido) snap() else Muelles.espacial(), label = "selAct")
+    return s
+}
+
+@Composable
+private fun CabeceraGrupo(
+    a: ActualizacionCap, comic: Comic?, almacen: Almacen, cuantos: Int, leidos: Int, abierto: Boolean, seleccionado: Boolean,
+    onClick: () -> Unit, onLargo: () -> Unit, modifier: Modifier = Modifier,
+) {
+    val acento = MaterialTheme.colorScheme.primary
+    val haptic = LocalHapticFeedback.current
+    val giro by animateFloatAsState(if (abierto) 90f else 0f, if (Mov.reducido) snap() else Muelles.espacial(), label = "giroGrupo")
+    val todoLeido = leidos == cuantos
+    HomeTrackRow(
+        title = comic?.titulo ?: a.titulo,
+        subtitle = "$cuantos capítulos" + if (leidos > 0) " • $leidos leídos" else "",
+        subtitleColor = if (todoLeido) null else acento,
+        dimmed = todoLeido,
+        onClick = onClick,
+        onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLargo() },
+        selected = seleccionAct(seleccionado),
+        modifier = modifier.fillMaxWidth().padding(horizontal = SearchHorizontalPadding, vertical = 3.dp),
+        cover = { PortadaActualizacion(a, comic, almacen) },
+        trailing = {
+            Box(Modifier.size(38.dp), Alignment.Center) {
+                Box(
+                    Modifier.size(28.dp).background(if (abierto) acento.copy(alpha = 0.22f) else LibraryColors.Primary.copy(alpha = 0.14f), CircleShape),
+                    Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Rounded.KeyboardArrowRight, if (abierto) "Plegar" else "Desplegar",
+                        tint = if (abierto) acento else LibraryColors.Primary.copy(alpha = 0.85f),
+                        modifier = Modifier.size(19.dp).graphicsLayer { rotationZ = giro },
+                    )
+                }
+            }
+        },
+    )
+}
+
+@Composable
 private fun FilaActualizacion(
-    a: ActualizacionCap,
-    almacen: Almacen,
-    ext: ExtManager,
-    hora: String,
-    cabecerasDe: (Long) -> Map<String, String>,
-    alAbrir: (ActualizacionCap) -> Unit,
+    a: ActualizacionCap, comic: Comic?, almacen: Almacen, ext: ExtManager, leidos: Int,
+    seleccionado: Boolean, enSeleccion: Boolean,
+    onClick: () -> Unit, onLargo: () -> Unit, sangria: Boolean = false, modifier: Modifier = Modifier,
+    alCambiarLeido: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
-    // Las cabeceras se piden fuera del hilo principal (la primera vez puede cargar la extensión).
-    val cabeceras by produceState<Map<String, String>?>(null, a.fuenteId) {
-        value = withContext(Dispatchers.IO) { runCatching { cabecerasDe(a.fuenteId) }.getOrDefault(emptyMap()) }
-    }
-    val leido = ext.esLeido(a.fuenteId, a.capUrl)
+    val acento = MaterialTheme.colorScheme.primary
+    val haptic = LocalHapticFeedback.current
+    // [leidos] solo sirve para repintar cuando cambia algún «leído».
+    val leido = leidos.let { ext.esLeido(a.fuenteId, a.urlManga, a.capUrl) }
     val nombre = a.capNombre.trim().trimEnd(':').trim().ifBlank { "Capítulo" }
-    val cap = CapituloFuente(a.capUrl, a.capNombre, a.capFecha, a.scanlator, a.capNumero)
-    val clave = "${a.fuenteId}|${a.capUrl}"
-    val fraccion = GestorDescargas.progreso[clave]
-    val version = GestorDescargas.version.value // al cambiar, se vuelve a mirar el disco
+    val k = clave(a)
+    val fraccion = Descargas.progreso[k] ?: if (Descargas.enCola(k)) 0f else null
+    val version = Descargas.version.value
     val estado: EstadoDescarga = when {
         fraccion != null -> EstadoDescarga.Descargando(fraccion)
-        version >= 0 && almacen.estaDescargado(a.fuenteId, a.capUrl) -> EstadoDescarga.Listo
+        version >= 0 && almacen.estaDescargado(a.fuenteId, a.urlManga, a.capUrl) -> EstadoDescarga.Listo
         else -> EstadoDescarga.Libre
     }
+    val hora = remember(a.detectado) { DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(a.detectado)) }
 
-    Row(
-        Modifier.fillMaxWidth().resaltable { alAbrir(a) }.padding(start = 24.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.width(48.dp).aspectRatio(2f / 3f).clip(SuaveShape(8.dp)).background(LectorColors.CardHigh)) {
-            val c = cabeceras
-            if (c != null) ImagenRemota(a.portadaUrl, Modifier.fillMaxSize(), c)
+    val descargar = {
+        val f = ext.fuentes.firstOrNull { it.id == a.fuenteId }
+        when {
+            estado is EstadoDescarga.Descargando -> Descargas.cancelar(ctx, k)
+            estado is EstadoDescarga.Listo -> { almacen.borrarDescarga(a.fuenteId, a.urlManga, a.capUrl); Descargas.version.value++ }
+            f == null -> Avisos.mostrar("Esa fuente no está disponible ahora")
+            else -> Descargas.encolar(ctx, f, a.urlManga, a.titulo, listOf(com.example.lector.CacheFichas.conMemo(a.fuenteId, a.urlManga, CapituloFuente(a.capUrl, a.capNombre, a.capFecha, a.scanlator, a.capNumero))))
         }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            LText(
-                a.titulo, LectorType.Section.copy(fontSize = 16.sp), maxLines = 1,
-                color = if (leido) LectorColors.Muted else LectorColors.Text,
-            )
-            LText(
-                "$nombre · $hora", LectorType.Label, maxLines = 1,
-                color = if (leido) LectorColors.Muted.copy(alpha = 0.7f) else LectorColors.Muted,
-            )
-        }
-        Spacer(Modifier.width(6.dp))
-        BotonDescarga(estado, onClick = {
-            val f = ext.fuentes.firstOrNull { it.id == a.fuenteId }
-            val motor = Motor.actual
-            when {
-                estado is EstadoDescarga.Descargando -> GestorDescargas.cancelar(ctx, clave)
-                estado is EstadoDescarga.Listo -> Avisos.mostrar("Ya está descargado")
-                f == null || motor == null ->
-                    Avisos.mostrar("Esa fuente no está disponible ahora")
-                else -> GestorDescargas.iniciar(ctx, almacen, motor, f, cap, a.titulo) {}
+    }
+    com.example.lector.ui.mochy.ChapterSwipeBox(
+        estado = com.example.lector.ui.mochy.EstadoCapituloSwipe(
+            leido = leido, marcado = ext.esMarcado(a.fuenteId, a.urlManga, a.capUrl),
+            descargado = estado is EstadoDescarga.Listo, descargando = estado is EstadoDescarga.Descargando,
+        ),
+        enabled = !enSeleccion,
+        onAction = { acc ->
+            when (acc) {
+                com.example.lector.ui.mochy.ChapterSwipeAction.MARK_READ -> {
+                    if (leido) ext.desmarcarLeido(a.fuenteId, a.urlManga, a.capUrl) else ext.marcarLeido(a.fuenteId, a.urlManga, a.capUrl); alCambiarLeido()
+                }
+                com.example.lector.ui.mochy.ChapterSwipeAction.MARK_PREVIOUS_READ -> { ext.marcarLeido(a.fuenteId, a.urlManga, a.capUrl); alCambiarLeido() }
+                com.example.lector.ui.mochy.ChapterSwipeAction.BOOKMARK -> ext.alternarMarcado(a.fuenteId, a.urlManga, a.capUrl)
+                com.example.lector.ui.mochy.ChapterSwipeAction.DOWNLOAD -> descargar()
+                else -> Unit
             }
-        })
+        },
+    ) {
+    HomeTrackRow(
+        title = if (sangria) nombre else comic?.titulo ?: a.titulo,
+        subtitle = if (sangria) hora else "$nombre • $hora",
+        subtitleColor = if (!sangria && !leido) acento else null,
+        dimmed = leido,
+        onClick = onClick,
+        onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLargo() },
+        selected = seleccionAct(seleccionado),
+        modifier = modifier.fillMaxWidth()
+            .padding(start = if (sangria) SearchHorizontalPadding + 30.dp else SearchHorizontalPadding, end = SearchHorizontalPadding, top = 3.dp, bottom = 3.dp),
+        cover = {
+            if (!sangria) PortadaActualizacion(a, comic, almacen)
+            else Box(Modifier.padding(start = 4.dp).size(8.dp).clip(CircleShape).background(if (leido) LectorColors.PillFill else acento))
+        },
+        trailing = {
+            if (!enSeleccion) Box(Modifier.size(38.dp), Alignment.Center) {
+                BotonDescarga(estado, onClick = {
+                    if (estado is EstadoDescarga.Listo) Avisos.mostrar("Ya está descargado") else descargar()
+                })
+            }
+        },
+    )
     }
 }

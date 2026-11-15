@@ -1,5 +1,6 @@
 package com.example.lector.ext
 
+import kotlinx.coroutines.sync.withLock
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -14,6 +15,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
@@ -51,6 +53,71 @@ class ExtManager private constructor(private val app: Context) {
     }
 
     private val prefs = app.getSharedPreferences("lector_ext", Context.MODE_PRIVATE)
+
+    // Capítulos leídos, marcados y páginas: en archivos propios con escrituras agrupadas (ver Persistencia.kt).
+    // Antes iban en las preferencias y se reescribía todo al terminar CADA capítulo.
+    private val carpetaEstado = java.io.File(app.filesDir, "estado_capitulos").apply { mkdirs() }
+    private val archLeidos = com.example.lector.ArchivoConjuntoLargo(java.io.File(carpetaEstado, "leidos.bin"))
+    private val archMarcados = com.example.lector.ArchivoAgrupado(java.io.File(carpetaEstado, "marcados.txt"))
+    private val archPaginas = com.example.lector.ArchivoAgrupado(java.io.File(carpetaEstado, "paginas.txt"))
+    // Desde que el estado va por manga (como Komikku: el capítulo pertenece a su manga), estos son los archivos vivos.
+    // Las claves son «fuente|urlManga|urlCapítulo»: algunas fuentes repiten la url de capítulo entre mangas distintos
+    // y con «fuente|url» un capítulo nuevo de otro manga salía ya leído. Los archivos viejos se conservan sin tocar.
+    private val archLeidosM = com.example.lector.ArchivoConjuntoLargo(java.io.File(carpetaEstado, "leidos_m.bin"))
+    private val archMarcadosM = com.example.lector.ArchivoAgrupado(java.io.File(carpetaEstado, "marcados_m.txt"))
+    private val archPaginasM = com.example.lector.ArchivoAgrupado(java.io.File(carpetaEstado, "paginas_m.txt"))
+    // Lo viejo («fuente|url») aún sin pasar a ningún manga, y los mangas ya pasados («fuente|urlManga»).
+    private val archRestoLeidos = com.example.lector.ArchivoConjuntoLargo(java.io.File(carpetaEstado, "leidos_legado.bin"))
+    private val archRestoMarcados = com.example.lector.ArchivoAgrupado(java.io.File(carpetaEstado, "marcados_legado.txt"))
+    private val archRestoPaginas = com.example.lector.ArchivoAgrupado(java.io.File(carpetaEstado, "paginas_legado.txt"))
+    private val archMigrados = com.example.lector.ArchivoAgrupado(java.io.File(carpetaEstado, "mangas_migrados.txt"))
+
+    /** Lee un conjunto de su archivo; la primera vez lo trae de las preferencias (versiones anteriores) y lo borra de ahí. */
+    private fun cargarConjunto(arch: com.example.lector.ArchivoAgrupado, clave: String): Set<String> {
+        if (arch.existe()) return runCatching { arch.leer().toHashSet() }.getOrDefault(HashSet())
+        val viejo = runCatching { prefs.getStringSet(clave, null)?.toHashSet() }.getOrNull() ?: HashSet()
+        runCatching { com.example.lector.Persistencia.escribirLineas(java.io.File(carpetaEstado, "$clave.txt"), viejo.asSequence()) }
+        prefs.edit().remove(clave).apply()
+        return viejo
+    }
+
+    private fun guardarLeidos() { versionLeidos++; archLeidosM.guardar(leidosH) }
+
+    private fun leerPaginas(arch: com.example.lector.ArchivoAgrupado, m: MutableMap<String, Int>) {
+        arch.leer().forEach { l -> val i = l.lastIndexOf('\t'); if (i > 0) l.substring(i + 1).toIntOrNull()?.let { m[l.substring(0, i)] = it } }
+    }
+
+    /**
+     * Capítulos leídos: huellas de 64 bits de «fuente|url» (ver [com.example.lector.ConjuntoLargo]). La primera vez se
+     * migran desde el formato anterior (texto en leidos.txt o en las preferencias).
+     */
+    private fun cargarLeidos(): com.example.lector.ConjuntoLargo {
+        if (archLeidos.existe()) runCatching { return archLeidos.leer() }
+        val c = com.example.lector.ConjuntoLargo()
+        val txt = java.io.File(carpetaEstado, "leidos.txt")
+        val viejos: Collection<String> = if (txt.exists()) com.example.lector.Persistencia.leerLineas(txt)
+            else runCatching { prefs.getStringSet("leidos", null) }.getOrNull().orEmpty()
+        viejos.forEach { k -> com.example.lector.ConjuntoLargo.claveDeTexto(k)?.let { c.add(it) } }
+        runCatching { archLeidos.escribirYa(c) }
+        txt.delete()
+        prefs.edit().remove("leidos").apply()
+        return c
+    }
+
+    /** Huella del estado de un capítulo DE UN MANGA (no basta la url del capítulo: hay fuentes que la repiten). */
+    fun claveLeido(fuenteId: Long, urlManga: String, url: String) = com.example.lector.ConjuntoLargo.clave(fuenteId, "$urlManga|$url")
+    /** Clave de texto de marcados y páginas: «fuente|urlManga|urlCapítulo». */
+    fun claveTexto(fuenteId: Long, urlManga: String, url: String) = "$fuenteId|$urlManga|$url"
+    private fun claveLegado(fuenteId: Long, url: String) = com.example.lector.ConjuntoLargo.clave(fuenteId, url)
+    private fun guardarMarcados() { val m = marcados; archMarcadosM.guardar { m.asSequence() } }
+
+    /** Se completa cuando ya se leyeron las extensiones instaladas y sus fuentes (lo esperan los trabajos de fondo). */
+    private val listo = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+    /** Espera (como mucho [ms]) a que las extensiones estén cargadas. */
+    suspend fun esperarListo(ms: Long = 20_000L) {
+        kotlinx.coroutines.withTimeoutOrNull(ms) { listo.await() }
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val archivoCache = File(app.filesDir, "ext_disponibles.json")
 
@@ -106,18 +173,125 @@ class ExtManager private constructor(private val app: Context) {
     var novedades by mutableStateOf(cargarNovedades()); private set
 
     // Capítulos leídos online ("fuenteId|urlCapítulo") y modo del lector online (0 tira · 1 paginado → · 2 paginado ←).
-    var leidos by mutableStateOf(prefs.getStringSet("leidos", emptySet())?.toSet() ?: emptySet()); private set
+    private val leidosH: com.example.lector.ConjuntoLargo =
+        if (archLeidosM.existe()) runCatching { archLeidosM.leer() }.getOrElse { com.example.lector.ConjuntoLargo() } else com.example.lector.ConjuntoLargo()
+    /** Sube cada vez que cambia algún «leído»: las pantallas que lo leen se repintan. */
+    var versionLeidos by mutableIntStateOf(0); private set
+    /** Valor que cambia cuando cambian los leídos (para usarlo como clave de remember). */
+    val leidos: Int get() = versionLeidos
+    /** Cuántos capítulos hay marcados como leídos. */
+    val totalLeidos: Int get() { @Suppress("UNUSED_VARIABLE") val v = versionLeidos; return leidosH.size + (if (!migrado) restoLeidos.size else 0) }
     var modoLector by mutableStateOf(prefs.getInt("modo_lector", 0)); private set
 
     // Capítulos marcados con el marcador ("fuenteId|urlCapítulo"); se alternan deslizando la fila hacia la izquierda.
-    var marcados by mutableStateOf(prefs.getStringSet("marcados", emptySet())?.toSet() ?: emptySet()); private set
+    var marcados by mutableStateOf<Set<String>>(if (archMarcadosM.existe()) runCatching { archMarcadosM.leer().toHashSet() }.getOrDefault(HashSet()) else HashSet()); private set
 
     // Página por la que vas en cada capítulo SIN terminar ("fuenteId|url" -> página, desde 0).
-    private val paginasCap = mutableStateMapOf<String, Int>().also { m ->
+    private val paginasCap = mutableStateMapOf<String, Int>().also { m -> runCatching { if (archPaginasM.existe()) leerPaginas(archPaginasM, m) } }
+
+    // ---- Estado viejo («fuente|url») pendiente de pasar a su manga ----
+    /** true cuando ya se hizo la migración general; antes, se consulta también lo viejo (comportamiento anterior). */
+    @Volatile private var migrado = prefs.getBoolean("estado_por_manga", false)
+    private val restoLeidos: com.example.lector.ConjuntoLargo =
+        if (migrado) runCatching { archRestoLeidos.leer() }.getOrElse { com.example.lector.ConjuntoLargo() } else cargarLeidos()
+    private val restoMarcados: MutableSet<String> = java.util.Collections.synchronizedSet(
+        if (migrado) runCatching { archRestoMarcados.leer().toHashSet() }.getOrDefault(HashSet()) else HashSet(cargarConjunto(archMarcados, "marcados")))
+    private val restoPaginas: MutableMap<String, Int> = java.util.concurrent.ConcurrentHashMap<String, Int>().also { m ->
         runCatching {
-            val o = JSONObject(prefs.getString("paginas_cap", "{}") ?: "{}")
-            o.keys().forEach { k -> m[k] = o.getInt(k) }
+            if (migrado) leerPaginas(archRestoPaginas, m)
+            else if (archPaginas.existe()) leerPaginas(archPaginas, m)
+            else {
+                val o = JSONObject(prefs.getString("paginas_cap", "{}") ?: "{}")
+                o.keys().forEach { k -> m[k] = o.getInt(k) }
+                runCatching { com.example.lector.Persistencia.escribirLineas(java.io.File(carpetaEstado, "paginas.txt"), m.asSequence().map { (k, v) -> "$k\t$v" }) }
+                prefs.edit().remove("paginas_cap").apply()
+            }
         }
+    }
+    private val mangasMigrados: MutableSet<String> = java.util.Collections.synchronizedSet(
+        runCatching { archMigrados.leer().toHashSet() }.getOrDefault(HashSet()))
+
+    private fun guardarRestos() {
+        archRestoLeidos.guardar(restoLeidos)
+        val rm = synchronized(restoMarcados) { restoMarcados.toList() }; archRestoMarcados.guardar { rm.asSequence() }
+        val rp = restoPaginas.toMap(); archRestoPaginas.guardar { rp.asSequence().map { (k, v) -> "$k\t$v" } }
+        val mm = synchronized(mangasMigrados) { mangasMigrados.toList() }; archMigrados.guardar { mm.asSequence() }
+    }
+
+    init { scope.launch { runCatching { migrarEstadoPorManga(forzar = false) } } }
+
+    /**
+     * Pasa el estado viejo («fuente|url») a cada manga de la biblioteca y del historial, SOLO para los capítulos que ya
+     * tenía (ficha guardada y capítulos conocidos): así un capítulo nuevo de otro manga con la misma url no sale leído.
+     * Lo ya pasado se quita de lo pendiente. Con [forzar] (al restaurar una copia vieja) repasa también los ya migrados.
+     */
+    private fun migrarEstadoPorManga(forzar: Boolean) {
+        if (migrado && !forzar) return
+        val alm = com.example.lector.Almacen.obtener(app)
+        com.example.lector.CacheFichas.iniciar(app)
+        val mangas = LinkedHashSet<Pair<Long, String>>()
+        alm.cargar().forEach { c -> if (c.enLinea) mangas += c.fuenteId to c.urlManga!! }
+        alm.historialLinea.forEach { e -> mangas += e.fuenteId to e.urlManga }
+        val nuevosL = com.example.lector.ConjuntoLargo()
+        val usadosL = com.example.lector.ConjuntoLargo()
+        val nuevosM = HashSet<String>(); val usadosM = HashSet<String>()
+        val nuevosP = HashMap<String, Int>(); val usadosP = HashSet<String>()
+        val hechos = HashSet<String>()
+        for ((f, mu) in mangas) {
+            val caps = HashSet<String>()
+            runCatching { com.example.lector.CacheFichas.leer(f, mu)?.capitulos?.forEach { caps += it.url } }
+            runCatching { caps += alm.capitulosConocidos(f, mu) }
+            if (caps.isEmpty()) continue // sin lista guardada: se pasa al abrir su ficha (migrarMangaSiHace)
+            for (u in caps) {
+                val kl = claveLegado(f, u)
+                if (restoLeidos.contains(kl)) { nuevosL.add(claveLeido(f, mu, u)); usadosL.add(kl) }
+                val kt = "$f|$u"
+                if (kt in restoMarcados) { nuevosM += claveTexto(f, mu, u); usadosM += kt }
+                restoPaginas[kt]?.let { nuevosP[claveTexto(f, mu, u)] = it; usadosP += kt }
+            }
+            hechos += "$f|$mu"
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            leidosH.addAll(nuevosL)
+            usadosL.aArreglo().forEach { restoLeidos.remove(it) }
+            val m2 = marcados + nuevosM.filter { it !in marcados }
+            marcados = m2
+            restoMarcados.removeAll(usadosM)
+            nuevosP.forEach { (k, v) -> if (k !in paginasCap) paginasCap[k] = v }
+            usadosP.forEach { restoPaginas.remove(it) }
+            mangasMigrados.addAll(hechos)
+            migrado = true
+            prefs.edit().putBoolean("estado_por_manga", true).apply()
+            archLeidosM.escribirYa(leidosH)
+            com.example.lector.Persistencia.escribirLineas(java.io.File(carpetaEstado, "marcados_m.txt"), m2.asSequence())
+            guardarPaginasCap(); guardarRestos()
+            versionLeidos++
+        }
+    }
+
+    /**
+     * Migración perezosa de un manga que no tenía lista de capítulos guardada al migrar: se llama al cargar su ficha
+     * con los capítulos que YA conocía (los guardados antes de esta carga), nunca con los recién traídos. Una sola vez.
+     */
+    /** true si el manga aún puede tener estado viejo sin pasar (para no leer su ficha guardada en balde). */
+    fun faltaMigrar(fuenteId: Long, urlManga: String) = migrado && "$fuenteId|$urlManga" !in mangasMigrados
+
+    fun migrarMangaSiHace(fuenteId: Long, urlManga: String, capitulos: Collection<String>) {
+        if (!migrado || capitulos.isEmpty()) return
+        val km = "$fuenteId|$urlManga"
+        if (!mangasMigrados.add(km)) return
+        var cl = false; val nm = HashSet<String>(); var cp = false
+        for (u in capitulos) {
+            val kl = claveLegado(fuenteId, u)
+            if (restoLeidos.remove(kl)) { leidosH.add(claveLeido(fuenteId, urlManga, u)); cl = true }
+            val kt = "$fuenteId|$u"
+            if (restoMarcados.remove(kt)) nm += claveTexto(fuenteId, urlManga, u)
+            restoPaginas.remove(kt)?.let { v -> val k = claveTexto(fuenteId, urlManga, u); if (k !in paginasCap) { paginasCap[k] = v; cp = true } }
+        }
+        if (cl) guardarLeidos()
+        if (nm.isNotEmpty()) { marcados = marcados + nm; guardarMarcados() }
+        if (cp) guardarPaginasCap()
+        guardarRestos()
     }
 
     private val confiadas: MutableSet<String> =
@@ -130,8 +304,13 @@ class ExtManager private constructor(private val app: Context) {
      * el resto necesita pulsar «Confiar». Hay actualización si el listado con LA MISMA firma ofrece una versión
      * mayor o una versión de librería mayor (ExtensionManager.updateExists).
      */
-    val instaladas: List<ExtInstalada>
-        get() {
+    // Calculadas una vez y en caché hasta que cambie algo de lo que dependen (antes se recalculaban en cada lectura,
+    // decenas de veces por recomposición: mucho procesador con muchas extensiones).
+    val instaladas: List<ExtInstalada> get() = instaladasDerivadas.value
+    private val instaladasDerivadas = androidx.compose.runtime.derivedStateOf { calcularInstaladas() }
+
+    private fun calcularInstaladas(): List<ExtInstalada>
+        {
             @Suppress("UNUSED_VARIABLE") val v = confiadasVersion
             val clavesListados = repos.map { it.claveFirma }.filter { it.isNotBlank() }
             return instaladasRaw.map { e ->
@@ -156,15 +335,36 @@ class ExtManager private constructor(private val app: Context) {
         }
 
     /** Fuentes de las extensiones instaladas y de confianza (las reales si ya se cargaron; si no, las del listado). */
-    val fuentes: List<FuenteUI>
-        get() = instaladas.filter { it.confiable && it.errorCarga == null }.flatMap { e ->
+    val fuentes: List<FuenteUI> get() = fuentesDerivadas.value
+    private val fuentesDerivadas = androidx.compose.runtime.derivedStateOf { calcularFuentes() }
+
+    private fun calcularFuentes(): List<FuenteUI> =
+        instaladas.filter { it.confiable && it.errorCarga == null }.flatMap { e ->
             val lista = fuentesCargadas[e.pkg]?.takeIf { it.isNotEmpty() }
                 ?: disponibles.firstOrNull { it.pkg == e.pkg }?.fuentes.orEmpty()
             val base = lista.ifEmpty {
                 listOf(FuenteInfo(e.pkg.hashCode().toLong(), e.nombre, e.lang, "", e.pkg))
             }
-            base.map { FuenteUI(it.id, it.nombre.ifBlank { e.nombre }, it.lang.ifBlank { e.lang }, e.nsfw, e.pkg, it.baseUrl) }
+            base.map {
+                // Los listados sin id de fuente (clásicos, o mientras carga la extensión) dan 0: sin un id propio, el
+                // filtro de repetidas de abajo dejaba UNA sola de todas esas extensiones.
+                val id = if (it.id != 0L) it.id else "${e.pkg}|${it.nombre}|${it.lang}".hashCode().toLong()
+                FuenteUI(id, it.nombre.ifBlank { e.nombre }, it.lang.ifBlank { e.lang }, e.nsfw, e.pkg, it.baseUrl)
+            }
         }
+            // Hay extensiones que traen las mismas fuentes que otra (p. ej. «Nyora-Sources» y «Nyora-Sources 18+»): con
+            // las dos instaladas cada fuente salía dos veces y las listas con el id como clave se cerraban. Una por id.
+            .distinctBy { it.id }
+
+    /**
+     * Qué extensión trae la fuente [id]: la instalada (aunque no sea de confianza o no cargue) y la que ofrecen tus
+     * listados. Sirve para decir por qué falta una fuente y ofrecer arreglarlo.
+     */
+    fun extensionDeFuente(id: Long): Pair<ExtInstalada?, ExtDisponible?> {
+        val disp = disponibles.firstOrNull { d -> d.fuentes.any { it.id == id } }
+        val inst = instaladas.firstOrNull { i -> fuentesCargadas[i.pkg]?.any { it.id == id } == true || i.pkg == disp?.pkg }
+        return inst to disp
+    }
 
     /**
      * Fuentes de una extensión que tienen ajustes propios (ConfigurableSource). Vacío mientras la extensión
@@ -235,6 +435,7 @@ class ExtManager private constructor(private val app: Context) {
     }
 
     init {
+        com.example.lector.ModoContenido.iniciar(prefs, this)
         val paquetes = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REPLACED)
@@ -252,10 +453,14 @@ class ExtManager private constructor(private val app: Context) {
         // Leer el JSON de ~1500 extensiones y recorrer todos los paquetes del teléfono tardaba cientos de ms
         // EN EL HILO PRINCIPAL al abrir la app. Ahora va en segundo plano; las pantallas se rellenan solas.
         scope.launch {
-            cargarCache()
-            leerInstaladas()
-            withContext(Dispatchers.Main) { actualizarLista() }
-            cargarFuentesReales()
+            try {
+                cargarCache()
+                leerInstaladas()
+                withContext(Dispatchers.Main) { actualizarLista() }
+                cargarFuentesReales()
+            } finally {
+                listo.complete(Unit)
+            }
         }
     }
 
@@ -366,7 +571,30 @@ class ExtManager private constructor(private val app: Context) {
     fun actualizarLista() {
         if (cargando) return
         cargando = true
-        scope.launch {
+        scope.launch { recargarLista() }
+    }
+
+    /** Igual que [actualizarLista] pero espera a que termine (trabajo de fondo que avisa de actualizaciones). */
+    suspend fun actualizarListaAhora() {
+        if (cargando) {
+            kotlinx.coroutines.withTimeoutOrNull(60_000L) { while (cargando) kotlinx.coroutines.delay(250) }
+            return
+        }
+        cargando = true
+        recargarLista()
+    }
+
+    private suspend fun recargarLista() {
+        try {
+            recargarListaSinProteger()
+        } finally {
+            // Pase lo que pase (error, cancelación), la lista deja de figurar "cargando".
+            if (cargando) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { cargando = false }
+        }
+    }
+
+    private suspend fun recargarListaSinProteger() {
+        withContext(Dispatchers.IO) {
             val nuevas = ArrayList<ExtDisponible>()
             val errs = ArrayList<String>()
             val metas = HashMap<String, RepoExt>()
@@ -386,7 +614,7 @@ class ExtManager private constructor(private val app: Context) {
                 if (!leido) errs += "${r.nombre}: ${primerError ?: "sin respuesta"}"
             }
             // Una entrada por paquete y firma (si hay copias en varios listados con la misma firma, gana la versión más alta).
-            // Se guarda una copia por listado: así se puede elegir de cuál instalar cuando la misma extensión está en varios.
+            // Una copia por listado, para poder elegir de cuál instalar cuando la misma extensión está en varios.
             val unicas = nuevas.groupBy { Triple(it.pkg, it.firma, it.repoUrl) }.values.map { g -> g.maxByOrNull { it.versionCode }!! }
             withContext(Dispatchers.Main) {
                 if (unicas.isNotEmpty() || errs.isEmpty()) {
@@ -412,6 +640,9 @@ class ExtManager private constructor(private val app: Context) {
             cargarFuentesReales()
         }
     }
+
+    /** Extensiones instaladas que tienen una versión nueva en algún listado. */
+    fun conActualizacion(): List<ExtInstalada> = instaladas.filter { it.actualizacion != null }
 
     private fun guardarCache(lista: List<ExtDisponible>) = runCatching {
         val a = JSONArray()
@@ -467,6 +698,33 @@ class ExtManager private constructor(private val app: Context) {
         }
     }
 
+    /**
+     * Diagnóstico para enviar: todo paquete instalado que parezca una extensión (aunque no la reconozcamos) con su
+     * versión, librería, confianza, si cargó y cuántas fuentes da.
+     */
+    @Suppress("DEPRECATION")
+    fun informe(): String = buildString {
+        val pm = app.packageManager
+        val todos = runCatching { pm.getInstalledPackages(PackageManager.GET_CONFIGURATIONS) }.getOrDefault(emptyList())
+        val candidatos = todos.filter { CargadorExt.esExtension(it) || it.packageName.contains("tachiyomi") || it.packageName.contains("mihon") }
+        appendLine("Shiori ${runCatching { pm.getPackageInfo(app.packageName, 0).versionName }.getOrNull()} · Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
+        appendLine("Paquetes instalados vistos: ${todos.size} · parecen extensiones: ${candidatos.size} · reconocidas: ${instaladas.size} · fuentes: ${fuentes.size}")
+        appendLine("Listados: ${repos.count { it.activo }} activos, ${disponibles.size} extensiones disponibles")
+        candidatos.sortedBy { it.packageName }.forEach { p ->
+            val e = instaladas.firstOrNull { it.pkg == p.packageName }
+            val estado = when {
+                !CargadorExt.esExtension(p) -> "NO DECLARA la característica tachiyomi.extension"
+                e == null -> "no se pudo leer"
+                e.errorCarga != null -> "NO SOPORTADA: ${e.errorCarga}"
+                !e.confiable -> "sin confianza"
+                erroresCarga[e.pkg] != null -> "ERROR AL CARGAR: ${erroresCarga[e.pkg]}"
+                fuentesCargadas[e.pkg] == null -> "cargando…"
+                else -> "ok, ${fuentesCargadas[e.pkg]?.size} fuentes"
+            }
+            appendLine("- ${e?.nombre ?: p.packageName} (${p.packageName}) v${p.versionName} lib ${e?.libVersion ?: "?"}: $estado")
+        }
+    }
+
     @Suppress("DEPRECATION")
     private fun leerInstaladas() {
         val pm = app.packageManager
@@ -474,8 +732,17 @@ class ExtManager private constructor(private val app: Context) {
             .getOrDefault(emptyList())
             .filter { CargadorExt.esExtension(it) }
             .map { it.packageName }
-        instaladasRaw = nombres.mapNotNull { n ->
-            runCatching { CargadorExt.leer(pm, pm.getPackageInfo(n, CargadorExt.FLAGS)) }.getOrNull()
+        // Instaladas en Android + privadas (carpeta de la app); si una está en los dos sitios, la de versión mayor.
+        val paquetes = LinkedHashMap<String, Pair<android.content.pm.PackageInfo, Boolean>>()
+        nombres.forEach { n -> runCatching { pm.getPackageInfo(n, CargadorExt.FLAGS) }.getOrNull()?.let { paquetes[n] = it to false } }
+        CargadorExt.privadas(app).forEach { p ->
+            val ya = paquetes[p.packageName]?.first
+            if (ya == null || androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(p) > androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(ya)) {
+                paquetes[p.packageName] = p to true
+            }
+        }
+        instaladasRaw = paquetes.values.mapNotNull { (p, priv) ->
+            runCatching { CargadorExt.leer(pm, p, priv) }.getOrNull()
         }.sortedBy { it.nombre.lowercase() }
         fuentesCargadas.keys.filter { k -> instaladasRaw.none { it.pkg == k } }.forEach { fuentesCargadas.remove(it) }
         reducirDisponibles()
@@ -490,6 +757,13 @@ class ExtManager private constructor(private val app: Context) {
         scope.launch { cargarFuentesReales(e.pkg) }
     }
 
+    /** Como «Revoke trusted unknown extensions» de Mihon. */
+    fun revocarConfianza() {
+        confiadas.clear()
+        prefs.edit().putStringSet("confiadas", emptySet()).apply()
+        confiadasVersion++
+    }
+
     fun dejarDeConfiar(e: ExtInstalada) {
         confiadas -= "${e.pkg}:${e.firma}"
         prefs.edit().putStringSet("confiadas", confiadas.toSet()).apply()
@@ -497,50 +771,78 @@ class ExtManager private constructor(private val app: Context) {
     }
 
     // ---- Instalar / desinstalar ----
-    fun instalar(e: ExtDisponible) {
-        if (e.apkUrl.isBlank()) return
-        val actual = progreso[e.pkg]?.fase
-        if (actual == Fase.DESCARGANDO || actual == Fase.INSTALANDO) return
-        if (!app.packageManager.canRequestPackageInstalls()) {
-            com.example.lector.ui.Avisos.mostrar("Permite instalar apps desde Lector y vuelve a pulsar Instalar")
-            runCatching {
-                app.startActivity(
-                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}"))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }
-            return
-        }
+    private val colaInstalacion = kotlinx.coroutines.sync.Mutex()
+
+    // Entradas fusionadas (Komikku/SY «merge»): «fuente|url» principal → las de otras fuentes unidas a ella. Las unidas
+    // no se ven en la biblioteca; la ficha de la principal deja cambiar entre todas.
+    var fusionVersion by mutableStateOf(0); private set
+    private fun fusionJson(): JSONObject { @Suppress("UNUSED_VARIABLE") val v = fusionVersion; return runCatching { JSONObject(prefs.getString("fusiones", "{}")!!) }.getOrDefault(JSONObject()) }
+    fun unidas(principal: String): List<String> = fusionJson().optJSONArray(principal)?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty()
+    fun principalDe(clave: String): String? = fusionJson().let { o -> o.keys().asSequence().firstOrNull { k -> unidas(k).contains(clave) } }
+    fun fusionadas(): Set<String> = fusionJson().let { o -> o.keys().asSequence().flatMap { k -> unidas(k).asSequence() }.toSet() }
+    fun fusionar(principal: String, otra: String) {
+        val o = fusionJson()
+        o.put(principal, JSONArray((unidas(principal) + otra).distinct()))
+        prefs.edit().putString("fusiones", o.toString()).apply(); fusionVersion++
+    }
+    fun separar(principal: String, otra: String) {
+        val o = fusionJson()
+        val resto = unidas(principal) - otra
+        if (resto.isEmpty()) o.remove(principal) else o.put(principal, JSONArray(resto))
+        prefs.edit().putString("fusiones", o.toString()).apply(); fusionVersion++
+    }
+
+    // Grupos de traducción ocultos en un manga (Komikku: «Excluded scanlators»), por «fuente|url».
+    var gruposVersion by mutableStateOf(0); private set
+    fun gruposOcultos(fuenteId: Long, url: String): Set<String> {
+        @Suppress("UNUSED_VARIABLE") val v = gruposVersion
+        return prefs.getStringSet("excl_$fuenteId|$url", emptySet()).orEmpty()
+    }
+    fun alternarGrupo(fuenteId: Long, url: String, grupo: String) {
+        val a = gruposOcultos(fuenteId, url)
+        prefs.edit().putStringSet("excl_$fuenteId|$url", if (grupo in a) a - grupo else a + grupo).apply()
+        gruposVersion++
+    }
+
+    // Páginas de la fuente que se piden de una vez al cargar su catálogo o una búsqueda (como «Maximum posts to load»).
+    var ppcVersion by mutableStateOf(0); private set
+    fun paginasPorCarga(fuenteId: Long): Int { @Suppress("UNUSED_VARIABLE") val v = ppcVersion; return prefs.getInt("ppc_$fuenteId", 1) }
+    fun fijarPaginasPorCarga(fuenteId: Long, n: Int) { prefs.edit().putInt("ppc_$fuenteId", n).apply(); ppcVersion++ }
+
+    /** Actualiza todas las extensiones con versión nueva (se descargan a la vez y se instalan una tras otra). */
+    fun actualizarTodas() {
+        if (actualizandoTodas != null) return
+        val lista = instaladas.mapNotNull { it.actualizacion }
+        if (lista.isEmpty()) return
+        // En segundo plano y una tras otra. Desde Android 12 las extensiones que instaló Shiori se actualizan sin
+        // pedir confirmación (ver [abrirSesion]); en versiones anteriores Android sigue preguntando por cada una.
         scope.launch {
             try {
-                progreso[e.pkg] = Progreso(Fase.DESCARGANDO, 0)
-                val apk = File(File(app.cacheDir, "ext").apply { mkdirs() }, "${e.pkg}.apk")
-                ExtRepos.descargarA(e.apkUrl, apk) { progreso[e.pkg] = Progreso(Fase.DESCARGANDO, it) }
-                progreso[e.pkg] = Progreso(Fase.INSTALANDO)
-                abrirSesion(e.pkg, apk)
-            } catch (t: Throwable) {
-                progreso[e.pkg] = Progreso(Fase.ERROR, error = t.message ?: "Error al descargar")
-            }
+                lista.forEachIndexed { i, e ->
+                    actualizandoTodas = i to lista.size
+                    instalar(e)
+                    kotlinx.coroutines.delay(300)
+                    kotlinx.coroutines.withTimeoutOrNull(240_000) {
+                        while (progreso[e.pkg]?.fase.let { it == Fase.DESCARGANDO || it == Fase.INSTALANDO }) kotlinx.coroutines.delay(300)
+                    }
+                }
+            } finally { actualizandoTodas = null }
         }
     }
 
-    private fun abrirSesion(pkg: String, apk: File) {
-        val instalador = app.packageManager.packageInstaller
-        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        params.setAppPackageName(pkg)
-        val id = instalador.createSession(params)
-        instalador.openSession(id).use { s ->
-            apk.inputStream().use { ent ->
-                s.openWrite("ext.apk", 0, apk.length()).use { sal ->
-                    ent.copyTo(sal)
-                    s.fsync(sal)
-                }
-            }
-            val intent = Intent(ACCION_INSTALAR).setPackage(app.packageName).putExtra("pkg", pkg)
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
-            s.commit(PendingIntent.getBroadcast(app, id, intent, flags).intentSender)
-        }
+    /** Progreso de «Actualizar todas»: (hechas, total) o null si no está en marcha. */
+    var actualizandoTodas by mutableStateOf<Pair<Int, Int>?>(null); private set
+
+    /** Como el instalador «Privado» de Komikku: las extensiones se guardan en la app, sin instalarse en Android. */
+    var extPrivadas by mutableStateOf(prefs.getBoolean("ext_privadas", false)); private set
+    fun cambiarExtPrivadas(v: Boolean) { extPrivadas = v; prefs.edit().putBoolean("ext_privadas", v).apply() }
+
+    /** Instala un APK ya en disco como extensión privada. Devuelve el error, o null si fue bien. */
+    suspend fun instalarPrivadaDe(apk: File): String? = withContext(Dispatchers.IO) {
+        runCatching { CargadorExt.instalarPrivada(app, apk) }.fold(
+            { leerInstaladas(); cargarFuentesReales(it); null },
+            { it.message ?: "No se pudo instalar" },
+        )
     }
 
     /** Todas las copias de una extensión (una por listado), de la versión más nueva a la más vieja. */
@@ -558,22 +860,102 @@ class ExtManager private constructor(private val app: Context) {
         runCatching { Uri.parse(url).host?.removePrefix("www.")?.lowercase() }.getOrNull()?.ifBlank { null }
 
     /**
-     * Instala la copia de un listado concreto. Si ya está instalada la de otro listado con otra firma,
-     * Android no deja reemplazarla: primero se pide desinstalar la actual.
+     * Instala la copia de un listado concreto. Si ya está instalada (en el sistema) la de otro listado con otra
+     * firma, Android no deja reemplazarla: primero se pide desinstalar la actual.
      */
     fun instalarDe(d: ExtDisponible) {
         val actual = instaladasRaw.firstOrNull { it.pkg == d.pkg }
-        if (actual != null && d.firma.isNotBlank() && actual.firmas.none { it.equals(d.firma, true) }) {
-            com.example.lector.ui.Avisos.mostrar(
-                "La instalada viene de otro listado y está firmada distinto: desinstálala y vuelve a pulsar Instalar",
-            )
+        if (actual != null && !actual.privada && d.firma.isNotBlank() && actual.firmas.none { it.equals(d.firma, true) }) {
+            com.example.lector.ui.Avisos.mostrar("La instalada viene de otro listado con otra firma: desinstálala y vuelve a pulsar Instalar")
             desinstalar(d.pkg)
             return
         }
         instalar(d)
     }
 
+    fun instalar(e: ExtDisponible) {
+        if (e.apkUrl.isBlank()) return
+        val actual = progreso[e.pkg]?.fase
+        if (actual == Fase.DESCARGANDO || actual == Fase.INSTALANDO) return
+        // Privada si así se eligió o si la que hay ya lo es (su actualización va al mismo sitio).
+        if (extPrivadas || instaladasRaw.any { it.pkg == e.pkg && it.privada }) {
+            scope.launch {
+                try {
+                    progreso[e.pkg] = Progreso(Fase.DESCARGANDO, 0)
+                    val apk = File(File(app.cacheDir, "ext").apply { mkdirs() }, "${e.pkg}.apk")
+                    ExtRepos.descargarA(e.apkUrl, apk) { progreso[e.pkg] = Progreso(Fase.DESCARGANDO, it) }
+                    progreso[e.pkg] = Progreso(Fase.INSTALANDO)
+                    val error = instalarPrivadaDe(apk)
+                    apk.delete()
+                    if (error == null) progreso.remove(e.pkg) else progreso[e.pkg] = Progreso(Fase.ERROR, error = error)
+                } catch (t: Throwable) {
+                    progreso[e.pkg] = Progreso(Fase.ERROR, error = t.message ?: "Error al descargar")
+                }
+            }
+            return
+        }
+        if (!app.packageManager.canRequestPackageInstalls()) {
+            com.example.lector.ui.Avisos.mostrar("Permite instalar apps desde Lector y vuelve a pulsar Instalar")
+            runCatching {
+                app.startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+            return
+        }
+        scope.launch {
+            try {
+                progreso[e.pkg] = Progreso(Fase.DESCARGANDO, 0)
+                val apk = File(File(app.cacheDir, "ext").apply { mkdirs() }, "${e.pkg}.apk")
+                ExtRepos.descargarA(e.apkUrl, apk) { progreso[e.pkg] = Progreso(Fase.DESCARGANDO, it) }
+                progreso[e.pkg] = Progreso(Fase.INSTALANDO)
+                // Android confirma las instalaciones de una en una: si se lanzan varias juntas, las demás se cancelan.
+                // Las descargas van en paralelo; la instalación, en cola (espera a que termine la anterior).
+                colaInstalacion.withLock {
+                    abrirSesion(e.pkg, apk)
+                    kotlinx.coroutines.withTimeoutOrNull(180_000) {
+                        while (progreso[e.pkg]?.fase == Fase.INSTALANDO) kotlinx.coroutines.delay(300)
+                    }
+                }
+            } catch (t: Throwable) {
+                progreso[e.pkg] = Progreso(Fase.ERROR, error = t.message ?: "Error al descargar")
+            }
+        }
+    }
+
+    /** Instala un APK con PackageInstaller (extensiones y la propia app al actualizarse). El resultado llega a [progreso]. */
+    fun abrirSesion(pkg: String, apk: File) {
+        val instalador = app.packageManager.packageInstaller
+        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        params.setAppPackageName(pkg)
+        // Como Komikku (PackageInstallerInstaller): sin confirmación del sistema cuando Android lo permite
+        // (API 31+, actualizaciones de paquetes que instaló esta app y la propia app). Las instalaciones nuevas
+        // siguen pidiendo confirmación: es una limitación de Android.
+        if (Build.VERSION.SDK_INT >= 31) {
+            params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+        }
+        val id = instalador.createSession(params)
+        instalador.openSession(id).use { s ->
+            apk.inputStream().use { ent ->
+                s.openWrite("ext.apk", 0, apk.length()).use { sal ->
+                    ent.copyTo(sal)
+                    s.fsync(sal)
+                }
+            }
+            val intent = Intent(ACCION_INSTALAR).setPackage(app.packageName).putExtra("pkg", pkg)
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+            s.commit(PendingIntent.getBroadcast(app, id, intent, flags).intentSender)
+        }
+    }
+
     fun desinstalar(pkg: String) {
+        if (instaladasRaw.any { it.pkg == pkg && it.privada }) {
+            CargadorExt.quitarPrivada(app, pkg)
+            refrescarInstaladas()
+            return
+        }
         runCatching {
             app.startActivity(
                 Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkg")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -617,39 +999,230 @@ class ExtManager private constructor(private val app: Context) {
 
     fun alternarNovedad(id: Long) = fijarNovedades(if (id in novedades) novedades - id else novedades + id)
 
-    fun marcarLeido(fuenteId: Long, url: String) {
-        val k = "$fuenteId|$url"
-        if (paginasCap.remove(k) != null) guardarPaginasCap() // terminado: ya no hay "página por la que vas"
-        if (k in leidos) return
-        leidos = leidos + k
-        prefs.edit().putStringSet("leidos", leidos).apply()
+    /** Búsquedas guardadas puestas en Novedades: «idFuente␉nombre». */
+    var novedadesBusq by mutableStateOf(prefs.getString("novedades_busq", "").orEmpty().split('\n').filter { it.contains('\t') })
+        private set
+
+    fun alternarNovedadBusqueda(fuenteId: Long, nombre: String) {
+        val k = "$fuenteId\t$nombre"
+        novedadesBusq = if (k in novedadesBusq) novedadesBusq - k else novedadesBusq + k
+        prefs.edit().putString("novedades_busq", novedadesBusq.joinToString("\n")).apply()
+    }
+
+    /**
+     * Importa de golpe capítulos leídos, marcados y páginas (claves por manga: [claveLeido] y [claveTexto]), con una
+     * escritura de cada cosa.
+     * Lo usan las restauraciones de copias: hacerlo manga a manga reescribía todo cada vez y era muy lento.
+     */
+    fun importarEstados(leidosNuevos: com.example.lector.ConjuntoLargo, marcadosNuevos: Collection<String>, paginas: Map<String, Int>) {
+        if (leidosNuevos.size > 0) {
+            leidosH.addAll(leidosNuevos)
+            guardarLeidos()
+        }
+        if (marcadosNuevos.isNotEmpty()) {
+            marcados = marcados + marcadosNuevos
+            guardarMarcados()
+        }
+        var cambio = false
+        paginas.forEach { (k, v) -> if (v > 0 && paginasCap[k] != v) { paginasCap[k] = v; cambio = true } }
+        if (cambio) guardarPaginasCap()
+    }
+
+    /** Marca varios capítulos de un manga como leídos de una vez (una sola escritura). */
+    fun marcarLeidos(fuenteId: Long, urlManga: String, urls: Collection<String>) {
+        if (urls.isEmpty()) return
+        urls.forEach { u -> leidosH.add(claveLeido(fuenteId, urlManga, u)) }
+        guardarLeidos()
+    }
+
+    fun desmarcarLeidos(fuenteId: Long, urlManga: String, urls: Collection<String>) {
+        if (urls.isEmpty()) return
+        urls.forEach { u -> leidosH.remove(claveLeido(fuenteId, urlManga, u)); if (!migrado) restoLeidos.remove(claveLegado(fuenteId, u)) }
+        guardarLeidos()
+    }
+
+    fun marcarVarios(fuenteId: Long, urlManga: String, urls: Collection<String>, marcar: Boolean) {
+        val claves = urls.map { claveTexto(fuenteId, urlManga, it) }.toSet()
+        if (!marcar && !migrado) restoMarcados.removeAll(urls.map { "$fuenteId|$it" }.toSet())
+        marcados = if (marcar) marcados + claves else marcados - claves
+        guardarMarcados()
+    }
+
+    // ---- Lista de capítulos de la ficha: filtros y orden (como Komikku) ----
+    var capNoLeidos by com.example.lector.prefEnum(prefs, "cap_no_leidos", com.example.lector.Tri.IGNORAR)
+    var capDescargados by com.example.lector.prefEnum(prefs, "cap_descargados", com.example.lector.Tri.IGNORAR)
+    var capMarcados by com.example.lector.prefEnum(prefs, "cap_marcados", com.example.lector.Tri.IGNORAR)
+    var capOrden by com.example.lector.prefInt(prefs, "cap_orden", 0) // 0 fuente · 1 número · 2 fecha de subida
+    var capDescendente by com.example.lector.prefBool(prefs, "cap_desc", true)
+
+    /** Filtro y orden de capítulos de UN manga (como Komikku): si no tiene propio, usa el predeterminado de arriba. */
+    data class FiltroCaps(
+        val noLeidos: com.example.lector.Tri, val descargados: com.example.lector.Tri, val marcados: com.example.lector.Tri,
+        val orden: Int, val descendente: Boolean,
+    )
+    private val prefsFiltros by lazy { app.getSharedPreferences("filtros_caps", android.content.Context.MODE_PRIVATE) }
+    fun filtroCapsPredeterminado() = FiltroCaps(capNoLeidos, capDescargados, capMarcados, capOrden, capDescendente)
+    fun filtroCapsDe(fuenteId: Long, url: String): FiltroCaps {
+        val t = prefsFiltros.getString("$fuenteId|$url", null)?.split(',') ?: return filtroCapsPredeterminado()
+        return runCatching {
+            FiltroCaps(com.example.lector.Tri.valueOf(t[0]), com.example.lector.Tri.valueOf(t[1]), com.example.lector.Tri.valueOf(t[2]), t[3].toInt(), t[4].toBoolean())
+        }.getOrElse { filtroCapsPredeterminado() }
+    }
+    fun guardarFiltroCaps(fuenteId: Long, url: String, f: FiltroCaps) {
+        prefsFiltros.edit().putString("$fuenteId|$url", "${f.noLeidos},${f.descargados},${f.marcados},${f.orden},${f.descendente}").apply()
+    }
+    /** «Usar como predeterminado»: lo de este manga pasa a ser lo que tendrán los mangas sin filtro propio. */
+    fun filtroCapsComoPredeterminado(f: FiltroCaps) {
+        capNoLeidos = f.noLeidos; capDescargados = f.descargados; capMarcados = f.marcados; capOrden = f.orden; capDescendente = f.descendente
+    }
+    var capVerNumero by com.example.lector.prefBool(prefs, "cap_ver_numero", false) // "Capítulo N" en vez del nombre
+
+    // ---- Búsquedas guardadas de cada fuente (TachiyomiSY/Komikku) ----
+    data class BusquedaGuardada(val nombre: String, val consulta: String, val filtros: String?)
+
+    var busquedasVersion by mutableStateOf(0); private set
+
+    fun busquedas(fuenteId: Long): List<BusquedaGuardada> {
+        @Suppress("UNUSED_VARIABLE") val v = busquedasVersion
+        return runCatching {
+            val a = JSONArray(prefs.getString("busq_$fuenteId", "[]"))
+            (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                BusquedaGuardada(o.getString("n"), o.optString("q"), o.optString("f").ifBlank { null })
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun guardarBusqueda(fuenteId: Long, b: BusquedaGuardada) {
+        val lista = busquedas(fuenteId).filterNot { it.nombre == b.nombre } + b
+        val a = JSONArray()
+        lista.forEach { a.put(JSONObject().put("n", it.nombre).put("q", it.consulta).put("f", it.filtros ?: "")) }
+        prefs.edit().putString("busq_$fuenteId", a.toString()).apply()
+        busquedasVersion++
+    }
+
+    fun borrarBusqueda(fuenteId: Long, nombre: String) {
+        val lista = busquedas(fuenteId).filterNot { it.nombre == nombre }
+        val a = JSONArray()
+        lista.forEach { a.put(JSONObject().put("n", it.nombre).put("q", it.consulta).put("f", it.filtros ?: "")) }
+        prefs.edit().putString("busq_$fuenteId", a.toString()).apply()
+        busquedasVersion++
+    }
+
+    // ---- Copia de seguridad: lo que guarda este gestor (capítulos leídos, marcas, listados…) ----
+    fun exportar(): JSONObject {
+        val o = JSONObject()
+        // Los leídos van como huellas (números): mucho más pequeños que los textos «fuente|url».
+        o.put("leidos_b64", run {
+            val arr = restoLeidos.aArreglo() // lo viejo («fuente|url») aún sin pasar a su manga
+            val bb = java.nio.ByteBuffer.allocate(arr.size * 8)
+            arr.forEach { bb.putLong(it) }
+            android.util.Base64.encodeToString(bb.array(), android.util.Base64.NO_WRAP)
+        })
+        o.put("marcados", JSONArray(synchronized(restoMarcados) { restoMarcados.toList() }))
+        o.put("paginas_cap", JSONObject().also { j -> restoPaginas.forEach { (k, v) -> j.put(k, v) } })
+        // Estado por manga (claves «fuente|urlManga|urlCapítulo»).
+        o.put("leidos_m_b64", run {
+            val arr = leidosH.aArreglo()
+            val bb = java.nio.ByteBuffer.allocate(arr.size * 8)
+            arr.forEach { bb.putLong(it) }
+            android.util.Base64.encodeToString(bb.array(), android.util.Base64.NO_WRAP)
+        })
+        o.put("marcados_m", JSONArray(marcados.toList()))
+        o.put("paginas_m", JSONObject().also { j -> paginasCap.forEach { (k, v) -> j.put(k, v) } })
+        o.put("mangas_migrados", JSONArray(synchronized(mangasMigrados) { mangasMigrados.toList() }))
+        o.put("repos", JSONArray(prefs.getString("repos", "[]")))
+        o.put("fijadas", JSONArray(fijadas.toList()))
+        o.put("novedades", JSONArray(novedades))
+        o.put("confiadas", JSONArray(confiadas.toList()))
+        o.put("nsfw", mostrarNsfw)
+        val busq = JSONObject()
+        prefs.all.keys.filter { it.startsWith("busq_") }.forEach { k -> busq.put(k, JSONArray(prefs.getString(k, "[]"))) }
+        o.put("busquedas", busq)
+        return o
+    }
+
+    fun importar(o: JSONObject) {
+        fun conjunto(a: JSONArray?): Set<String> = if (a == null) emptySet() else (0 until a.length()).map { a.getString(it) }.toSet()
+        // Lo viejo («fuente|url») va a lo pendiente y luego se pasa a cada manga, solo a los capítulos que ya tenía.
+        val antes = restoLeidos.size + restoMarcados.size + restoPaginas.size
+        o.optJSONArray("leidos")?.let { a -> for (i in 0 until a.length()) com.example.lector.ConjuntoLargo.claveDeTexto(a.getString(i))?.let { restoLeidos.add(it) } }
+        o.optJSONArray("leidos_h")?.let { a -> for (i in 0 until a.length()) restoLeidos.add(a.getLong(i)) }
+        o.optString("leidos_b64").takeIf { it.isNotEmpty() }?.let { t ->
+            val bb = java.nio.ByteBuffer.wrap(android.util.Base64.decode(t, android.util.Base64.NO_WRAP))
+            while (bb.remaining() >= 8) restoLeidos.add(bb.long)
+        }
+        restoMarcados.addAll(conjunto(o.optJSONArray("marcados")))
+        o.optJSONObject("paginas_cap")?.let { j -> j.keys().forEach { k -> restoPaginas[k] = j.optInt(k) } }
+        val hayViejo = restoLeidos.size + restoMarcados.size + restoPaginas.size != antes
+        o.optString("leidos_m_b64").takeIf { it.isNotEmpty() }?.let { t ->
+            val bb = java.nio.ByteBuffer.wrap(android.util.Base64.decode(t, android.util.Base64.NO_WRAP))
+            while (bb.remaining() >= 8) leidosH.add(bb.long)
+        }
+        versionLeidos++
+        marcados = marcados + conjunto(o.optJSONArray("marcados_m"))
+        o.optJSONObject("paginas_m")?.let { j -> j.keys().forEach { k -> paginasCap[k] = j.optInt(k) } }
+        mangasMigrados.addAll(conjunto(o.optJSONArray("mangas_migrados")))
+        if (migrado) { guardarRestos(); if (hayViejo) scope.launch { runCatching { migrarEstadoPorManga(forzar = true) } } }
+        fijadas = fijadas + conjunto(o.optJSONArray("fijadas"))
+        confiadas += conjunto(o.optJSONArray("confiadas"))
+        o.optJSONArray("novedades")?.let { a -> fijarNovedades(novedades + (0 until a.length()).map { a.getLong(it) }) }
+        o.optJSONArray("repos")?.let { a ->
+            val actuales = repos.map { it.url }.toSet()
+            val nuevos = (0 until a.length()).mapNotNull { i ->
+                val r = a.getJSONObject(i)
+                if (r.optString("url") in actuales) null
+                else RepoExt(
+                    url = r.getString("url"), nombre = r.optString("nombre"), activo = r.optBoolean("activo", true),
+                    web = r.optString("web").ifBlank { null }, etiqueta = r.optString("etiqueta"),
+                    claveFirma = r.optString("clave"), esLegacy = r.optBoolean("legacy", false),
+                    urlLista = r.optString("lista").ifBlank { null }, discord = r.optString("discord").ifBlank { null },
+                )
+            }
+            if (nuevos.isNotEmpty()) { repos = repos + nuevos; guardarRepos(repos) }
+        }
+        o.optJSONObject("busquedas")?.let { b -> val e = prefs.edit(); b.keys().forEach { k -> e.putString(k, b.getJSONArray(k).toString()) }; e.apply(); busquedasVersion++ }
+        guardarLeidos(); guardarMarcados()
+        prefs.edit().putStringSet("fijadas", fijadas).putStringSet("confiadas", confiadas.toSet()).apply()
+        guardarPaginasCap()
+        confiadasVersion++
+        actualizarLista()
+    }
+
+    fun marcarLeido(fuenteId: Long, urlManga: String, url: String) {
+        // Se conserva la página aunque esté terminado: al reabrirlo sigue donde lo dejaste (también al final).
+        if (!leidosH.add(claveLeido(fuenteId, urlManga, url))) return
+        guardarLeidos()
     }
 
     /** Página por la que ibas en un capítulo (0 si no lo empezaste o ya está leído). */
-    fun paginaDe(fuenteId: Long, url: String): Int =
-        if (esLeido(fuenteId, url)) 0 else paginasCap["$fuenteId|$url"] ?: 0
+    fun paginaDe(fuenteId: Long, urlManga: String, url: String): Int =
+        paginasCap[claveTexto(fuenteId, urlManga, url)] ?: (if (!migrado) restoPaginas["$fuenteId|$url"] else null) ?: 0
 
-    fun guardarPagina(fuenteId: Long, url: String, pagina: Int) {
-        val k = "$fuenteId|$url"
-        if (esLeido(fuenteId, url) || pagina <= 0 || paginasCap[k] == pagina) return
-        paginasCap[k] = pagina
+    fun guardarPagina(fuenteId: Long, urlManga: String, url: String, pagina: Int) {
+        val k = claveTexto(fuenteId, urlManga, url)
+        if (!migrado) restoPaginas.remove("$fuenteId|$url")
+        if (paginasCap[k] == pagina || (pagina <= 0 && k !in paginasCap)) return
+        // Volver a la primera página también cuenta (se olvida la guardada).
+        if (pagina <= 0) paginasCap.remove(k) else paginasCap[k] = pagina
         guardarPaginasCap()
     }
 
     private fun guardarPaginasCap() {
-        val o = JSONObject()
-        paginasCap.forEach { (k, v) -> o.put(k, v) }
-        prefs.edit().putString("paginas_cap", o.toString()).apply()
+        val copia = paginasCap.toMap()
+        archPaginas.guardar { copia.asSequence().map { (k, v) -> "$k\t$v" } }
     }
 
-    fun esLeido(fuenteId: Long, url: String) = "$fuenteId|$url" in leidos
+    fun esLeido(fuenteId: Long, urlManga: String, url: String): Boolean {
+        @Suppress("UNUSED_VARIABLE") val v = versionLeidos // para que Compose se entere de los cambios
+        return leidosH.contains(claveLeido(fuenteId, urlManga, url)) || (!migrado && restoLeidos.contains(claveLegado(fuenteId, url)))
+    }
 
     /** Vuelve a dejar un capítulo como no leído. */
-    fun desmarcarLeido(fuenteId: Long, url: String) {
-        val k = "$fuenteId|$url"
-        if (k !in leidos) return
-        leidos = leidos - k
-        prefs.edit().putStringSet("leidos", leidos).apply()
+    fun desmarcarLeido(fuenteId: Long, urlManga: String, url: String) {
+        val a = leidosH.remove(claveLeido(fuenteId, urlManga, url))
+        val b = !migrado && restoLeidos.remove(claveLegado(fuenteId, url))
+        if (a || b) guardarLeidos()
     }
 
     /**
@@ -658,29 +1231,72 @@ class ExtManager private constructor(private val app: Context) {
      * se marcan como leídos los [respaldo] capítulos más antiguos. Devuelve cuántos capítulos quedan leídos.
      */
     fun migrarLeidos(
-        viejaFuente: Long, viejos: List<CapituloFuente>?, nuevaFuente: Long, nuevos: List<CapituloFuente>, respaldo: Int,
+        viejaFuente: Long, viejaUrlManga: String, viejos: List<CapituloFuente>?,
+        nuevaFuente: Long, nuevaUrlManga: String, nuevos: List<CapituloFuente>, respaldo: Int,
     ): Int {
-        val numerosLeidos = viejos.orEmpty().filter { it.numero >= 0 && esLeido(viejaFuente, it.url) }.map { it.numero }.toSet()
-        val aMarcar = if (numerosLeidos.isNotEmpty()) {
-            nuevos.filter { it.numero >= 0 && it.numero in numerosLeidos }
-        } else {
-            // Las fuentes listan lo más nuevo primero: los leídos son los últimos de la lista.
-            nuevos.takeLast(respaldo.coerceIn(0, nuevos.size))
+        // Copiado de Komikku (MigrateDialog/copyChapters): el mayor número de capítulo leído en la vieja marca como
+        // leídos todos los de la nueva con número <= ese; los marcadores pasan al capítulo del mismo número. Si la
+        // fuente no da número, se reconoce del nombre («Capítulo 12.5», «Ch. 7»…), como ChapterRecognition.
+        val viejosNum = viejos.orEmpty().map { it to numeroReconocido(it) }.filter { it.second >= 0f }
+        val maxLeido = viejosNum.filter { esLeido(viejaFuente, viejaUrlManga, it.first.url) }.maxOfOrNull { it.second }
+        val marcadosNum = viejosNum.filter { esMarcado(viejaFuente, viejaUrlManga, it.first.url) }.map { it.second }.toSet()
+        val nuevosNum = nuevos.map { it to numeroReconocido(it) }
+        val aMarcar = when {
+            maxLeido != null -> nuevosNum.filter { it.second >= 0f && it.second <= maxLeido }.map { it.first }
+            viejos.isNullOrEmpty() -> nuevos.takeLast(respaldo.coerceIn(0, nuevos.size)) // sin datos viejos: los más antiguos
+            else -> emptyList()
         }
-        val claves = aMarcar.map { "$nuevaFuente|${it.url}" }.toSet()
-        if (claves.isNotEmpty()) {
-            leidos = leidos + claves
-            prefs.edit().putStringSet("leidos", leidos).apply()
+        if (aMarcar.isNotEmpty()) {
+            aMarcar.forEach { leidosH.add(claveLeido(nuevaFuente, nuevaUrlManga, it.url)) }
+            guardarLeidos()
         }
-        return nuevos.count { esLeido(nuevaFuente, it.url) }
+        val nuevosMarcados = nuevosNum.filter { it.second in marcadosNum }.map { claveTexto(nuevaFuente, nuevaUrlManga, it.first.url) }
+        if (nuevosMarcados.isNotEmpty()) { marcados = marcados + nuevosMarcados; guardarMarcados() }
+        return nuevos.count { esLeido(nuevaFuente, nuevaUrlManga, it.url) }
     }
 
-    fun esMarcado(fuenteId: Long, url: String) = "$fuenteId|$url" in marcados
+    fun esMarcado(fuenteId: Long, urlManga: String, url: String) =
+        claveTexto(fuenteId, urlManga, url) in marcados || (!migrado && "$fuenteId|$url" in restoMarcados)
 
-    fun alternarMarcado(fuenteId: Long, url: String) {
-        val k = "$fuenteId|$url"
-        marcados = if (k in marcados) marcados - k else marcados + k
-        prefs.edit().putStringSet("marcados", marcados).apply()
+    /** Número del capítulo: el de la fuente o, si no lo da, el reconocido en el nombre como Komikku (-1 si no hay). */
+    fun numeroReconocido(c: CapituloFuente, tituloManga: String = ""): Float =
+        ReconocerCapitulo.numero(tituloManga, c.nombre, c.numero)
+
+    /**
+     * Como SyncChaptersWithSource de Komikku: cuando la fuente resube capítulos con otra dirección (los [quitados] ya no
+     * están y aparecen [anadidos]), el nuevo con el mismo número hereda leído, marcador y página. Devuelve las
+     * direcciones que heredaron (no son capítulos nuevos de verdad).
+     */
+    fun heredarEstado(
+        fuenteId: Long, urlManga: String, quitados: List<CapituloFuente>, anadidos: List<CapituloFuente>, titulo: String,
+    ): Set<String> {
+        if (quitados.isEmpty() || anadidos.isEmpty()) return emptySet()
+        val porNumero = HashMap<Float, MutableList<CapituloFuente>>()
+        quitados.forEach { q -> numeroReconocido(q, titulo).takeIf { it >= 0f }?.let { n -> porNumero.getOrPut(n) { ArrayList() } += q } }
+        if (porNumero.isEmpty()) return emptySet()
+        val heredados = HashSet<String>()
+        var cl = false; var cp = false; val nm = HashSet<String>()
+        for (a in anadidos) {
+            val viejos = porNumero[numeroReconocido(a, titulo).takeIf { it >= 0f } ?: continue] ?: continue
+            heredados += a.url
+            if (viejos.any { esLeido(fuenteId, urlManga, it.url) } && leidosH.add(claveLeido(fuenteId, urlManga, a.url))) cl = true
+            if (viejos.any { esMarcado(fuenteId, urlManga, it.url) }) nm += claveTexto(fuenteId, urlManga, a.url)
+            val pag = viejos.maxOf { paginaDe(fuenteId, urlManga, it.url) }
+            val k = claveTexto(fuenteId, urlManga, a.url)
+            if (pag > 0 && k !in paginasCap) { paginasCap[k] = pag; cp = true }
+        }
+        if (cl) guardarLeidos()
+        if (nm.isNotEmpty()) { marcados = marcados + nm; guardarMarcados() }
+        if (cp) guardarPaginasCap()
+        return heredados
+    }
+
+    fun alternarMarcado(fuenteId: Long, urlManga: String, url: String) {
+        val k = claveTexto(fuenteId, urlManga, url)
+        val era = esMarcado(fuenteId, urlManga, url)
+        if (!migrado) restoMarcados.remove("$fuenteId|$url")
+        marcados = if (era) marcados - k else marcados + k
+        guardarMarcados()
     }
 
     fun cambiarModoLector(m: Int) {

@@ -1,5 +1,6 @@
 package com.example.lector.ext
 
+import kotlinx.coroutines.sync.withPermit
 import android.app.Application
 import android.content.Context
 import android.content.pm.PackageManager
@@ -20,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -28,6 +30,7 @@ import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
+import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipEntry
@@ -44,6 +47,7 @@ class MotorExt(app: Application, private val ext: ExtManager) : MotorFuentes {
     private val ctx: Context = app
 
     init {
+        com.example.lector.CacheFichas.iniciar(app)
         // Lo que las extensiones piden con Injekt.get<...>() / injectLazy<...>().
         Injekt.importModule(object : InjektModule {
             override fun InjektRegistrar.registerInjectables() {
@@ -70,18 +74,18 @@ class MotorExt(app: Application, private val ext: ExtManager) : MotorFuentes {
     }
 
     private fun MangasPage.aPagina() = PaginaMangas(
-        mangas = mangas.map { MangaFuente(it.url, it.title, it.thumbnail_url) },
+        mangas = mangas.map { MangaFuente(it.url, it.title, it.thumbnail_url, it.memo.aTexto()) },
         haySiguiente = hasNextPage,
     )
 
     override suspend fun populares(fuente: FuenteUI, pagina: Int): PaginaMangas = withContext(Dispatchers.IO) {
-        fuenteReal(fuente).getPopularManga(pagina).aPagina()
+        FuentesEnUso.con(fuente) { fuenteReal(fuente).getPopularManga(pagina).aPagina() }
     }
 
     override suspend fun recientes(fuente: FuenteUI, pagina: Int): PaginaMangas = withContext(Dispatchers.IO) {
         val s = fuenteReal(fuente)
         if (!s.supportsLatest) error("${fuente.nombre} no tiene sección de recientes")
-        s.getLatestUpdates(pagina).aPagina()
+        FuentesEnUso.con(fuente) { s.getLatestUpdates(pagina).aPagina() }
     }
 
     override suspend fun buscar(fuente: FuenteUI, consulta: String, pagina: Int): PaginaMangas =
@@ -92,7 +96,13 @@ class MotorExt(app: Application, private val ext: ExtManager) : MotorFuentes {
 
     override suspend fun buscar(fuente: FuenteUI, consulta: String, pagina: Int, filtros: FilterList?): PaginaMangas =
         withContext(Dispatchers.IO) {
-            fuenteReal(fuente).getSearchManga(pagina, consulta, filtros ?: FilterList()).aPagina()
+            FuentesEnUso.con(fuente) {
+                val s = fuenteReal(fuente)
+                // Como Mihon/Komikku: sin filtros elegidos se pasan los de la fuente por defecto. Con una lista vacía,
+                // muchas extensiones (p. ej. LectorTMO) fallan con «Collection contains no element matching the predicate».
+                val fs = filtros?.takeIf { it.isNotEmpty() } ?: runCatching { s.getFilterList() }.getOrDefault(FilterList())
+                s.getSearchManga(pagina, consulta, fs).aPagina()
+            }
         }
 
     // ---- Ficha, capítulos y páginas ----
@@ -102,16 +112,34 @@ class MotorExt(app: Application, private val ext: ExtManager) : MotorFuentes {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Page>>?): Boolean = size > 24
     }
 
-    private fun sManga(m: MangaFuente) = SManga.create().apply { url = m.url; title = m.titulo }
+    // El memo va y vuelve tal cual: si el manga no lo trae, el de su ficha guardada.
+    private fun sManga(fuente: FuenteUI, m: MangaFuente) = SManga.create().apply {
+        url = m.url; title = m.titulo
+        (m.memo ?: com.example.lector.CacheFichas.memoManga(fuente.id, m.url))?.aMemo()?.let { memo = it }
+    }
 
     private fun sCapitulo(c: CapituloFuente) = SChapter.create().apply {
         url = c.url; name = c.nombre; date_upload = c.fecha; chapter_number = c.numero; scanlator = c.scanlator
+        c.memo?.aMemo()?.let { memo = it }
     }
+
+    private fun kotlinx.serialization.json.JsonObject.aTexto(): String? = if (isEmpty()) null else toString()
+    private fun String.aMemo(): kotlinx.serialization.json.JsonObject? =
+        runCatching { kotlinx.serialization.json.Json.parseToJsonElement(this) as? kotlinx.serialization.json.JsonObject }.getOrNull()
 
     override suspend fun ficha(fuente: FuenteUI, manga: MangaFuente): FichaManga = withContext(Dispatchers.IO) {
         val s = fuenteReal(fuente)
-        val r = s.getMangaUpdate(sManga(manga), emptyList(), fetchDetails = true, fetchChapters = true)
+        val entrada = sManga(fuente, manga)
+        val r = s.getMangaUpdate(entrada, emptyList(), fetchDetails = true, fetchChapters = true)
         val m = r.manga
+        // Como SyncChaptersWithSource de Komikku: el número de cada capítulo se reconoce de su nombre si la fuente no lo da.
+        val tituloNum = m.title.ifBlank { manga.titulo }
+        val capitulos = r.chapters.map {
+            CapituloFuente(
+                it.url, it.name, it.date_upload, it.scanlator?.takeIf { x -> x.isNotBlank() },
+                ReconocerCapitulo.numero(tituloNum, it.name, it.chapter_number), it.memo.aTexto(),
+            )
+        }
         FichaManga(
             detalle = DetalleManga(
                 titulo = m.title.ifBlank { manga.titulo },
@@ -121,11 +149,40 @@ class MotorExt(app: Application, private val ext: ExtManager) : MotorFuentes {
                 generos = m.getGenres().orEmpty(),
                 estado = m.status,
                 portadaUrl = m.thumbnail_url ?: manga.portadaUrl,
+                soloUnaVez = m.update_strategy == eu.kanade.tachiyomi.source.model.UpdateStrategy.ONLY_FETCH_ONCE,
             ),
-            capitulos = r.chapters.map {
-                CapituloFuente(it.url, it.name, it.date_upload, it.scanlator?.takeIf { x -> x.isNotBlank() }, it.chapter_number)
-            },
-        )
+            capitulos = capitulos,
+            memo = m.memo.aTexto() ?: entrada.memo.aTexto(),
+        ).also {
+            // Estado viejo («fuente|url») de un manga aún sin migrar: solo para los capítulos que ya conocía (nunca
+            // para los recién traídos, que podrían repetir la url de un capítulo leído de otro manga).
+            if (ext.faltaMigrar(fuente.id, manga.url)) runCatching {
+                val antes = HashSet<String>()
+                com.example.lector.CacheFichas.leer(fuente.id, manga.url)?.capitulos?.forEach { c -> antes += c.url }
+                antes += com.example.lector.Almacen.obtener(ctx).capitulosConocidos(fuente.id, manga.url)
+                ext.migrarMangaSiHace(fuente.id, manga.url, antes)
+            }
+            // Capítulos resubidos con otra dirección: heredan leído/marcador/página del que tenía su número y no
+            // cuentan como nuevos (antes salían todos sin leer y como novedad).
+            runCatching {
+                val previa = com.example.lector.CacheFichas.leer(fuente.id, manga.url)?.capitulos
+                if (!previa.isNullOrEmpty() && it.capitulos.isNotEmpty()) {
+                    val ahora = it.capitulos.mapTo(HashSet()) { c -> c.url }
+                    val antes = previa.mapTo(HashSet()) { c -> c.url }
+                    val quitados = previa.filter { c -> c.url !in ahora }
+                    val anadidos = it.capitulos.filter { c -> c.url !in antes }
+                    val heredados = ext.heredarEstado(fuente.id, manga.url, quitados, anadidos, tituloNum)
+                    val alm = com.example.lector.Almacen.obtener(ctx)
+                    if (heredados.isNotEmpty()) alm.darPorConocidos(fuente.id, manga.url, heredados)
+                    // «Marcar como leído el capítulo duplicado» de Komikku: otra versión de un número que ya leíste.
+                    if (alm.marcarDuplicadosNuevos && anadidos.isNotEmpty()) {
+                        val leidosNum = previa.filter { c -> c.numero >= 0f && ext.esLeido(fuente.id, manga.url, c.url) }.mapTo(HashSet()) { c -> c.numero }
+                        ext.marcarLeidos(fuente.id, manga.url, anadidos.filter { c -> c.numero in leidosNum && c.url !in heredados }.map { c -> c.url })
+                    }
+                }
+            }
+            com.example.lector.CacheFichas.guardar(fuente.id, manga.url, it) // queda guardada en el móvil
+        }
     }
 
     private suspend fun paginasDe(fuente: FuenteUI, capitulo: CapituloFuente): List<Page> {
@@ -142,49 +199,129 @@ class MotorExt(app: Application, private val ext: ExtManager) : MotorFuentes {
     override suspend fun imagenPagina(fuente: FuenteUI, capitulo: CapituloFuente, indice: Int): ByteArray =
         withContext(Dispatchers.IO) {
             val src = fuenteReal(fuente) as? HttpSource ?: error("${fuente.nombre} no es una fuente web")
-            val pagina = paginasDe(fuente, capitulo).getOrNull(indice) ?: error("Página $indice fuera de rango")
-            if (pagina.imageUrl.isNullOrEmpty()) pagina.imageUrl = src.getImageUrl(pagina)
-            src.getImage(pagina).use { it.body.bytes() }
+            val pagina = conReintentos { paginasDe(fuente, capitulo) }.getOrNull(indice) ?: error("Página $indice fuera de rango")
+            // Como mucho 2 peticiones a la vez a la misma web (descargas + lectura): así no salta el «429».
+            semaforo(fuente.id).withPermit {
+                conReintentos {
+                    if (pagina.imageUrl.isNullOrEmpty()) pagina.imageUrl = src.getImageUrl(pagina)
+                    datosIncrustados(pagina.imageUrl) ?: ahorroDatos(pagina.imageUrl) ?: src.getImage(pagina).use { it.body.bytes() }
+                }
+            }
         }
 
+    /**
+     * Ahorro de datos (como el «Data saver» de Komikku con wsrv.nl): la imagen se pide recomprimida en WebP de 1080 px.
+     * Si el servicio no puede traerla (webs que exigen sus cabeceras), null y se pide normal.
+     */
+    private fun ahorroDatos(url: String?): ByteArray? {
+        if (url.isNullOrBlank() || !url.startsWith("http")) return null
+        if (!ctx.getSharedPreferences("lector", Context.MODE_PRIVATE).getBoolean("ahorro_datos", false)) return null
+        val cli = clienteGeneral() ?: return null
+        val pedido = okhttp3.Request.Builder()
+            .url("https://wsrv.nl/?url=" + java.net.URLEncoder.encode(url, "UTF-8") + "&w=1080&q=65&output=webp&we").build()
+        return runCatching { cli.newCall(pedido).execute().use { r -> if (r.isSuccessful) r.body.bytes().takeIf { it.size > 512 } else null } }.getOrNull()
+    }
+
+    private val semaforos = ConcurrentHashMap<Long, kotlinx.coroutines.sync.Semaphore>()
+    private fun semaforo(id: Long) = semaforos.getOrPut(id) { kotlinx.coroutines.sync.Semaphore(2) }
+
+    /**
+     * «HTTP error 429» (demasiadas peticiones) o 503: la web pide esperar. Se reintenta solo con esperas crecientes
+     * (2, 4, 8, 16, 30 s, con algo de azar) en vez de dar el capítulo por fallido.
+     */
+    private suspend fun <T> conReintentos(bloque: suspend () -> T): T {
+        var espera = 2000L
+        repeat(5) {
+            try { return bloque() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
+                val m = e.message.orEmpty()
+                if (!m.contains("429") && !m.contains("503")) throw e
+                kotlinx.coroutines.delay(espera + (0..800).random())
+                espera = (espera * 2).coerceAtMost(30_000)
+            }
+        }
+        return bloque()
+    }
+
+    /**
+     * Descarga como Komikku: cada página se guarda en su archivo al llegar (carpeta «.partes» junto al destino), 3 a la
+     * vez; una página que falla no detiene a las demás, y si alguna falla la carpeta se conserva, así al reintentar
+     * solo se bajan las que faltan. Las páginas ya cargadas al leer se copian de la caché, sin red. Cada página se
+     * reintenta 3 veces (2, 4 y 8 s), y más si la web responde «429». Al final se empaqueta el .cbz.
+     */
     override suspend fun descargarCbz(
         fuente: FuenteUI, capitulo: CapituloFuente, destino: File, progreso: (Int, Int) -> Unit,
-    ) = withContext(Dispatchers.IO) {
-        val total = paginasDe(fuente, capitulo).size
+    ): Unit = withContext(Dispatchers.IO) {
+        val total = conReintentos { paginasDe(fuente, capitulo) }.size
         require(total > 0) { "El capítulo no tiene páginas" }
-        val tmp = File(destino.parentFile, destino.name + ".tmp")
-        try {
-            ZipOutputStream(tmp.outputStream().buffered()).use { zip ->
-                zip.setLevel(java.util.zip.Deflater.NO_COMPRESSION) // las imágenes ya vienen comprimidas
-                var i = 0
-                while (i < total) {
-                    ensureActive() // permite cancelar la descarga entre grupos de páginas
-                    val grupo = (i until minOf(i + 3, total)).toList()
-                    // Se piden 3 páginas a la vez (antes era una por una) y se escriben en orden.
-                    val datos = coroutineScope { grupo.map { n -> async { imagenPagina(fuente, capitulo, n) } }.awaitAll() }
-                    for ((k, bytes) in datos.withIndex()) {
+        val partes = File(destino.parentFile, destino.name + ".partes").apply { mkdirs() }
+        fun hecha(n: Int) = partes.listFiles()?.any { it.name.startsWith("%04d.".format(n + 1)) && !it.name.endsWith(".tmp") } == true
+        val idCap = "s:${fuente.id}|${capitulo.url}"
+        val hechas = java.util.concurrent.atomic.AtomicInteger((0 until total).count { hecha(it) })
+        val fallos = java.util.concurrent.atomic.AtomicInteger(0)
+        var ultimoError: String? = null
+        progreso(hechas.get(), total)
+        val cupo = kotlinx.coroutines.sync.Semaphore(3)
+        coroutineScope {
+            for (n in 0 until total) {
+                if (hecha(n)) continue
+                launch {
+                    cupo.withPermit {
+                        val r = runCatching {
+                            com.example.lector.ui.CacheBytes.leer(idCap, n) ?: reintentar3 { imagenPagina(fuente, capitulo, n) }
+                        }
+                        val bytes = r.getOrNull()
+                        if (bytes == null) {
+                            val e = r.exceptionOrNull()
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            fallos.incrementAndGet(); ultimoError = e?.message
+                            return@withPermit
+                        }
                         val ext = when {
                             bytes.size > 4 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() -> "png"
                             bytes.size > 12 && bytes[0] == 'R'.code.toByte() && bytes[8] == 'W'.code.toByte() -> "webp"
                             else -> "jpg"
                         }
-                        zip.putNextEntry(ZipEntry("%04d.%s".format(grupo[k] + 1, ext)))
-                        zip.write(bytes)
-                        zip.closeEntry()
-                        progreso(grupo[k] + 1, total)
+                        val f = File(partes, "%04d.%s".format(n + 1, ext))
+                        val tmp = File(partes, f.name + ".tmp")
+                        tmp.writeBytes(bytes)
+                        tmp.renameTo(f)
+                        progreso(hechas.incrementAndGet(), total)
                     }
-                    i += grupo.size
+                }
+            }
+        }
+        if (fallos.get() > 0) {
+            error("Fallaron ${fallos.get()} de $total páginas (${ultimoError ?: "error"}). Al reintentar solo se bajan esas.")
+        }
+        val tmpZip = File(destino.parentFile, destino.name + ".tmp")
+        try {
+            ZipOutputStream(tmpZip.outputStream().buffered()).use { zip ->
+                zip.setLevel(java.util.zip.Deflater.NO_COMPRESSION) // las imágenes ya vienen comprimidas
+                partes.listFiles()?.filter { !it.name.endsWith(".tmp") }?.sortedBy { it.name }?.forEach { f ->
+                    zip.putNextEntry(ZipEntry(f.name)); f.inputStream().use { it.copyTo(zip) }; zip.closeEntry()
                 }
             }
             destino.delete()
-            check(tmp.renameTo(destino)) { "No se pudo guardar el archivo" }
+            check(tmpZip.renameTo(destino)) { "No se pudo guardar el archivo" }
+            partes.deleteRecursively()
         } finally {
-            tmp.delete()
+            tmpZip.delete()
         }
+        Unit
+    }
+
+    /** Como Komikku: 3 reintentos con esperas de 2, 4 y 8 s para cualquier error de red. */
+    private suspend fun <T> reintentar3(bloque: suspend () -> T): T {
+        repeat(3) { intento ->
+            try { return bloque() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) {
+                kotlinx.coroutines.delay((2L shl intento) * 1000)
+            }
+        }
+        return bloque()
     }
 
     override fun urlManga(fuente: FuenteUI, manga: MangaFuente): String? = runCatching {
-        (fuenteReal(fuente) as? HttpSource)?.getMangaUrl(sManga(manga))?.takeIf { it.startsWith("http") }
+        (fuenteReal(fuente) as? HttpSource)?.getMangaUrl(sManga(fuente, manga))?.takeIf { it.startsWith("http") }
     }.getOrNull()
 
     private val cabecerasCache = ConcurrentHashMap<Long, Map<String, String>>()
@@ -194,6 +331,31 @@ class MotorExt(app: Application, private val ext: ExtManager) : MotorFuentes {
         cabecerasCache.clear()
         synchronized(paginasCache) { paginasCache.clear() }
     }
+
+    override suspend fun bytesImagen(fuenteId: Long, url: String): ByteArray? = withContext(Dispatchers.IO) {
+        val f = ext.fuentes.firstOrNull { it.id == fuenteId } ?: return@withContext null
+        val src = runCatching { fuenteReal(f) as? HttpSource }.getOrNull() ?: return@withContext null
+        val absoluta = if (url.startsWith("http")) url else src.baseUrl.trimEnd('/') + "/" + url.trimStart('/')
+        val pedido = okhttp3.Request.Builder().url(absoluta).headers(src.headers).build()
+        src.client.newCall(pedido).execute().use { r -> if (r.isSuccessful) r.body.bytes() else null }
+    }
+
+    override suspend fun relacionados(fuente: FuenteUI, manga: MangaFuente): List<MangaFuente> = withContext(Dispatchers.IO) {
+        val s = fuenteReal(fuente)
+        val res = java.util.Collections.synchronizedList(ArrayList<MangaFuente>())
+        // Como Komikku: lo que dé la extensión (y su búsqueda por palabras clave), como mucho 15 s.
+        kotlinx.coroutines.withTimeoutOrNull(15_000) {
+            runCatching {
+                s.getRelatedMangaList(sManga(fuente, manga), {}) { (_, lista), _ ->
+                    lista.forEach { res += MangaFuente(it.url, it.title, it.thumbnail_url, it.memo.aTexto()) }
+                }
+            }
+        }
+        res.toList().filter { it.url != manga.url }.distinctBy { it.url }.take(20)
+    }
+
+    override fun clienteGeneral(): okhttp3.OkHttpClient? =
+        runCatching { uy.kohesive.injekt.Injekt.get<NetworkHelper>().client }.getOrNull()
 
     private fun calcularCabeceras(fuente: FuenteUI): Map<String, String> = runCatching {
         val h = (fuenteReal(fuente) as? HttpSource)?.headers ?: return@runCatching emptyMap<String, String>()
@@ -217,4 +379,78 @@ class MotorExt(app: Application, private val ext: ExtManager) : MotorFuentes {
             calcularCabeceras(fuente).also { if (it.isNotEmpty()) cabecerasCache[fuente.id] = it }
         }
     }
+}
+
+/**
+ * Qué fuentes están trabajando ahora mismo, y el freno para las que se descontrolan (sin cerrar la app ni la
+ * extensión): si una tarda demasiado o la memoria se acerca al límite, su hilo queda marcado y la siguiente petición
+ * de red que haga falla con IOException (ver [CorteRed]). Las extensiones que entran en bucle suelen pedir página tras
+ * página, así que el bucle se corta solo y la extensión sigue sirviendo para lo demás. Mientras no hay fuentes
+ * trabajando, no se vigila nada (no gasta).
+ */
+object FuentesEnUso {
+    class Tarea(val id: Long, val nombre: String, val hilo: Thread)
+    val tareas = java.util.concurrent.ConcurrentHashMap<Thread, Tarea>()
+    val activas: Map<Long, String> get() = tareas.values.associate { it.id to it.nombre }
+    private val abortados: MutableSet<Thread> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    @Volatile private var vigilando = false
+    var alLiberarMemoria: () -> Unit = {}
+
+    fun abortado(t: Thread = Thread.currentThread()) = t in abortados
+
+    /** Frena las tareas de esa fuente (o todas con null). */
+    fun abortar(id: Long?) {
+        tareas.values.filter { id == null || it.id == id }.forEach { abortados.add(it.hilo) }
+    }
+
+    inline fun <T> con(f: FuenteUI, bloque: () -> T): T {
+        val h = Thread.currentThread()
+        tareas[h] = Tarea(f.id, f.nombre, h)
+        vigilar()
+        try { return bloque() } finally { tareas.remove(h); soltar(h) }
+    }
+
+    fun soltar(h: Thread) { abortados.remove(h) }
+
+    /** Vigía de memoria: cada medio segundo, solo mientras hay fuentes trabajando. */
+    fun vigilar() {
+        if (vigilando) return
+        vigilando = true
+        Thread {
+            val rt = Runtime.getRuntime()
+            while (tareas.isNotEmpty()) {
+                val usada = rt.totalMemory() - rt.freeMemory()
+                if (usada > rt.maxMemory() * 0.8) {
+                    android.util.Log.w("LectorPrueba", "memoria al ${usada * 100 / rt.maxMemory()} %: freno ${activas.values}")
+                    alLiberarMemoria()
+                    abortar(null)
+                }
+                Thread.sleep(500)
+            }
+            vigilando = false
+        }.apply { isDaemon = true; name = "vigia-memoria" }.start()
+    }
+}
+
+/** Interceptor que corta las peticiones de un hilo frenado por [FuentesEnUso]. */
+object CorteRed : okhttp3.Interceptor {
+    override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
+        if (FuentesEnUso.abortado()) throw java.io.IOException("Cancelado: la fuente tardaba demasiado o gastaba demasiada memoria")
+        return chain.proceed(chain.request())
+    }
+}
+
+/**
+ * Imagen incrustada en la propia dirección («data:image/webp;base64,…»): algunas fuentes (p. ej. BarManga) la usan
+ * para la última página. OkHttp solo descarga http/https, así que se decodifica aquí, como hace Mihon.
+ */
+internal fun datosIncrustados(url: String?): ByteArray? {
+    if (url == null || !url.startsWith("data:", ignoreCase = true)) return null
+    val coma = url.indexOf(',').takeIf { it > 0 } ?: return null
+    val cabecera = url.substring(5, coma)
+    val datos = url.substring(coma + 1)
+    return runCatching {
+        if (cabecera.endsWith(";base64", ignoreCase = true)) android.util.Base64.decode(datos, android.util.Base64.DEFAULT)
+        else java.net.URLDecoder.decode(datos, "UTF-8").toByteArray()
+    }.getOrNull()
 }

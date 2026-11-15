@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -18,11 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -96,15 +92,14 @@ fun DetalleScreen(
             Box(Modifier.fillMaxWidth().height(400.dp)) {
                 ComicCover(comic, almacen, Modifier.fillMaxSize().graphicsLayer { translationY = scroll.value * 0.5f }.blur(32.dp).alpha(0.6f), SuaveShape(0.dp))
                 Box(Modifier.fillMaxSize().background(acento.copy(alpha = 0.18f)))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black)))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to LectorColors.Bg)))
 
                 Row(
                     Modifier.align(Alignment.BottomStart).padding(24.dp)
                         .graphicsLayer { alpha = t; translationY = (1f - t) * 60f },
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    if (Fx.on("backlight")) Contraluz(Modifier.width(124.dp).aspectRatio(2f / 3f)) { ComicCover(comic, almacen, Modifier.fillMaxSize(), SuaveShape(20.dp)) }
-                    else ComicCover(comic, almacen, Modifier.width(124.dp).aspectRatio(2f / 3f).fx("glassoverlay") { bordeBrillante(20.dp) }, SuaveShape(20.dp))
+                    ComicCover(comic, almacen, Modifier.width(124.dp).aspectRatio(2f / 3f), SuaveShape(20.dp))
                     Spacer(Modifier.width(18.dp))
                     Column(Modifier.weight(1f)) {
                         LText(comic.titulo, LectorType.Hero, maxLines = 3)
@@ -183,7 +178,7 @@ fun DetalleScreen(
     if (dCategorias) DialogoCategoriasComic(comic, almacen) { dCategorias = false; version++; onChanged() }
     if (dSeguimiento) DialogoSeguimientoComic(comic, almacen) { dSeguimiento = false; version++ }
     if (dModo) {
-        AlertDialog(
+        DialogoAlerta(
             onDismissRequest = { dModo = false },
             title = { Text("Modo de lectura") },
             text = {
@@ -199,7 +194,7 @@ fun DetalleScreen(
         )
     }
     if (dBorrar) {
-        AlertDialog(
+        DialogoAlerta(
             onDismissRequest = { dBorrar = false },
             title = { Text("Eliminar") },
             text = { Text("¿Quitar «${comic.titulo}» de la biblioteca? Se borra la copia guardada en la app.") },
@@ -230,7 +225,7 @@ private fun Accion(icon: ImageVector, texto: String, activa: Boolean, acento: Co
 private fun DialogoCategoriasComic(comic: Comic, almacen: Almacen, alCerrar: () -> Unit) {
     val todas = remember { almacen.categorias() }
     var marcadas by remember { mutableStateOf(almacen.asignaciones()[comic.id].orEmpty()) }
-    AlertDialog(
+    DialogoAlerta(
         onDismissRequest = alCerrar,
         title = { Text("Categorías") },
         text = {
@@ -238,7 +233,7 @@ private fun DialogoCategoriasComic(comic: Comic, almacen: Almacen, alCerrar: () 
                 if (todas.isEmpty()) Text("Crea categorías en Más → Categorías.")
                 todas.forEach { c: Categoria ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = c.id in marcadas, onCheckedChange = {
+                        CasillaShiori(checked = c.id in marcadas, onCheckedChange = {
                             marcadas = if (it) marcadas + c.id else marcadas - c.id
                         })
                         Text(c.nombre)
@@ -273,7 +268,7 @@ fun DialogoSeguimientoComic(comic: Comic, almacen: Almacen, alCerrar: () -> Unit
     var cargando by remember(comic.id) { mutableStateOf(false) }
     var error by remember(comic.id) { mutableStateOf<String?>(null) }
 
-    AlertDialog(
+    DialogoAlerta(
         onDismissRequest = alCerrar,
         title = { Text("Seguimiento") },
         text = {
@@ -286,7 +281,7 @@ fun DialogoSeguimientoComic(comic: Comic, almacen: Almacen, alCerrar: () -> Unit
                     Text("Este archivo es un…")
                     FilaOpcion(etiqueta = "Volumen", marcada = porVolumenes) { porVolumenes = true }
                     FilaOpcion(etiqueta = "Capítulo", marcada = !porVolumenes) { porVolumenes = false }
-                    OutlinedTextField(
+                    CampoTextoShiori(
                         value = numero, onValueChange = { numero = it.filter { c -> c.isDigit() }.take(5) },
                         singleLine = true, label = { Text("Número") },
                     )
@@ -294,7 +289,7 @@ fun DialogoSeguimientoComic(comic: Comic, almacen: Almacen, alCerrar: () -> Unit
                         Text("Aún no has iniciado sesión: Más → Ajustes → Seguimiento.", color = MaterialTheme.colorScheme.primary)
                     }
                 } else {
-                    OutlinedTextField(
+                    CampoTextoShiori(
                         value = busqueda, onValueChange = { busqueda = it },
                         singleLine = true, label = { Text("Buscar en AniList") },
                         modifier = Modifier.fillMaxWidth(),

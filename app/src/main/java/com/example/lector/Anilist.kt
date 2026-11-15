@@ -10,6 +10,9 @@ data class ResultadoAnilist(
     val id: Int,
     val titulo: String,
     val formato: String?,
+    val portada: String? = null,
+    // Todos sus títulos (inglés, romaji, original y sinónimos), para encontrarlo en una fuente.
+    val titulos: List<String> = emptyList(),
 )
 
 // Cliente mínimo de la API de AniList (GraphQL). Todas las funciones bloquean:
@@ -75,6 +78,35 @@ object Anilist {
                 id = m.getInt("id"),
                 titulo = ingles ?: romaji ?: "Sin título",
                 formato = if (m.isNull("format")) null else m.getString("format"),
+            )
+        }
+    }
+
+    /**
+     * Recomendaciones de AniList para un título (las que usa la ficha, como las «Sugerencias» de Komikku).
+     * No necesita sesión. Lista vacía si AniList no conoce el título.
+     */
+    fun recomendaciones(titulo: String): List<ResultadoAnilist> {
+        val datos = consulta(
+            null,
+            "query(\$s: String) { Media(search: \$s, type: MANGA) { recommendations(perPage: 15, sort: RATING_DESC) " +
+                "{ nodes { mediaRecommendation { id title { romaji english native } synonyms format coverImage { medium } } } } } }",
+            JSONObject().put("s", titulo),
+        )
+        val nodos = datos.optJSONObject("Media")?.optJSONObject("recommendations")?.optJSONArray("nodes") ?: return emptyList()
+        return (0 until nodos.length()).mapNotNull { i ->
+            val m = nodos.getJSONObject(i).optJSONObject("mediaRecommendation") ?: return@mapNotNull null
+            val t = m.getJSONObject("title")
+            val ingles = if (t.isNull("english")) null else t.getString("english")
+            val romaji = if (t.isNull("romaji")) null else t.getString("romaji")
+            val nativo = if (t.isNull("native")) null else t.getString("native")
+            val sinonimos = m.optJSONArray("synonyms")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).ifBlank { null } } }.orEmpty()
+            ResultadoAnilist(
+                id = m.getInt("id"),
+                titulo = ingles ?: romaji ?: return@mapNotNull null,
+                titulos = (listOfNotNull(ingles, romaji) + sinonimos + listOfNotNull(nativo)).distinct(),
+                formato = if (m.isNull("format")) null else m.getString("format"),
+                portada = m.optJSONObject("coverImage")?.optString("medium")?.ifBlank { null },
             )
         }
     }

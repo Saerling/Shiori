@@ -26,31 +26,24 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lector.textoSobre
+import com.example.lector.ui.mochy.revealOnAppear
 import kotlinx.coroutines.delay
 
 /**
- * Entrada escalonada (como las listas del video): cada elemento aparece con fundido, subida y un poco de escala,
- * uno tras otro. Solo ocurre la primera vez; al volver a hacer scroll ya no se repite.
+ * Entrada escalonada: el revealOnAppear de Mochy (ui/mochy/RevealOnAppear.kt), fundido y subida de 20 dp la
+ * primera vez que aparece; el elemento [indice] espera [pasoMs] por cada uno de delante (hasta 6). Solo ocurre una
+ * vez (el estado de «ya visto» se guarda con rememberSaveable); con el movimiento reducido no se anima.
  */
 @Composable
-fun Modifier.entrada(indice: Int, pasoMs: Int = 35): Modifier {
-    if (com.example.lector.fx.Fx.on("blurfade") || com.example.lector.fx.Fx.on("inview")) return this.then(Modifier.aparecerDifuso(indice.coerceIn(0, 8), pasoMs))
-    var visible by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (!visible) {
-            delay((indice.coerceIn(0, 8) * pasoMs).toLong())
-            visible = true
-        }
-    }
-    val t by animateFloatAsState(
-        if (visible) 1f else 0f,
-        tween(380, easing = EnfasisEasing), label = "entrada"
+fun Modifier.entrada(indice: Int, pasoMs: Int = 60): Modifier {
+    if (MovimientoReducido.activo) return this
+    if (com.example.lector.fx.Fx.on("blurfade") || com.example.lector.fx.Fx.on("inview")) return this.then(Modifier.aparecerDifuso(indice.coerceIn(0, 8), 40))
+    val visto = com.example.lector.ui.mochy.rememberRevealSeenState()
+    return this.revealOnAppear(
+        key = "entrada",
+        seenState = visto,
+        delayMillis = indice.coerceIn(0, 6) * pasoMs,
     )
-    val subida = with(androidx.compose.ui.platform.LocalDensity.current) { 20.dp.toPx() }
-    return this.graphicsLayer {
-        alpha = t
-        translationY = (1f - t) * subida
-    }
 }
 
 /** Colores que salen de una portada: un fondo muy oscuro del mismo tono y un acento claro. */
@@ -85,7 +78,7 @@ fun temaDe(img: ImageBitmap): TemaPortada? = runCatching {
 @Composable
 fun BarraSuperior(
     scroll: () -> Float, titulo: String, onBack: () -> Unit, modifier: Modifier = Modifier,
-    fondo: Color = Color.Black, trailing: (@Composable RowScope.() -> Unit)? = null,
+    fondo: Color = LectorColors.Bg, trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     Box(modifier.fillMaxWidth()) {
         Box(
@@ -97,10 +90,7 @@ fun BarraSuperior(
             Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                Modifier.size(44.dp).pressable(onBack).clip(CircleShape).background(Color(0x66000000)),
-                Alignment.Center
-            ) { Icon(Icons.Rounded.ArrowBack, "Atrás", tint = LectorColors.Text) }
+            BotonAtras(onBack)
             Spacer(Modifier.width(14.dp))
             LText(
                 titulo, LectorType.Display.copy(fontSize = 24.sp, letterSpacing = (-0.5).sp),

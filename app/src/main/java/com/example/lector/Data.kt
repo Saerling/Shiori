@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.lector.ext.CapituloFuente
@@ -29,8 +30,26 @@ data class Comic(
     val fuenteId: Long = 0L,
     val urlManga: String? = null,
     val portadaUrl: String? = null,
+    // Datos extra (como la base de datos de Komikku). Se rellenan al abrir la ficha o al buscar actualizaciones.
+    val anadido: Long = 0L,
+    val autor: String? = null,
+    val estado: Int = 0, // mismo código que SManga.status (1 en emisión, 2 completado…)
+    val generos: List<String> = emptyList(),
+    val descripcion: String? = null,
+    val ultimaRevision: Long = 0L, // cuándo se buscaron capítulos nuevos por última vez
+    val ultimoCapitulo: Long = 0L, // fecha del capítulo más reciente que ofrece la fuente
+    // El usuario editó la información (título, autor…): las fuentes ya no la pisan.
+    val editado: Boolean = false,
+    // La portada guardada la eligió el usuario (no se sustituye por la de la fuente).
+    val portadaPropia: Boolean = false,
+    // Revisión inteligente (Komikku): la fuente dice que no cambia, y cuándo se espera el próximo capítulo (0 = no se sabe).
+    val soloUnaVez: Boolean = false,
+    val proximaRevision: Long = 0L,
 ) {
     val enLinea: Boolean get() = urlManga != null
+
+    /** Capítulos sin leer (en línea) o páginas que faltan (local). */
+    val sinLeer: Int get() = if (enLinea) (paginas - ultimaPagina).coerceAtLeast(0) else (paginas - 1 - ultimaPagina).coerceAtLeast(0)
 
     // Texto corto de progreso para tarjetas, listas e historial.
     fun etiquetaProgreso(): String =
@@ -68,6 +87,9 @@ data class EntradaHistorial(
     val leido: Long,
 )
 
+/** Un manga que no se pudo revisar en la última actualización de la biblioteca, y por qué. */
+data class ErrorActualizacion(val titulo: String, val fuente: String, val motivo: String)
+
 // Una categoría para organizar la biblioteca. Si es "oculta", esconde sus cómics.
 data class Categoria(val id: String, val nombre: String, val oculta: Boolean)
 
@@ -82,18 +104,59 @@ data class Seguimiento(
 // Resultado de restaurar una copia de seguridad.
 data class ResultadoRestauracion(val actualizados: Int, val pendientes: Int)
 
-// Criterios para ordenar la biblioteca.
-enum class Orden { TITULO, ULTIMO_LEIDO, PROGRESO, ANADIDO }
+// Criterios para ordenar la biblioteca (los cuatro primeros existían antes; se conservan sus nombres).
+enum class Orden { TITULO, ULTIMO_LEIDO, PROGRESO, ANADIDO, SIN_LEER, TOTAL_CAPITULOS, ULTIMO_CAPITULO, ULTIMA_REVISION, ALEATORIO }
 
-// Cómo se lee un cómic: paginado de derecha a izquierda, de izquierda a derecha, o en tira vertical.
+// Cómo se agrupa la biblioteca en pestañas (las "categorías dinámicas" de TachiyomiSY/Komikku).
+enum class Agrupar { CATEGORIA, FUENTE, ESTADO, NINGUNO }
+
+// Cómo se lee un cómic local (modo antiguo; el visor nuevo usa ModoVisor).
 enum class Modo { MANGA, COMIC, VERTICAL }
 
+/** Modos del visor (como Komikku): paginado ← / →, paginado vertical, webtoon y vertical continuo con separación. */
+enum class ModoVisor { DERECHA_IZQUIERDA, IZQUIERDA_DERECHA, VERTICAL, WEBTOON, CONTINUO }
+
+/** Zonas de toque del visor (las de Mihon/Komikku). */
+enum class ZonasToque { AUTOMATICO, L, KINDLE, BORDES, IZQUIERDA_DERECHA, DESACTIVADO }
+
+enum class InvertirZonas { NO, HORIZONTAL, VERTICAL, AMBOS }
+
+/** Escala de las páginas en los modos paginados. */
+enum class EscalaPagina { AJUSTAR, AJUSTAR_ANCHO, AJUSTAR_ALTO, ORIGINAL }
+
+/** Tema de la app. */
+enum class ModoTema { SISTEMA, OSCURO_PURO, OSCURO, CLARO }
+
+/** Vista de las listas de una fuente (Explorar). */
+enum class VistaExplorar { CUADRICULA, LISTA, COMPACTA, PORTADAS }
+
 // Guarda la biblioteca: copia cada .cbz a la memoria de la app y recuerda el progreso.
-class Almacen(private val contexto: Context) {
+// UNA sola instancia por proceso (Almacen.obtener): la usan la interfaz y los trabajos en segundo plano.
+class Almacen private constructor(private val contexto: Context) {
+
+    companion object {
+        @Volatile private var instancia: Almacen? = null
+        fun obtener(c: Context): Almacen = instancia ?: synchronized(this) {
+            instancia ?: Almacen(c.applicationContext).also { instancia = it }
+        }
+    }
+
     private val prefs = contexto.getSharedPreferences("lector", Context.MODE_PRIVATE)
     private val carpetaComics = File(contexto.filesDir, "comics").apply { mkdirs() }
     private val carpetaPortadas = File(contexto.filesDir, "portadas").apply { mkdirs() }
-    private val carpetaDescargas = File(contexto.filesDir, "descargas").apply { mkdirs() }
+    // Interna o la carpeta que elijas (CarpetaApp); se relee al cambiarla.
+    @Volatile private var carpetaDescargas = CarpetaApp.descargas(contexto)
+
+    fun recargarCarpeta() {
+        carpetaDescargas = CarpetaApp.descargas(contexto)
+        synchronized(this) { descargados = null }
+    }
+    /** Capítulos conocidos de cada manga: un archivo por manga (antes estaban en las preferencias). */
+    private val conocidos = CapitulosConocidos(contexto.filesDir)
+
+    /** Sube cada vez que cambia la biblioteca: las pantallas que lo leen se refrescan. */
+    var version by mutableIntStateOf(0)
+        private set
 
     // ---- Apariencia (son "estado" de Compose: al cambiarlos, la app se repinta sola) ----
     var paleta by mutableStateOf(
@@ -113,6 +176,8 @@ class Almacen(private val contexto: Context) {
         colorPortada = valor
         prefs.edit().putBoolean("color_portada", valor).apply()
     }
+
+    var modoTema by prefEnum(prefs, "modo_tema", ModoTema.OSCURO_PURO)
 
     // ---- Ajustes del lector ----
     var zonasToque by mutableStateOf(prefs.getBoolean("zonas_toque", true))
@@ -138,6 +203,28 @@ class Almacen(private val contexto: Context) {
         mantenerEncendida = valor
         prefs.edit().putBoolean("mantener_encendida", valor).apply()
     }
+
+    // Visor (Komikku): modo por defecto, zonas, escala, recortes, webtoon, autodesplazamiento…
+    var modoVisor by prefEnum(prefs, "modo_visor", ModoVisor.DERECHA_IZQUIERDA)
+    var zonasVisor by prefEnum(prefs, "zonas_visor", ZonasToque.AUTOMATICO)
+    var invertirZonas by prefEnum(prefs, "invertir_zonas", InvertirZonas.NO)
+    var escalaPagina by prefEnum(prefs, "escala_pagina", EscalaPagina.AJUSTAR)
+    var recortarWebtoon by prefBool(prefs, "recortar_webtoon", false)
+    var saltarDuplicados by prefBool(prefs, "saltar_duplicados", false)
+    var saltarLeidos by prefBool(prefs, "saltar_leidos", false)
+    var borrarMarcados by prefBool(prefs, "borrar_marcados", false)
+    var dividirDobles by prefBool(prefs, "dividir_dobles", false)
+    var invertirDivision by prefBool(prefs, "invertir_division", false)
+    var rellenoLateral by prefInt(prefs, "relleno_lateral", 0) // % de cada lado en webtoon
+    var animarPaginas by prefBool(prefs, "animar_paginas", true)
+    var mostrarNumeroPagina by prefBool(prefs, "mostrar_numero", true)
+    var pantallaCompleta by prefBool(prefs, "pantalla_completa", true)
+    var invertirVolumen by prefBool(prefs, "invertir_volumen", false)
+    var mostrarTransiciones by prefBool(prefs, "mostrar_transiciones", true)
+    var precargaPaginas by prefInt(prefs, "precarga", 4)
+    var velocidadAuto by prefFloat(prefs, "velocidad_auto", 5f) // 1 (lento) … 10 (rápido)
+    var dobleToqueZoom by prefBool(prefs, "doble_toque_zoom", true)
+    var pasarCapituloSolo by prefBool(prefs, "pasar_capitulo_solo", true) // webtoon: al llegar al final, sigue
 
     // ---- Pantalla del lector ----
     private inline fun <reified T : Enum<T>> leerEnum(clave: String, defecto: T): T =
@@ -252,6 +339,92 @@ class Almacen(private val contexto: Context) {
         prefs.edit().putBoolean("insignia_progreso", valor).apply()
     }
 
+    // Biblioteca estilo Komikku: agrupación, filtros de tres estados, insignias y botón «continuar».
+    var agrupar by prefEnum(prefs, "agrupar", Agrupar.CATEGORIA)
+    var fDescargados by prefEnum(prefs, "f_descargados", Tri.IGNORAR)
+    var fSinLeer by prefEnum(prefs, "f_sin_leer", Tri.IGNORAR)
+    var fEmpezados by prefEnum(prefs, "f_empezados", Tri.IGNORAR)
+    var fTerminados by prefEnum(prefs, "f_terminados", Tri.IGNORAR)
+    var fSeguimiento by prefEnum(prefs, "f_seguimiento", Tri.IGNORAR)
+    var fLocales by prefEnum(prefs, "f_locales", Tri.IGNORAR)
+    var insigniaSinLeer by prefBool(prefs, "ins_sin_leer", true)
+    var insigniaDescargas by prefBool(prefs, "ins_descargas", true)
+    var insigniaIdioma by prefBool(prefs, "ins_idioma", false)
+    var insigniaLocal by prefBool(prefs, "ins_local", true)
+    var botonContinuar by prefBool(prefs, "boton_continuar", true)
+    var conteoCategorias by prefBool(prefs, "conteo_categorias", true)
+
+    // ---- Actualizaciones automáticas de la biblioteca (WorkManager) ----
+    var intervaloActualizacion by prefInt(prefs, "act_intervalo", 24) // horas; 0 = solo a mano
+    var actSoloWifi by prefBool(prefs, "act_wifi", true)
+    var actSoloCargando by prefBool(prefs, "act_cargando", false)
+    var actSaltarTerminados by prefBool(prefs, "act_saltar_terminados", true)
+    // Como las restricciones de Komikku («con capítulos sin leer» y «sin empezar»). Apagadas por defecto.
+    var actSaltarSinLeer by prefBool(prefs, "act_saltar_sin_leer", false)
+    var actSaltarNoEmpezados by prefBool(prefs, "act_saltar_no_empezados", false)
+    var actInteligente by prefBool(prefs, "act_inteligente", false)
+    // Como Komikku: categoría por defecto al añadir ("" = preguntar, "-" = ninguna sin preguntar, o el id), categorías
+    // que la revisión global y la descarga automática se saltan (ids separados por coma) y opciones de marcado.
+    var catDefecto by prefString(prefs, "cat_defecto", "")
+    var actCatExcluidas by prefString(prefs, "act_cat_excluidas", "")
+    var descCatExcluidas by prefString(prefs, "desc_cat_excluidas", "")
+    var marcarDuplicadosNuevos by prefBool(prefs, "marcar_dup_nuevos", false)
+    var borrarAlMarcar by prefBool(prefs, "borrar_al_marcar", false)
+    var segAlMarcar by prefBool(prefs, "seg_al_marcar", true)
+    var rotarAnchas by prefBool(prefs, "rotar_anchas", false)
+    fun idsDe(lista: String): Set<String> = lista.split(',').filter { it.isNotBlank() }.toSet()
+
+    /** Borra fichas guardadas y listas de capítulos de mangas que no están ni en la biblioteca ni en el historial. */
+    fun limpiarHuerfanos(): Int {
+        val conservar = HashSet<Pair<Long, String>>()
+        cargar().forEach { c -> c.urlManga?.let { conservar += c.fuenteId to it } }
+        historialLinea.forEach { conservar += it.fuenteId to it.urlManga }
+        return CacheFichas.limpiar(conservar) + conocidos.limpiar(conservar)
+    }
+    var descargarNuevos by prefBool(prefs, "descargar_nuevos", false)
+    var revisarExtensiones by prefBool(prefs, "revisar_ext", true)
+    var ultimaRevisionExt by prefLong(prefs, "ult_revision_ext", 0L)
+
+    // ---- Descargas ----
+    var borrarAlLeer by prefBool(prefs, "borrar_al_leer", false)
+    var descargarAdelante by prefInt(prefs, "descargar_adelante", 0) // capítulos siguientes al leer (0 = no)
+    var descSoloWifi by prefBool(prefs, "desc_wifi", false)
+    var descParalelas by prefInt(prefs, "desc_paralelas", 2)
+
+    // ---- Explorar ----
+    var ocultarEnBiblioteca by prefBool(prefs, "ocultar_en_biblioteca", false)
+    var vistaExplorar by prefEnum(prefs, "vista_explorar", VistaExplorar.CUADRICULA)
+    /** Catálogo de una fuente: columnas (0 = automático), filtro «en la biblioteca» y orden (0 fuente · 1 título). */
+    var explorarColumnas by prefInt(prefs, "explorar_columnas", 0)
+    var explorarEnBiblioteca by prefEnum(prefs, "explorar_en_biblioteca", if (prefs.getBoolean("ocultar_en_biblioteca", false)) Tri.EXCLUIR else Tri.IGNORAR)
+    var explorarOrden by prefInt(prefs, "explorar_orden", 0)
+    var explorarDescendente by prefBool(prefs, "explorar_desc", false)
+    /** Pestaña de la biblioteca en la que estabas (se vuelve a ella al volver a la biblioteca o abrir la app). */
+    var ultimaPestanaBiblioteca by prefString(prefs, "ultima_pestana_biblioteca", "")
+    var globalSoloAncladas by prefBool(prefs, "global_ancladas", false)
+
+    // ---- Seguridad y privacidad ----
+    var bloqueo by prefBool(prefs, "bloqueo", false)
+    var bloqueoMinutos by prefInt(prefs, "bloqueo_min", 0) // 0 = siempre al volver
+    var pantallaSegura by prefBool(prefs, "pantalla_segura", false)
+    var incognito by prefBool(prefs, "incognito", false)
+
+    // ---- Avanzado ----
+    var doh by prefInt(prefs, "doh", 0) // 0 ninguno · 1 Cloudflare · 2 Google · 3 AdGuard · 4 Quad9
+
+    // ---- Copias automáticas ----
+    var copiaAutoDias by prefInt(prefs, "copia_auto_dias", 0) // 0 = desactivadas
+    var copiaCarpeta by prefString(prefs, "copia_carpeta", "") // URI de una carpeta elegida (SAF) o vacío
+    var copiasMax by prefInt(prefs, "copias_max", 5)
+    var ultimaCopia by prefLong(prefs, "ultima_copia", 0L)
+
+    // ---- Estadísticas ----
+    var tiempoLectura by prefLong(prefs, "tiempo_lectura", 0L) // milisegundos leyendo en total
+
+    fun sumarTiempoLectura(ms: Long) {
+        if (ms in 1_000L..(4L * 60 * 60 * 1000)) tiempoLectura += ms
+    }
+
     // ---- Seguimiento con AniList ----
     var anilistClientId by mutableStateOf(prefs.getString("anilist_client", "") ?: "")
         private set
@@ -292,6 +465,10 @@ class Almacen(private val contexto: Context) {
         }.getOrNull()
     }
 
+    /** Cuántos cómics/mangas están vinculados a AniList (para filtros y estadísticas). */
+    fun idsConSeguimiento(): Set<String> =
+        prefs.all.keys.filter { it.startsWith("seg_") }.map { it.removePrefix("seg_") }.toSet()
+
     fun guardarSeguimiento(id: String, seguimiento: Seguimiento?) {
         val editor = prefs.edit()
         if (seguimiento == null) {
@@ -309,6 +486,19 @@ class Almacen(private val contexto: Context) {
             )
         }
         editor.apply()
+        version++
+    }
+
+    /**
+     * Manga en línea con seguimiento: sube el número de capítulos leídos (nunca lo baja). Bloquea: llamar desde un
+     * hilo de fondo. Devuelve true si no hacía falta o se subió.
+     */
+    fun avanzarSeguimiento(id: String, capitulo: Int): Boolean {
+        val s = seguimientoDe(id) ?: return true
+        if (s.volumenes || capitulo <= s.numero) return true
+        guardarSeguimiento(id, s.copy(numero = capitulo))
+        marcarSincronizacion(id, true)
+        return sincronizarAnilist(id)
     }
 
     // Cómics terminados cuyo progreso aún no se ha podido subir (por ejemplo, sin conexión).
@@ -364,6 +554,41 @@ class Almacen(private val contexto: Context) {
         prefs.edit().putString("modo_$id", modo.name).apply()
     }
 
+    /** Modo del visor elegido para una serie (clave = id del cómic o "fuente|url" de un manga en línea). */
+    fun modoVisorDe(clave: String): ModoVisor? {
+        prefs.getString("visor_$clave", null)?.let { n -> ModoVisor.entries.firstOrNull { it.name == n } }?.let { return it }
+        // Compatibilidad con el modo antiguo de los cómics locales.
+        return when (modoDe(clave)) {
+            Modo.MANGA -> ModoVisor.DERECHA_IZQUIERDA
+            Modo.COMIC -> ModoVisor.IZQUIERDA_DERECHA
+            Modo.VERTICAL -> ModoVisor.WEBTOON
+            null -> null
+        }
+    }
+
+    fun guardarModoVisor(clave: String, modo: ModoVisor?) {
+        if (modo == null) prefs.edit().remove("visor_$clave").remove("modo_$clave").apply()
+        else prefs.edit().putString("visor_$clave", modo.name).apply()
+    }
+
+    /** Como «Reset per-series reader settings» de Mihon: todas las series vuelven al modo de lectura general. */
+    fun restablecerModosDeSerie(): Int {
+        val claves = prefs.all.keys.filter { it.startsWith("visor_") }
+        prefs.edit().apply { claves.forEach { remove(it) } }.apply()
+        return claves.size
+    }
+
+    /** Lista de la biblioteca en CSV (título, autor, fuente, capítulos, leídos), como «Library List» de Komikku. */
+    fun bibliotecaCsv(nombreFuente: (Long) -> String): String = buildString {
+        fun c(t: String?) = "\"" + t.orEmpty().replace("\"", "\"\"") + "\""
+        appendLine("Título,Autor,Fuente,Capítulos,Leídos,Dirección")
+        cargar().sortedBy { it.titulo.lowercase() }.forEach {
+            appendLine(listOf(c(it.titulo), c(it.autor), c(if (it.enLinea) nombreFuente(it.fuenteId) else "Local"), it.paginas.toString(), it.ultimaPagina.toString(), c(it.urlManga)).joinToString(","))
+        }
+    }
+
+    var ocultarNotificaciones by prefBool(prefs, "ocultar_notif", false)
+
     // Último cómic que abriste, para el botón "Continuar".
     var ultimoAbierto: String?
         get() = prefs.getString("ultimo", null)
@@ -373,11 +598,11 @@ class Almacen(private val contexto: Context) {
     var orden: Orden
         get() = prefs.getString("orden", null)
             ?.let { runCatching { Orden.valueOf(it) }.getOrNull() } ?: Orden.TITULO
-        set(valor) = prefs.edit().putString("orden", valor.name).apply()
+        set(valor) { prefs.edit().putString("orden", valor.name).apply(); version++ }
 
     var ordenAscendente: Boolean
         get() = prefs.getBoolean("orden_asc", true)
-        set(valor) = prefs.edit().putBoolean("orden_asc", valor).apply()
+        set(valor) { prefs.edit().putBoolean("orden_asc", valor).apply(); version++ }
 
     // ---- Categorías ----
     private var cacheCats: List<Categoria>? = null
@@ -405,14 +630,17 @@ class Almacen(private val contexto: Context) {
                 )
             }
             prefs.edit().putString("categorias", json.toString()).apply()
+            version++
         }
     }
 
     @Synchronized
-    fun crearCategoria(nombre: String) {
+    fun crearCategoria(nombre: String): String? {
         val limpio = nombre.trim()
-        if (limpio.isEmpty()) return
-        guardarCategorias(categorias() + Categoria(UUID.randomUUID().toString(), limpio, false))
+        if (limpio.isEmpty()) return null
+        val c = Categoria(UUID.randomUUID().toString(), limpio, false)
+        guardarCategorias(categorias() + c)
+        return c.id
     }
 
     @Synchronized
@@ -464,6 +692,7 @@ class Almacen(private val contexto: Context) {
             val objeto = JSONObject()
             limpio.forEach { (comicId, ids) -> objeto.put(comicId, JSONArray(ids.toList())) }
             prefs.edit().putString("asignaciones", objeto.toString()).apply()
+            version++
         }
     }
 
@@ -481,15 +710,43 @@ class Almacen(private val contexto: Context) {
     }
 
     // La biblioteca se lee del JSON una sola vez y se guarda en memoria; cada cambio actualiza ambos.
-    // (Antes se volvía a parsear todo el JSON en cada consulta, incluso al recomponer pantallas.)
     private var cacheComics: List<Comic>? = null
 
     fun cargar(): List<Comic> = synchronized(this) {
         cacheComics ?: leerComics().also { cacheComics = it }
     }
 
+    private fun JSONArray?.aLista(): List<String> =
+        if (this == null) emptyList() else List(length()) { optString(it) }.filter { it.isNotBlank() }
+
+    /** La biblioteca en su propio archivo (antes era un texto dentro de las preferencias, reescrito entero en cada cambio). */
+    private val archivoBiblioteca = File(contexto.filesDir, "biblioteca.json")
+    private val guardadoProgramado = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private fun textoBiblioteca(): String =
+        if (archivoBiblioteca.exists()) archivoBiblioteca.readText() else prefs.getString("comics", "[]") ?: "[]"
+
+    /** Escribe la biblioteca en segundo plano, agrupando los cambios seguidos en una sola escritura. */
+    private fun programarGuardado() {
+        if (!guardadoProgramado.compareAndSet(false, true)) return
+        Persistencia.hilo.schedule({
+            guardadoProgramado.set(false)
+            runCatching { escribirBiblioteca() }
+        }, 300, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    private fun escribirBiblioteca() {
+        val lista = synchronized(this) { cacheComics } ?: return
+        val json = JSONArray()
+        lista.forEach { json.put(it.aJson()) }
+        val tmp = File(archivoBiblioteca.path + ".tmp")
+        tmp.writeText(json.toString())
+        if (!tmp.renameTo(archivoBiblioteca)) { archivoBiblioteca.delete(); tmp.renameTo(archivoBiblioteca) }
+        if (prefs.contains("comics")) prefs.edit().remove("comics").apply() // ya migrada
+    }
+
     private fun leerComics(): List<Comic> = runCatching {
-        val json = JSONArray(prefs.getString("comics", "[]"))
+        val json = JSONArray(textoBiblioteca())
         List(json.length()) { i ->
             val o = json.getJSONObject(i)
             Comic(
@@ -501,35 +758,61 @@ class Almacen(private val contexto: Context) {
                 fuenteId = o.optLong("fuente", 0L),
                 urlManga = o.optString("url_manga").ifBlank { null },
                 portadaUrl = o.optString("portada_url").ifBlank { null },
+                anadido = o.optLong("anadido", 0L),
+                autor = o.optString("autor").ifBlank { null },
+                estado = o.optInt("estado", 0),
+                generos = o.optJSONArray("generos").aLista(),
+                descripcion = o.optString("descripcion").ifBlank { null },
+                ultimaRevision = o.optLong("ult_revision", 0L),
+                ultimoCapitulo = o.optLong("ult_cap", 0L),
+                editado = o.optBoolean("editado", false),
+                portadaPropia = o.optBoolean("portada_propia", false),
+                soloUnaVez = o.optBoolean("una_vez", false),
+                proximaRevision = o.optLong("prox_rev", 0L),
             )
         }
     }.getOrDefault(emptyList())
+
+    private fun Comic.aJson(): JSONObject = JSONObject()
+        .put("id", id)
+        .put("titulo", titulo)
+        .put("paginas", paginas)
+        .put("ultima", ultimaPagina)
+        .put("leido", leido)
+        .put("fuente", fuenteId)
+        .put("url_manga", urlManga ?: "")
+        .put("portada_url", portadaUrl ?: "")
+        .put("anadido", anadido)
+        .put("autor", autor ?: "")
+        .put("estado", estado)
+        .put("generos", JSONArray(generos))
+        .put("descripcion", descripcion ?: "")
+        .put("ult_revision", ultimaRevision)
+        .put("ult_cap", ultimoCapitulo)
+        .put("editado", editado)
+        .put("portada_propia", portadaPropia)
+        .put("una_vez", soloUnaVez)
+        .put("prox_rev", proximaRevision)
 
     private fun guardar(lista: List<Comic>) {
         synchronized(this) {
             if (lista == cacheComics) return // nada cambió: no reescribe el JSON
             cacheComics = lista.toList()
-            val json = JSONArray()
-            lista.forEach {
-                json.put(
-                    JSONObject()
-                        .put("id", it.id)
-                        .put("titulo", it.titulo)
-                        .put("paginas", it.paginas)
-                        .put("ultima", it.ultimaPagina)
-                        .put("leido", it.leido)
-                        .put("fuente", it.fuenteId)
-                        .put("url_manga", it.urlManga ?: "")
-                        .put("portada_url", it.portadaUrl ?: ""),
-                )
-            }
-            prefs.edit().putString("comics", json.toString()).apply()
+            programarGuardado()
+            version++
         }
     }
 
     // Lee, transforma y guarda como una sola operación (evita perder cambios entre hilos).
     private fun modificar(f: (List<Comic>) -> List<Comic>) {
         synchronized(this) { guardar(f(cargar())) }
+    }
+
+    fun comic(id: String): Comic? = cargar().firstOrNull { it.id == id }
+
+    /** Cambia un cómic de la biblioteca (por id). */
+    fun actualizarComic(id: String, cambio: (Comic) -> Comic) {
+        modificar { l -> l.map { if (it.id == id) cambio(it) else it } }
     }
 
     // Devuelve el cómic añadido, o null si el archivo no sirve.
@@ -542,6 +825,13 @@ class Almacen(private val contexto: Context) {
         val id = UUID.randomUUID().toString()
         val archivo = archivoDe(id)
 
+        // PDF: cada página se dibuja como imagen y se empaqueta como .cbz (así el visor lo abre igual).
+        val mime = runCatching { contexto.contentResolver.getType(uri) }.getOrNull()
+        if (mime == "application/pdf" || nombre.endsWith(".pdf", ignoreCase = true)) {
+            return if (Pdf.aCbz(contexto, uri, archivo)) registrar(id, archivo, nombre.substringBeforeLast('.'))
+            else { archivo.delete(); null }
+        }
+
         val copiado = contexto.contentResolver.openInputStream(uri)?.use { entrada ->
             archivo.outputStream().use { salida -> entrada.copyTo(salida) }
             true
@@ -551,7 +841,7 @@ class Almacen(private val contexto: Context) {
         return registrar(id, archivo, nombre.substringBeforeLast('.'))
     }
 
-    // Añade a la biblioteca un .cbz que ya tenemos en disco (p. ej. un capítulo descargado de una fuente).
+    // Añade a la biblioteca un .cbz que ya tenemos en disco.
     fun importarArchivo(origen: File, titulo: String): Comic? {
         val id = UUID.randomUUID().toString()
         val archivo = archivoDe(id)
@@ -639,27 +929,86 @@ class Almacen(private val contexto: Context) {
             portadaDe(id).outputStream().use { portada.compress(Bitmap.CompressFormat.JPEG, 85, it) }
         }
 
-        val comic = Comic(id, titulo, paginas.size, 0)
+        val comic = Comic(id, titulo, paginas.size, 0, anadido = System.currentTimeMillis())
         modificar { l -> l + comic }
         // Si venía de una copia de seguridad, recupera su progreso y categorías.
         return aplicarPendiente(comic)
     }
 
-    // ---- Copia de seguridad ----
+    /** Usa una imagen (bytes de una página, una foto…) como portada de la serie. */
+    fun cambiarPortada(id: String, bytes: ByteArray): Boolean = runCatching {
+        val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return false
+        val escala = minOf(1f, 600f / maxOf(bmp.width, bmp.height))
+        val chica = if (escala < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * escala).toInt(), (bmp.height * escala).toInt(), true) else bmp
+        portadaDe(id).outputStream().use { chica.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+        actualizarComic(id) { it.copy(portadaPropia = true) }
+        Portadas.olvidar(id)
+        true
+    }.getOrDefault(false)
+
+    // ---- Copia de seguridad (parte de la biblioteca; CopiaSeguridad añade lo demás) ----
     // Guarda progreso, categorías, modos de lectura y ajustes (no los archivos de los cómics).
     // Los cómics se reconocen por título y número de páginas.
     private fun claveDe(titulo: String, paginas: Int) = titulo.trim().lowercase() + "|" + paginas
 
     private fun pendientes(): JSONObject = JSONObject(prefs.getString("pendientes", "{}"))
 
-    fun crearCopia(): String {
+    /** Ajustes que viajan en la copia (todo menos datos privados como el token de AniList). */
+    private val clavesAjustes = listOf(
+        "paleta", "color_portada", "modo_tema", "zonas_toque", "teclas_volumen", "mantener_encendida", "modo_visor",
+        "zonas_visor", "invertir_zonas", "escala_pagina", "recortar_webtoon", "dividir_dobles", "invertir_division",
+        "relleno_lateral", "animar_paginas", "mostrar_numero", "pantalla_completa", "invertir_volumen",
+        "mostrar_transiciones", "precarga", "velocidad_auto", "doble_toque_zoom", "pasar_capitulo_solo", "saltar_duplicados", "saltar_leidos", "borrar_marcados", "marcar_dup_nuevos", "borrar_al_marcar", "seg_al_marcar", "rotar_anchas", "act_saltar_sin_leer", "act_saltar_no_empezados", "act_inteligente",
+        "fondo_lector", "orientacion", "brillo_on", "brillo", "grises", "invertir", "tinte", "tinte_intensidad",
+        "recortar_bordes", "vista", "columnas", "mostrar_pagina", "insignia_progreso", "agrupar", "f_descargados",
+        "f_sin_leer", "f_empezados", "f_terminados", "f_seguimiento", "f_locales", "ins_sin_leer", "ins_descargas",
+        "ins_idioma", "ins_local", "boton_continuar", "conteo_categorias", "act_intervalo", "act_wifi",
+        "act_cargando", "act_saltar_terminados", "descargar_nuevos", "revisar_ext", "borrar_al_leer",
+        "descargar_adelante", "desc_wifi", "desc_paralelas", "ocultar_en_biblioteca", "vista_explorar",
+        "global_ancladas", "pantalla_segura", "doh", "orden", "orden_asc", "rtl", "copias_max",
+    )
+
+    private fun ajustesComoJson(): JSONObject {
+        val o = JSONObject()
+        val todos = prefs.all
+        clavesAjustes.forEach { k ->
+            when (val v = todos[k]) {
+                is Boolean -> o.put(k, JSONObject().put("t", "b").put("v", v))
+                is Int -> o.put(k, JSONObject().put("t", "i").put("v", v))
+                is Long -> o.put(k, JSONObject().put("t", "l").put("v", v))
+                is Float -> o.put(k, JSONObject().put("t", "f").put("v", v.toDouble()))
+                is String -> o.put(k, JSONObject().put("t", "s").put("v", v))
+            }
+        }
+        return o
+    }
+
+    private fun aplicarAjustesJson(o: JSONObject) {
+        val e = prefs.edit()
+        for (k in o.keys()) {
+            if (k !in clavesAjustes) continue
+            val x = o.optJSONObject(k) ?: continue
+            when (x.optString("t")) {
+                "b" -> e.putBoolean(k, x.optBoolean("v"))
+                "i" -> e.putInt(k, x.optInt("v"))
+                "l" -> e.putLong(k, x.optLong("v"))
+                "f" -> e.putFloat(k, x.optDouble("v").toFloat())
+                "s" -> e.putString(k, x.optString("v"))
+            }
+        }
+        e.apply()
+    }
+
+    fun crearCopia(): JSONObject {
         val listaCategorias = categorias()
         val nombres = listaCategorias.associate { it.id to it.nombre }
         val asign = asignaciones()
 
         val raiz = JSONObject()
-        raiz.put("version", 1)
+        raiz.put("version", 2)
         raiz.put("app", "Lector")
+        raiz.put("fecha", System.currentTimeMillis())
+        // Formato antiguo (version 1) de los ajustes, para que una copia nueva siga sirviendo en versiones viejas.
         raiz.put(
             "ajustes",
             JSONObject()
@@ -685,6 +1034,7 @@ class Almacen(private val contexto: Context) {
                 .put("tinte_intensidad", intensidadTinte.toDouble())
                 .put("recortar_bordes", recortarBordes),
         )
+        raiz.put("ajustes2", ajustesComoJson())
 
         val cats = JSONArray()
         listaCategorias.forEach {
@@ -699,6 +1049,7 @@ class Almacen(private val contexto: Context) {
                 .put("paginas", c.paginas)
                 .put("ultima", c.ultimaPagina)
                 .put("leido", c.leido)
+                .put("anadido", c.anadido)
             modoDe(c.id)?.let { e.put("modo", it.name) }
             seguimientoDe(c.id)?.let {
                 e.put(
@@ -725,21 +1076,35 @@ class Almacen(private val contexto: Context) {
         cargar().filter { it.enLinea }.forEach { c ->
             val cs = JSONArray()
             asign[c.id].orEmpty().mapNotNull { nombres[it] }.forEach { cs.put(it) }
-            enLinea.put(
-                JSONObject()
-                    .put("fuente", c.fuenteId)
-                    .put("url", c.urlManga.orEmpty())
-                    .put("titulo", c.titulo)
-                    .put("portada", c.portadaUrl.orEmpty())
-                    .put("caps", c.paginas)
-                    .put("leidos", c.ultimaPagina)
-                    .put("leido", c.leido)
-                    .put("categorias", cs),
-            )
+            val e = JSONObject()
+                .put("fuente", c.fuenteId)
+                .put("url", c.urlManga.orEmpty())
+                .put("titulo", c.titulo)
+                .put("portada", c.portadaUrl.orEmpty())
+                .put("caps", c.paginas)
+                .put("leidos", c.ultimaPagina)
+                .put("leido", c.leido)
+                .put("anadido", c.anadido)
+                .put("autor", c.autor.orEmpty())
+                .put("estado", c.estado)
+                .put("generos", JSONArray(c.generos))
+                .put("descripcion", c.descripcion.orEmpty())
+                .put("editado", c.editado)
+                .put("categorias", cs)
+            seguimientoDe(c.id)?.let {
+                e.put("seguimiento", JSONObject().put("media", it.mediaId).put("titulo", it.titulo).put("vol", it.volumenes).put("numero", it.numero))
+            }
+            modoVisorDe(c.id)?.let { e.put("visor", it.name) }
+            enLinea.put(e)
         }
         raiz.put("en_linea", enLinea)
 
-        return raiz.toString(2)
+        // Historial online.
+        val h = JSONArray()
+        historialLinea.forEach { h.put(entradaAJson(it)) }
+        raiz.put("historial_linea", h)
+        raiz.put("tiempo_lectura", tiempoLectura)
+        return raiz
     }
 
     // Busca una categoría por nombre o la crea.
@@ -811,10 +1176,11 @@ class Almacen(private val contexto: Context) {
     }
 
     // Lanza una excepción si el texto no es una copia válida.
-    fun restaurarCopia(texto: String): ResultadoRestauracion {
-        val raiz = JSONObject(texto)
-        require(raiz.optInt("version", 0) == 1) { "Copia no válida" }
+    fun restaurarCopia(raiz: JSONObject): ResultadoRestauracion {
+        val v = raiz.optInt("version", 0)
+        require(v == 1 || v == 2) { "Copia no válida" }
 
+        raiz.optJSONObject("ajustes2")?.let { aplicarAjustesJson(it) }
         raiz.optJSONObject("ajustes")?.let { a ->
             val nombreOrden = a.optString("orden")
             if (nombreOrden.isNotEmpty()) {
@@ -880,13 +1246,15 @@ class Almacen(private val contexto: Context) {
         }
 
         // Biblioteca en línea: se recrea cada manga que aún no esté (la portada se vuelve a bajar al verla).
+        // Índice por «fuente|url» para no recorrer la biblioteca entera por cada manga.
+        val enLineaPorClave = HashMap<String, Comic>().also { m -> locales.forEach { c -> if (c.enLinea) m["${c.fuenteId}|${c.urlManga}"] = c } }
         raiz.optJSONArray("en_linea")?.let { arr ->
             for (i in 0 until arr.length()) {
                 val e = arr.getJSONObject(i)
                 val fuente = e.optLong("fuente", 0L)
                 val url = e.optString("url")
                 if (url.isBlank()) continue
-                val existente = locales.firstOrNull { it.enLinea && it.fuenteId == fuente && it.urlManga == url }
+                val existente = enLineaPorClave["$fuente|$url"]
                 val comic = existente ?: Comic(
                     id = UUID.randomUUID().toString(),
                     titulo = e.optString("titulo").ifBlank { "Sin título" },
@@ -895,16 +1263,40 @@ class Almacen(private val contexto: Context) {
                     leido = e.optLong("leido", 0L),
                     fuenteId = fuente, urlManga = url,
                     portadaUrl = e.optString("portada").ifBlank { null },
-                ).also { locales.add(it) }
+                    anadido = e.optLong("anadido", System.currentTimeMillis()),
+                    autor = e.optString("autor").ifBlank { null },
+                    estado = e.optInt("estado", 0),
+                    generos = e.optJSONArray("generos").aLista(),
+                    descripcion = e.optString("descripcion").ifBlank { null },
+                    editado = e.optBoolean("editado", false),
+                ).also { locales.add(it); enLineaPorClave["$fuente|$url"] = it }
                 val nombresCats = e.optJSONArray("categorias")
                 if (nombresCats != null && nombresCats.length() > 0) {
                     val ids = HashSet<String>()
                     for (k in 0 until nombresCats.length()) ids.add(idCategoria(nombresCats.getString(k), false, cats))
                     mapa[comic.id] = mapa[comic.id].orEmpty() + ids
                 }
+                e.optJSONObject("seguimiento")?.let { seg ->
+                    if (seguimientoDe(comic.id) == null) runCatching {
+                        guardarSeguimiento(comic.id, Seguimiento(seg.getInt("media"), seg.getString("titulo"), seg.getBoolean("vol"), seg.getInt("numero")))
+                    }
+                }
+                e.optString("visor").takeIf { it.isNotBlank() }?.let { n ->
+                    ModoVisor.entries.firstOrNull { it.name == n }?.let { guardarModoVisor(comic.id, it) }
+                }
                 actualizados++
             }
         }
+
+        raiz.optJSONArray("historial_linea")?.let { arr ->
+            val copia = (0 until arr.length()).mapNotNull { runCatching { jsonAEntrada(arr.getJSONObject(it)) }.getOrNull() }
+            val unidas = (historialLinea + copia).sortedByDescending { it.leido }
+                .distinctBy { it.fuenteId to it.urlManga }.take(300)
+            historialLinea = unidas
+            guardarHistorialLinea(unidas)
+        }
+        val tiempo = raiz.optLong("tiempo_lectura", 0L)
+        if (tiempo > tiempoLectura) tiempoLectura = tiempo
 
         guardar(locales)
         guardarAsignaciones(mapa)
@@ -937,46 +1329,45 @@ class Almacen(private val contexto: Context) {
     var historialLinea by mutableStateOf(leerHistorialLinea())
         private set
 
+    private fun jsonAEntrada(o: JSONObject) = EntradaHistorial(
+        fuenteId = o.getLong("fuente"),
+        urlManga = o.getString("manga"),
+        titulo = o.getString("titulo"),
+        portadaUrl = o.optString("portada").ifBlank { null },
+        capUrl = o.getString("cap"),
+        capNombre = o.optString("cap_nombre"),
+        pagina = o.optInt("pagina", 0),
+        total = o.optInt("total", 0),
+        leido = o.optLong("leido", 0L),
+    )
+
+    private fun entradaAJson(it: EntradaHistorial): JSONObject = JSONObject()
+        .put("fuente", it.fuenteId)
+        .put("manga", it.urlManga)
+        .put("titulo", it.titulo)
+        .put("portada", it.portadaUrl ?: "")
+        .put("cap", it.capUrl)
+        .put("cap_nombre", it.capNombre)
+        .put("pagina", it.pagina)
+        .put("total", it.total)
+        .put("leido", it.leido)
+
     private fun leerHistorialLinea(): List<EntradaHistorial> = runCatching {
         val a = JSONArray(prefs.getString("historial_linea", "[]"))
-        List(a.length()) { i ->
-            val o = a.getJSONObject(i)
-            EntradaHistorial(
-                fuenteId = o.getLong("fuente"),
-                urlManga = o.getString("manga"),
-                titulo = o.getString("titulo"),
-                portadaUrl = o.optString("portada").ifBlank { null },
-                capUrl = o.getString("cap"),
-                capNombre = o.optString("cap_nombre"),
-                pagina = o.optInt("pagina", 0),
-                total = o.optInt("total", 0),
-                leido = o.optLong("leido", 0L),
-            )
-        }
+        List(a.length()) { i -> jsonAEntrada(a.getJSONObject(i)) }
     }.getOrDefault(emptyList())
 
     private fun guardarHistorialLinea(lista: List<EntradaHistorial>) {
         val a = JSONArray()
-        lista.forEach {
-            a.put(
-                JSONObject()
-                    .put("fuente", it.fuenteId)
-                    .put("manga", it.urlManga)
-                    .put("titulo", it.titulo)
-                    .put("portada", it.portadaUrl ?: "")
-                    .put("cap", it.capUrl)
-                    .put("cap_nombre", it.capNombre)
-                    .put("pagina", it.pagina)
-                    .put("total", it.total)
-                    .put("leido", it.leido),
-            )
-        }
+        lista.forEach { a.put(entradaAJson(it)) }
         prefs.edit().putString("historial_linea", a.toString()).apply()
     }
 
     // Anota (o actualiza) el capítulo que se está leyendo. Un manga ocupa una sola fila: la más reciente.
+    // En modo incógnito no se anota nada (como Komikku).
     @Synchronized
     fun registrarHistorialLinea(e: EntradaHistorial) {
+        if (incognito) return
         val nueva = (listOf(e) + historialLinea.filterNot { it.fuenteId == e.fuenteId && it.urlManga == e.urlManga })
             .take(300)
         historialLinea = nueva
@@ -998,11 +1389,15 @@ class Almacen(private val contexto: Context) {
     fun comicEnLinea(fuenteId: Long, urlManga: String): Comic? =
         cargar().firstOrNull { it.enLinea && it.fuenteId == fuenteId && it.urlManga == urlManga }
 
+    /** Claves "fuente|url" de todos los mangas en línea de la biblioteca (para marcar "en biblioteca" rápido). */
+    fun clavesEnLinea(): Set<String> = cargar().filter { it.enLinea }.map { "${it.fuenteId}|${it.urlManga}" }.toSet()
+
     // Añade el manga a la biblioteca (o devuelve el que ya estaba). La portada se guarda en disco.
     @Synchronized
     fun anadirEnLinea(
         fuenteId: Long, urlManga: String, titulo: String, portadaUrl: String?,
         portada: Bitmap?, capitulos: Int, leidos: Int,
+        autor: String? = null, estado: Int = 0, generos: List<String> = emptyList(), descripcion: String? = null,
     ): Comic {
         comicEnLinea(fuenteId, urlManga)?.let { return it }
         val id = UUID.randomUUID().toString()
@@ -1014,9 +1409,130 @@ class Almacen(private val contexto: Context) {
         val comic = Comic(
             id = id, titulo = titulo, paginas = capitulos, ultimaPagina = leidos,
             fuenteId = fuenteId, urlManga = urlManga, portadaUrl = portadaUrl,
+            anadido = System.currentTimeMillis(), autor = autor, estado = estado, generos = generos,
+            descripcion = descripcion,
         )
         modificar { l -> l + comic }
+        catDefecto.takeIf { d -> d.isNotBlank() && d != "-" && categorias().any { it.id == d } }?.let { asignarCategorias(id, setOf(it)) }
         return comic
+    }
+
+    // ---- Escrituras en lote (restaurar copias rápido: una sola escritura en vez de una por manga) ----
+
+    /** Un manga de fuente que se va a añadir de golpe con [anadirVariosEnLinea]. */
+    data class NuevoEnLinea(
+        val fuenteId: Long, val url: String, val titulo: String, val portadaUrl: String?,
+        val capitulos: Int, val leidos: Int, val autor: String?, val estado: Int, val generos: List<String>,
+        val descripcion: String?, val anadido: Long,
+    )
+
+    /**
+     * Añade muchos mangas en una sola escritura. Devuelve, para cada «fuente|url» pedido, el cómic de la biblioteca
+     * (el nuevo o el que ya estaba) y cuántos eran nuevos.
+     */
+    @Synchronized
+    fun anadirVariosEnLinea(lista: List<NuevoEnLinea>): Pair<Map<String, Comic>, Int> {
+        val actuales = cargar()
+        val porClave = HashMap<String, Comic>()
+        actuales.forEach { if (it.enLinea) porClave["${it.fuenteId}|${it.urlManga}"] = it }
+        val nuevos = ArrayList<Comic>()
+        val ahora = System.currentTimeMillis()
+        lista.forEach { n ->
+            val k = "${n.fuenteId}|${n.url}"
+            if (k in porClave) return@forEach
+            val c = Comic(
+                id = UUID.randomUUID().toString(), titulo = n.titulo, paginas = n.capitulos, ultimaPagina = n.leidos,
+                fuenteId = n.fuenteId, urlManga = n.url, portadaUrl = n.portadaUrl,
+                anadido = if (n.anadido > 0) n.anadido else ahora, autor = n.autor, estado = n.estado, generos = n.generos,
+                descripcion = n.descripcion,
+            )
+            porClave[k] = c
+            nuevos += c
+        }
+        if (nuevos.isNotEmpty()) guardar(actuales + nuevos)
+        return porClave to nuevos.size
+    }
+
+    /** Capítulos ya conocidos de muchos mangas («fuente|url» → urls), en una sola escritura. */
+    fun registrarConocidosVarios(mapa: Map<Pair<Long, String>, Collection<String>>) {
+        mapa.forEach { (k, urls) ->
+            if (urls.isEmpty()) return@forEach
+            conocidos.guardar(k.first, k.second, conocidos.leer(k.first, k.second).orEmpty() + urls)
+        }
+    }
+
+    /** Guarda ya (en este hilo) los capítulos conocidos de un manga, sumándolos a los que hubiera. */
+    fun guardarConocidosYa(fuenteId: Long, urlManga: String, urls: Collection<String>) {
+        if (urls.isEmpty()) return
+        val ya = conocidos.leer(fuenteId, urlManga)
+        conocidos.guardarYa(fuenteId, urlManga, if (ya == null) urls else ya + urls)
+    }
+
+    /**
+     * Las versiones anteriores guardaban los capítulos conocidos de cada manga en las preferencias («cc|fuente|url»):
+     * con una biblioteca grande eran decenas de MB cargados en memoria siempre. Se pasan a archivos y se borran de ahí.
+     */
+    private fun migrarConocidos() {
+        val claves = prefs.all.keys.filter { it.startsWith("cc|") }
+        if (claves.isEmpty()) return
+        val ed = prefs.edit()
+        claves.forEach { k ->
+            val resto = k.removePrefix("cc|")
+            val fuente = resto.substringBefore('|').toLongOrNull()
+            val url = resto.substringAfter('|', "")
+            val urls = runCatching { prefs.getStringSet(k, null) }.getOrNull()
+            if (fuente != null && url.isNotEmpty() && urls != null) runCatching { conocidos.guardarYa(fuente, url, urls) }
+            ed.remove(k)
+        }
+        ed.commit()
+    }
+
+    /** Añade categorías a muchos cómics de una vez (id del cómic → ids de categorías). */
+    @Synchronized
+    fun anadirCategoriasVarios(mapa: Map<String, Set<String>>) {
+        if (mapa.isEmpty()) return
+        val actual = asignaciones().toMutableMap()
+        mapa.forEach { (id, cats) -> actual[id] = actual[id].orEmpty() + cats }
+        guardarAsignaciones(actual)
+    }
+
+    /** Mete muchas entradas en el historial en línea de una vez (un manga = su lectura más reciente). */
+    @Synchronized
+    fun anadirHistorialVarios(lista: List<EntradaHistorial>) {
+        if (lista.isEmpty()) return
+        val nueva = (lista + historialLinea).sortedByDescending { it.leido }.distinctBy { it.fuenteId to it.urlManga }.take(300)
+        historialLinea = nueva
+        guardarHistorialLinea(nueva)
+        val ultimo = HashMap<String, Long>()
+        lista.forEach { e -> val k = "${e.fuenteId}|${e.urlManga}"; if ((ultimo[k] ?: 0L) < e.leido) ultimo[k] = e.leido }
+        modificar { l -> l.map { c -> if (c.enLinea) ultimo["${c.fuenteId}|${c.urlManga}"]?.takeIf { it > c.leido }?.let { c.copy(leido = it) } ?: c else c } }
+    }
+
+    /** Guarda los datos de la ficha (autor, estado, géneros…) salvo que el usuario los haya editado. */
+    fun actualizarInfoEnLinea(
+        fuenteId: Long, urlManga: String, autor: String?, estado: Int, generos: List<String>, descripcion: String?,
+        portadaUrl: String?, ultimoCapitulo: Long,
+    ) {
+        val c = comicEnLinea(fuenteId, urlManga) ?: return
+        actualizarComic(c.id) {
+            val base = it.copy(ultimoCapitulo = maxOf(it.ultimoCapitulo, ultimoCapitulo))
+            if (it.editado) base
+            else base.copy(
+                autor = autor ?: it.autor, estado = if (estado != 0) estado else it.estado,
+                generos = generos.ifEmpty { it.generos }, descripcion = descripcion ?: it.descripcion,
+                portadaUrl = portadaUrl ?: it.portadaUrl,
+            )
+        }
+    }
+
+    /** Edición manual de la información (Komikku: «Editar información»). */
+    fun editarInfo(id: String, titulo: String, autor: String?, descripcion: String?, generos: List<String>, estado: Int) {
+        actualizarComic(id) {
+            it.copy(
+                titulo = titulo.ifBlank { it.titulo }, autor = autor?.ifBlank { null }, descripcion = descripcion?.ifBlank { null },
+                generos = generos, estado = estado, editado = true,
+            )
+        }
     }
 
     /**
@@ -1064,6 +1580,22 @@ class Almacen(private val contexto: Context) {
     var ultimaActualizacion by mutableStateOf(prefs.getLong("ult_actualizacion", 0L))
         private set
 
+    /** Lo que no se pudo revisar en la última actualización (pantalla «Errores de actualización»). */
+    var erroresActualizacion by mutableStateOf(leerErrores())
+        private set
+
+    private fun leerErrores(): List<ErrorActualizacion> = runCatching {
+        val a = JSONArray(prefs.getString("errores_act", "[]"))
+        List(a.length()) { i -> a.getJSONObject(i).let { ErrorActualizacion(it.optString("t"), it.optString("f"), it.optString("m")) } }
+    }.getOrDefault(emptyList())
+
+    fun guardarErrores(lista: List<ErrorActualizacion>) {
+        erroresActualizacion = lista
+        val a = JSONArray()
+        lista.forEach { a.put(JSONObject().put("t", it.titulo).put("f", it.fuente).put("m", it.motivo)) }
+        prefs.edit().putString("errores_act", a.toString()).apply()
+    }
+
     private fun leerActualizaciones(): List<ActualizacionCap> = runCatching {
         val a = JSONArray(prefs.getString("actualizaciones", "[]"))
         List(a.length()) { i ->
@@ -1091,38 +1623,52 @@ class Almacen(private val contexto: Context) {
         prefs.edit().putString("actualizaciones", a.toString()).apply()
     }
 
+    /** URLs de capítulos conocidas de un manga (las que se guardaron al revisar). Vacío si nunca se revisó. */
+    fun capitulosConocidos(fuenteId: Long, urlManga: String): Set<String> =
+        conocidos.leer(fuenteId, urlManga).orEmpty()
+
     /**
      * Compara los capítulos que ofrece la fuente con los que ya conocíamos de ese manga.
      * La primera vez solo guarda la lista (no hay "nuevos"); después, lo que falte se anota como novedad.
-     * Devuelve cuántos capítulos nuevos había.
+     * Devuelve los capítulos nuevos.
      */
     @Synchronized
     fun registrarCapitulos(
         fuenteId: Long, urlManga: String, titulo: String, portadaUrl: String?, caps: List<CapituloFuente>,
-    ): Int {
-        if (caps.isEmpty()) return 0
-        val clave = "cc|$fuenteId|$urlManga"
-        val actuales = caps.map { it.url }.toSet()
-        val conocidos = prefs.getStringSet(clave, null)
-        if (conocidos == null) {
-            prefs.edit().putStringSet(clave, actuales).apply()
-            return 0
+    ): List<CapituloFuente> {
+        if (caps.isEmpty()) return emptyList()
+        val actuales = caps.mapTo(HashSet()) { it.url }
+        val ya = conocidos.leer(fuenteId, urlManga)
+        if (ya == null) {
+            conocidos.guardar(fuenteId, urlManga, actuales)
+            return emptyList()
         }
-        val nuevos = caps.filter { it.url !in conocidos }
-        if (nuevos.isEmpty()) return 0
-        prefs.edit().putStringSet(clave, conocidos + actuales).apply()
+        val nuevos = caps.filter { it.url !in ya }
+        // Se guarda siempre la lista actual (así, "marcar todo como leído" conoce todos los capítulos).
+        if (nuevos.isEmpty()) {
+            if (!ya.containsAll(actuales)) conocidos.guardar(fuenteId, urlManga, ya + actuales)
+            return emptyList()
+        }
+        conocidos.guardar(fuenteId, urlManga, ya + actuales)
         val ahora = System.currentTimeMillis()
         val entradas = nuevos.map {
             ActualizacionCap(fuenteId, urlManga, titulo, portadaUrl, it.url, it.nombre, it.numero, it.fecha, it.scanlator, ahora)
         }
-        val lista = (entradas + actualizaciones).distinctBy { it.fuenteId to it.capUrl }.take(400)
+        val lista = (entradas + actualizaciones).distinctBy { it.fuenteId to it.capUrl }.take(500)
         actualizaciones = lista
         guardarActualizaciones(lista)
-        return nuevos.size
+        return nuevos
+    }
+
+    /** Capítulos que no son novedad (resubidos con otra dirección): se anotan como conocidos si el manga ya tenía base. */
+    @Synchronized
+    fun darPorConocidos(fuenteId: Long, urlManga: String, urls: Set<String>) {
+        val ya = conocidos.leer(fuenteId, urlManga) ?: return
+        if (!ya.containsAll(urls)) conocidos.guardar(fuenteId, urlManga, ya + urls)
     }
 
     private fun olvidarCapitulos(fuenteId: Long, urlManga: String) {
-        prefs.edit().remove("cc|$fuenteId|$urlManga").apply()
+        conocidos.olvidar(fuenteId, urlManga)
         val lista = actualizaciones.filterNot { it.fuenteId == fuenteId && it.urlManga == urlManga }
         if (lista.size != actualizaciones.size) {
             actualizaciones = lista
@@ -1135,6 +1681,12 @@ class Almacen(private val contexto: Context) {
         guardarActualizaciones(emptyList())
     }
 
+    fun quitarActualizaciones(claves: Set<String>) {
+        val lista = actualizaciones.filterNot { "${it.fuenteId}|${it.capUrl}" in claves }
+        actualizaciones = lista
+        guardarActualizaciones(lista)
+    }
+
     fun marcarActualizado() {
         ultimaActualizacion = System.currentTimeMillis()
         prefs.edit().putLong("ult_actualizacion", ultimaActualizacion).apply()
@@ -1143,38 +1695,104 @@ class Almacen(private val contexto: Context) {
     // ---- Capítulos descargados ----
     // Como en Komikku, una descarga pertenece al capítulo de su manga: NO es un cómic aparte de la
     // biblioteca. Se guarda como .cbz en su propia carpeta y el lector online la usa en vez de la red.
-    fun archivoDescarga(fuenteId: Long, capUrl: String): File {
-        val h = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("$fuenteId|$capUrl".toByteArray()).joinToString("") { "%02x".format(it) }.take(32)
-        return File(carpetaDescargas, "$h.cbz")
+    // Como Komikku (DownloadProvider: fuente/manga/capítulo), la descarga es de ESE capítulo de ESE manga: la clave
+    // lleva la URL del manga. Antes solo era fuente|capítulo y en fuentes cuyas URLs de capítulo se repiten entre
+    // mangas, un capítulo bajado aparecía (y se leía) en todos los mangas de la fuente.
+    private fun nombreHash(clave: String): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(clave.toByteArray()).joinToString("") { "%02x".format(it) }.take(32) + ".cbz"
+
+    /** Archivo de la descarga; si existe uno viejo (clave sin manga) que el índice asigna a este manga, se usa ese. */
+    fun archivoDescarga(fuenteId: Long, urlManga: String, capUrl: String): File {
+        val nuevo = File(carpetaDescargas, nombreHash("$fuenteId|$urlManga|$capUrl"))
+        if (nuevo.name in nombresDescargados()) return nuevo
+        val viejo = nombreHash("$fuenteId|$capUrl")
+        val suyo = viejo in nombresDescargados() && synchronized(this) { indice()[viejo] } == "$fuenteId|$urlManga"
+        return if (suyo) File(carpetaDescargas, viejo) else nuevo
     }
 
-    // Nombres de los archivos descargados, en memoria. La ficha pregunta "¿está descargado?" por CADA capítulo en
-    // cada recomposición; antes eso era un acceso a disco por fila en el hilo principal.
+    // Nombres de los archivos descargados, en memoria (la ficha pregunta por CADA capítulo en cada recomposición).
     private var descargados: MutableSet<String>? = null
 
     private fun nombresDescargados(): MutableSet<String> = synchronized(this) {
-        descargados ?: (carpetaDescargas.list()?.toHashSet() ?: HashSet()).also { descargados = it }
+        descargados ?: (carpetaDescargas.list()?.filter { it.endsWith(".cbz") }?.toHashSet() ?: HashSet()).also { descargados = it }
     }
 
-    fun estaDescargado(fuenteId: Long, capUrl: String): Boolean =
-        archivoDescarga(fuenteId, capUrl).name in nombresDescargados()
+    // A qué manga pertenece cada descarga: nombre del archivo -> "fuente|urlManga" (para contar por serie).
+    private var indiceDescargas: MutableMap<String, String>? = null
+
+    private fun indice(): MutableMap<String, String> = synchronized(this) {
+        indiceDescargas ?: runCatching {
+            val o = JSONObject(prefs.getString("desc_idx", "{}") ?: "{}")
+            val m = HashMap<String, String>()
+            o.keys().forEach { k -> m[k] = o.getString(k) }
+            m as MutableMap<String, String>
+        }.getOrDefault(HashMap()).also { indiceDescargas = it }
+    }
+
+    private fun guardarIndice() {
+        val o = JSONObject()
+        synchronized(this) { indice().forEach { (k, v) -> o.put(k, v) } }
+        prefs.edit().putString("desc_idx", o.toString()).apply()
+    }
+
+    fun estaDescargado(fuenteId: Long, urlManga: String, capUrl: String): Boolean =
+        archivoDescarga(fuenteId, urlManga, capUrl).name in nombresDescargados()
+
+    /** Cuántos capítulos descargados tiene un manga (insignia de la biblioteca). */
+    fun descargasDe(fuenteId: Long, urlManga: String): Int {
+        val k = "$fuenteId|$urlManga"
+        val nombres = nombresDescargados()
+        return synchronized(this) { indice().count { (n, v) -> v == k && n in nombres } }
+    }
+
+    /** Todas las cuentas de descargas por manga a la vez ("fuente|url" -> n). */
+    fun conteoDescargas(): Map<String, Int> {
+        val nombres = nombresDescargados()
+        return synchronized(this) { indice().filterKeys { it in nombres }.values.groupingBy { it }.eachCount() }
+    }
+
+    fun totalDescargas(): Int = nombresDescargados().size
+
+    fun bytesDescargas(): Long = carpetaDescargas.listFiles()?.sumOf { it.length() } ?: 0L
 
     // Mueve (o copia) el .cbz recién bajado a su sitio definitivo.
-    fun guardarDescarga(origen: File, fuenteId: Long, capUrl: String) {
-        val destino = archivoDescarga(fuenteId, capUrl)
+    fun guardarDescarga(origen: File, fuenteId: Long, capUrl: String, urlManga: String) {
+        val destino = File(carpetaDescargas, nombreHash("$fuenteId|$urlManga|$capUrl"))
         destino.delete()
         if (!origen.renameTo(destino)) {
             origen.copyTo(destino, overwrite = true)
             origen.delete()
         }
-        synchronized(this) { nombresDescargados().add(destino.name) }
+        synchronized(this) {
+            nombresDescargados().add(destino.name)
+            indice()[destino.name] = "$fuenteId|$urlManga"
+        }
+        guardarIndice()
+        version++
     }
 
-    fun borrarDescarga(fuenteId: Long, capUrl: String) {
-        val archivo = archivoDescarga(fuenteId, capUrl)
+    fun borrarDescarga(fuenteId: Long, urlManga: String, capUrl: String) {
+        val archivo = archivoDescarga(fuenteId, urlManga, capUrl)
         archivo.delete()
-        synchronized(this) { nombresDescargados().remove(archivo.name) }
+        synchronized(this) {
+            nombresDescargados().remove(archivo.name)
+            indice().remove(archivo.name)
+        }
+        guardarIndice()
+        version++
+    }
+
+    /** Borra todas las descargas de un manga (las que el índice sabe que son suyas). */
+    fun borrarDescargasDe(fuenteId: Long, urlManga: String): Int {
+        val k = "$fuenteId|$urlManga"
+        val nombres = synchronized(this) { indice().filterValues { it == k }.keys.toList() }
+        nombres.forEach { n ->
+            File(carpetaDescargas, n).delete()
+            synchronized(this) { nombresDescargados().remove(n); indice().remove(n) }
+        }
+        guardarIndice()
+        version++
+        return nombres.size
     }
 
     // Versiones anteriores guardaban cada capítulo descargado como un cómic suelto de la biblioteca
@@ -1188,7 +1806,7 @@ class Almacen(private val contexto: Context) {
             val sep = clave.indexOf('|')
             val fuente = clave.substring(0, sep.coerceAtLeast(0)).toLongOrNull()
             if (id.isNotEmpty() && origen.exists() && sep > 0 && fuente != null) {
-                guardarDescarga(origen, fuente, clave.substring(sep + 1))
+                guardarDescarga(origen, fuente, clave.substring(sep + 1), "")
             }
             if (id.isNotEmpty()) eliminar(id)
         }
@@ -1198,7 +1816,13 @@ class Almacen(private val contexto: Context) {
     @Synchronized
     fun guardarProgreso(id: String, pagina: Int) {
         ultimoAbierto = id
-        modificar { l -> l.map { if (it.id == id) it.copy(ultimaPagina = pagina, leido = System.currentTimeMillis()) else it } }
+        // En incógnito se guarda la página, pero no cuenta como "leído hace poco" (no sale en el historial).
+        modificar { l ->
+            l.map {
+                if (it.id == id) it.copy(ultimaPagina = pagina, leido = if (incognito) it.leido else System.currentTimeMillis())
+                else it
+            }
+        }
     }
 
     @Synchronized
@@ -1206,7 +1830,8 @@ class Almacen(private val contexto: Context) {
         cargar().firstOrNull { it.id == id && it.enLinea }?.let { olvidarCapitulos(it.fuenteId, it.urlManga.orEmpty()) }
         archivoDe(id).delete()
         portadaDe(id).delete()
-        prefs.edit().remove("modo_$id").remove("seg_$id").apply()
+        Portadas.olvidar(id)
+        prefs.edit().remove("modo_$id").remove("visor_$id").remove("seg_$id").apply()
         marcarSincronizacion(id, false)
         if (ultimoAbierto == id) ultimoAbierto = null
         guardarAsignaciones(asignaciones() - id)
@@ -1215,5 +1840,14 @@ class Almacen(private val contexto: Context) {
 
     init {
         runCatching { migrarDescargasViejas() }
+        runCatching { migrarConocidos() }
+        // Los cómics de antes no tenían fecha de añadido: se usa el orden en que estaban.
+        runCatching {
+            val l = cargar()
+            if (l.any { it.anadido == 0L }) {
+                val base = System.currentTimeMillis() - l.size * 1000L
+                guardar(l.mapIndexed { i, c -> if (c.anadido == 0L) c.copy(anadido = base + i * 1000L) else c })
+            }
+        }
     }
 }

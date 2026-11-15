@@ -1,0 +1,306 @@
+package com.example.lector.ui
+
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowRight
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.lector.Tri
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+
+/** Una acción de la barra flotante de selección (Marcar leído, Descargar, Borrar…). */
+class AccionBarra(val icono: ImageVector, val texto: String, val alPulsar: () -> Unit)
+
+/** Barra flotante de acciones para la selección múltiple (como la de Komikku). Aparece desde abajo. */
+@Composable
+fun BarraAcciones(visible: Boolean, acciones: List<AccionBarra>, modifier: Modifier = Modifier) {
+    AnimatedVisibility(
+        visible = visible, modifier = modifier,
+        enter = slideInVertically(com.example.lector.ui.mochy.sheet.popupSpringOffset()) { it } + fadeIn(tween(200)),
+        exit = slideOutVertically(com.example.lector.ui.mochy.sheet.popupSpringOffset()) { it } + fadeOut(tween(150)),
+    ) {
+        Row(
+            Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp).fillMaxWidth()
+                .clip(SuaveShape(28.dp)).background(LectorColors.Glass)
+                .drawWithContent { drawContent(); lineaCristal(28.dp.toPx()) }
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 6.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            acciones.forEach { a ->
+                Column(
+                    Modifier.widthIn(min = 64.dp).pressable(a.alPulsar).padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(a.icono, a.texto, tint = com.example.lector.ui.mochy.sheet.MenuContent, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.height(2.dp))
+                    LText(a.texto, LectorType.Label.copy(fontSize = 11.sp), maxLines = 1, color = LectorColors.Text)
+                }
+            }
+        }
+    }
+}
+
+/** Cabecera durante la selección: «N seleccionados», cerrar, seleccionar todo e invertir. */
+@Composable
+fun CabeceraSeleccion(cantidad: Int, onCerrar: () -> Unit, onTodo: () -> Unit, onInvertir: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BotonRedondoTema(Icons.Rounded.Close, "Terminar selección", onCerrar)
+        Spacer(Modifier.width(12.dp))
+        Odometro("$cantidad", LectorType.Display.copy(fontSize = 26.sp))
+        LText(if (cantidad == 1) " seleccionado" else " seleccionados", LectorType.Section, Modifier.weight(1f), maxLines = 1)
+        ChipSel("Todo", false, onClick = onTodo)
+        Spacer(Modifier.width(8.dp))
+        ChipSel("Invertir", false, onClick = onInvertir)
+    }
+}
+
+/** Botón redondo con el fondo de píldora del tema (cabeceras de las pantallas). */
+@Composable
+fun BotonRedondoTema(icono: ImageVector, desc: String, onClick: () -> Unit, modifier: Modifier = Modifier, tam: Dp = 44.dp) {
+    Box(
+        modifier.size(tam).pressable(onClick).clip(CircleShape)
+            .background(if (TemaActual.oscuro) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.07f)),
+        Alignment.Center,
+    ) {
+        Icon(icono, desc, tint = LectorColors.Text, modifier = Modifier.size(22.dp))
+    }
+}
+
+/** Mensaje centrado para pantallas o listas vacías, con una acción opcional. */
+@Composable
+fun MensajeVacio(texto: String, accion: String? = null, onAccion: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+    Column(
+        modifier.fillMaxSize().padding(horizontal = 40.dp).padding(bottom = 120.dp),
+        verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            texto, color = LectorColors.Muted, textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium),
+        )
+        if (accion != null && onAccion != null) {
+            Spacer(Modifier.height(16.dp))
+            PillButton(accion, Icons.Rounded.KeyboardArrowRight, onAccion)
+        }
+    }
+}
+
+/** Fila de filtro de tres estados (□ ignorar · ✓ incluir · ✕ excluir), como los filtros de Komikku. */
+@Composable
+fun FilaTri(titulo: String, estado: Tri, onCambio: (Tri) -> Unit) {
+    val acento = MaterialTheme.colorScheme.primary
+    Row(
+        Modifier.fillMaxWidth().resaltable { onCambio(estado.siguiente()) }.padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(24.dp).clip(SuaveShape(7.dp))
+                .background(
+                    when (estado) {
+                        Tri.IGNORAR -> Color.Transparent
+                        Tri.INCLUIR -> acento
+                        Tri.EXCLUIR -> LectorColors.Error
+                    },
+                )
+                .border(2.dp, if (estado == Tri.IGNORAR) LectorColors.Muted else Color.Transparent, SuaveShape(7.dp)),
+            Alignment.Center,
+        ) {
+            when (estado) {
+                Tri.INCLUIR -> LText("✓", LectorType.Body, color = com.example.lector.textoSobre(acento))
+                Tri.EXCLUIR -> LText("✕", LectorType.Body, color = Color.White)
+                Tri.IGNORAR -> {}
+            }
+        }
+        Spacer(Modifier.width(18.dp))
+        LText(titulo, LectorType.Body.copy(fontSize = 16.sp), Modifier.weight(1f))
+    }
+}
+
+/** Fila de orden: marca la opción elegida con una flecha ↑/↓ según el sentido (tocar otra vez invierte). */
+@Composable
+fun FilaOrden(titulo: String, elegida: Boolean, ascendente: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().resaltable(onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(24.dp), Alignment.Center) {
+            if (elegida) LText(if (ascendente) "↑" else "↓", LectorType.Section.copy(fontSize = 18.sp), color = MaterialTheme.colorScheme.primary)
+        }
+        Spacer(Modifier.width(18.dp))
+        LText(titulo, LectorType.Body.copy(fontSize = 16.sp), Modifier.weight(1f), color = if (elegida) MaterialTheme.colorScheme.primary else LectorColors.Text)
+    }
+}
+
+/** Pestañas en píldora dentro de una hoja (Filtro / Ordenar / Mostrar…). */
+@Composable
+fun PestanasPildora(titulos: List<String>, elegida: Int, onElegir: (Int) -> Unit, modifier: Modifier = Modifier) {
+    // Grupo de botones conectados (Expressive).
+    GrupoBotones(titulos, elegida, onElegir, modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+}
+
+
+/** Cuántas hojas inferiores hay abiertas: mientras haya alguna, la app de detrás retrocede (ver MainActivity). */
+object Hojas {
+    var abiertas by mutableIntStateOf(0)
+    /** 0..1: cuánto se ha alejado la app detrás de la hoja más abierta (sigue al arrastre). Leer al dibujar. */
+    val presencia: Float get() = com.example.lector.ui.mochy.sheet.HojasApp.presence
+}
+
+/**
+ * Hoja inferior: el PopupSheet de Mochy (ui/mochy/sheet/PopupSheet.kt). Fondo #0B0B0C con esquinas de 24 dp, asa
+ * de 36 × 4 dp, muelle sin rebote (StiffnessLow, umbral 0,0005) en entrada, salida y arrastre; se cierra arrastrando
+ * desde el asa o desde el propio contenido. Si hay otra abierta, la de detrás se encoge al 90 % y asoma su asa.
+ * La app de detrás se aleja a 0,92 con esquinas de 28 dp. En tablet sale centrada.
+ */
+@Composable
+fun HojaLector(onCerrar: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    DisposableEffect(Unit) {
+        Hojas.abiertas++
+        onDispose { Hojas.abiertas-- }
+    }
+    // Hoja estándar de Material (fiable: misma ventana del sistema para toques, atrás y teclado) con el aspecto de
+    // Mochy: superficie #0B0B0C / clara, esquinas de 24 dp y asa de 36 × 4 dp. La de ventana propia daba fallos.
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onCerrar,
+        sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        containerColor = com.example.lector.ui.mochy.sheet.MenuSurface,
+        contentColor = LectorColors.Text,
+        tonalElevation = 0.dp,
+        scrimColor = Color.Black.copy(alpha = 0.5f),
+        dragHandle = { Box(Modifier.padding(vertical = 14.dp).size(36.dp, 4.dp).clip(CircleShape).background(LectorColors.Muted.copy(alpha = 0.5f))) },
+    ) {
+        CompositionLocalProvider(LocalContentColor provides LectorColors.Text) {
+            Column(Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.85f).dp)) { content() }
+        }
+        Spacer(Modifier.navigationBarsPadding())
+    }
+}
+
+/**
+ * Barra de desplazamiento rápido para listas largas (se pone encima de la lista, ocupando lo mismo): aparece al
+ * moverse, y su «pulgar» se puede arrastrar para saltar por la lista. Mientras se arrastra enseña una burbuja con la
+ * sección: el `contentType` del primer elemento visible, si es un texto. Solo la franja de la derecha recibe toques.
+ */
+@Composable
+private fun BarraBase(
+    total0: () -> Int, vis0: () -> Int, primero0: () -> Int, seccion0: () -> String?, mov0: () -> Boolean,
+    ir0: suspend (Int) -> Unit, modifier: Modifier,
+) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var arrastrando by remember { mutableStateOf(false) }
+    var alto by remember { mutableIntStateOf(1) }
+    val total by remember { androidx.compose.runtime.derivedStateOf { total0() } }
+    val visibles by remember { androidx.compose.runtime.derivedStateOf { vis0().coerceAtLeast(1) } }
+    val fraccion by remember {
+        androidx.compose.runtime.derivedStateOf {
+            val t = total0() - vis0()
+            if (t <= 0) 0f else (primero0().toFloat() / t).coerceIn(0f, 1f)
+        }
+    }
+    val seccion by remember {
+        androidx.compose.runtime.derivedStateOf { seccion0() }
+    }
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(mov0(), arrastrando) {
+        if (mov0() || arrastrando) visible = true
+        else { kotlinx.coroutines.delay(1500); visible = false }
+    }
+    if (total <= visibles * 2) return // lista corta: no hace falta
+    val opacidad by androidx.compose.animation.core.animateFloatAsState(if (visible) 1f else 0f, tween(250), label = "barra")
+    val ancho by androidx.compose.animation.core.animateDpAsState(if (arrastrando) 10.dp else 5.dp, label = "anchoBarra")
+    val densidad = androidx.compose.ui.platform.LocalDensity.current
+    val altoPulgar = 56.dp
+    val y = with(densidad) { ((alto - altoPulgar.toPx()).coerceAtLeast(0f) * fraccion).toDp() }
+
+    Box(modifier.fillMaxSize().graphicsLayer { alpha = opacidad }) {
+        // Franja que recibe el arrastre (solo esto tapa la lista).
+        Box(
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(36.dp)
+                .onSizeChanged { alto = it.height }
+                .pointerInput(total, visible) {
+                    if (!visible) return@pointerInput
+                    fun ir(py: Float) {
+                        val h = altoPulgar.toPx()
+                        val f = ((py - h / 2) / (alto - h).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                        val destino = (f * (total - visibles)).toInt().coerceIn(0, (total - 1).coerceAtLeast(0))
+                        scope.launch { ir0(destino) }
+                    }
+                    detectVerticalDragGestures(
+                        onDragStart = { o -> arrastrando = true; ir(o.y) },
+                        onDragEnd = { arrastrando = false },
+                        onDragCancel = { arrastrando = false },
+                    ) { cambio, _ -> cambio.consume(); ir(cambio.position.y) }
+                },
+        ) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(end = 6.dp).offset(y = y).width(ancho).height(altoPulgar)
+                    .clip(CircleShape).background(if (arrastrando) LectorColors.Text else LectorColors.Muted.copy(alpha = 0.8f)),
+            )
+        }
+        val s = seccion
+        if (arrastrando && s != null) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(end = 44.dp).offset(y = y + 8.dp)
+                    .clip(CircleShape).background(LectorColors.Aviso).padding(horizontal = 16.dp, vertical = 9.dp),
+            ) { LText(s, LectorType.Body, maxLines = 1) }
+        }
+    }
+}
+
+@Composable
+fun BarraDesplazamiento(estado: androidx.compose.foundation.lazy.LazyListState, modifier: Modifier = Modifier) = BarraBase(
+    { estado.layoutInfo.totalItemsCount }, { estado.layoutInfo.visibleItemsInfo.size }, { estado.firstVisibleItemIndex },
+    { estado.layoutInfo.visibleItemsInfo.firstOrNull()?.contentType as? String }, { estado.isScrollInProgress },
+    { estado.scrollToItem(it) }, modifier,
+)
+
+/** La misma barra para cuadrículas (biblioteca en cuadrícula). */
+@Composable
+fun BarraDesplazamiento(estado: androidx.compose.foundation.lazy.grid.LazyGridState, modifier: Modifier = Modifier) = BarraBase(
+    { estado.layoutInfo.totalItemsCount }, { estado.layoutInfo.visibleItemsInfo.size }, { estado.firstVisibleItemIndex },
+    { estado.layoutInfo.visibleItemsInfo.firstOrNull()?.contentType as? String }, { estado.isScrollInProgress },
+    { estado.scrollToItem(it) }, modifier,
+)

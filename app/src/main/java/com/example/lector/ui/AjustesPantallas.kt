@@ -1,27 +1,37 @@
 package com.example.lector.ui
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
+import com.example.lector.TareaCopia
+import android.app.KeyguardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
+import android.text.format.Formatter
+import android.webkit.CookieManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -29,81 +39,391 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lector.Almacen
 import com.example.lector.Anilist
-import com.example.lector.DialogoLector
+import com.example.lector.CopiaSeguridad
+import com.example.lector.ModoTema
 import com.example.lector.Paletas
+import com.example.lector.Programador
 import com.example.lector.Vista
+import com.example.lector.VistaExplorar
 import com.example.lector.colorDePaleta
+import com.example.lector.ext.ExtManager
+import com.example.lector.ext.bandera
+import com.example.lector.ext.nombreIdioma
 import com.example.lector.nombreVista
 import com.example.lector.textoSobre
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
-/** Ajustes: lista de secciones. "Visor" reutiliza tu diálogo del lector (se rehace como pantalla más adelante). */
+/**
+ * Ajustes: la raíz de ajustes de Mochy (ui/screens/settings/MochySettingsScreen.kt): cabecera con la marca de la app,
+ * una línea fina y cada apartado como una burbuja (CategoryBubble). El buscador es el de las subpáginas de Mochy y,
+ * al escribir, los apartados dejan paso a los ajustes que coinciden.
+ */
 @Composable
 fun AjustesScreen(almacen: Almacen, onBack: () -> Unit, onRuta: (Ruta) -> Unit) {
-    var visor by remember { mutableStateOf(false) }
-    PaginaAjustes("Ajustes", onBack) {
-        FilaAjuste(Icons.Rounded.Create, "Apariencia", "Color de acento y portadas") { onRuta(Ruta.Apariencia) }
-        FilaAjuste(Icons.Rounded.List, "Biblioteca", "Vista, columnas, insignias y categorías") { onRuta(Ruta.AjBiblioteca) }
-        FilaAjuste(Icons.Rounded.PlayArrow, "Visor", "Modos de lectura, apariencia y navegación") { visor = true }
-        FilaAjuste(Icons.Rounded.Refresh, "Seguimiento", "Sincroniza tu progreso de lectura con AniList") { onRuta(Ruta.AjSeguimiento) }
-        FilaAjuste(Icons.Rounded.Share, "Datos y almacenamiento", "Copias de seguridad") { onRuta(Ruta.Datos) }
+    var q by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    val ctx = LocalContext.current
+    val version = remember {
+        runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "?"
     }
-    if (visor) DialogoLector(almacen = almacen, alCerrar = { visor = false })
+    val texto = q.trim()
+    val hallados = remember(texto) {
+        if (texto.isEmpty()) emptyList() else {
+            val norm = { t: String -> java.text.Normalizer.normalize(t.lowercase(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "") }
+            val qn = norm(texto)
+            AJUSTES_BUSCABLES.filter { (t, d, r) ->
+                norm(t).contains(qn) || norm(d).contains(qn) ||
+                    APARTADOS_AJUSTES.firstOrNull { it.ruta == r }?.let { norm(it.titulo).contains(qn) } == true
+            }
+        }
+    }
+    // Animated fade for content when search bar is tapped
+    val contentAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (texto.isNotEmpty()) 0f else 1f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "contentAlpha",
+    )
+
+    com.example.lector.ui.mochy.SubSettingsScaffold(
+        title = "Ajustes",
+        onBack = onBack,
+        searchBar = { com.example.lector.ui.mochy.SubSettingsSearchBar(q, { q = it }) },
+    ) {
+        // Search results view when user types
+        androidx.compose.animation.AnimatedVisibility(
+            visible = texto.isNotEmpty(),
+            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(160, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(160, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { 20 },
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120, easing = androidx.compose.animation.core.FastOutSlowInEasing)),
+        ) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (hallados.isEmpty()) {
+                    Text(
+                        text = "Ningún ajuste coincide con «$texto».",
+                        fontFamily = com.example.lector.ui.mochy.InterFontFamily,
+                        fontSize = 15.sp,
+                        color = LectorColors.Text.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
+                    )
+                } else {
+                    hallados.forEach { (t, _, r) ->
+                        val apartado = APARTADOS_AJUSTES.firstOrNull { it.ruta == r }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                                .background(BubbleColor)
+                                .clickable { onRuta(r) }
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier.size(38.dp).clip(CircleShape).background(IconBgColor),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(apartado?.icono ?: Icons.Rounded.Settings, null, tint = LectorColors.Text, modifier = Modifier.size(18.dp))
+                                }
+                                Spacer(Modifier.width(11.dp))
+                                Column {
+                                    Text(
+                                        text = t,
+                                        fontFamily = com.example.lector.ui.mochy.InterFontFamily,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                        fontSize = 16.sp,
+                                        color = LectorColors.Text,
+                                    )
+                                    Text(
+                                        text = apartado?.titulo ?: "",
+                                        fontFamily = com.example.lector.ui.mochy.InterFontFamily,
+                                        fontSize = 12.sp,
+                                        color = LectorColors.Text.copy(alpha = 0.55f),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Normal Settings Content (fades smoothly when searching)
+        if (contentAlpha > 0.001f) {
+            Column(Modifier.fillMaxWidth().graphicsLayer { alpha = contentAlpha }) {
+                // la cabecera de la app, donde Mochy pone su recomendado: marca, nombre y versión
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                        .background(BubbleColor)
+                        .clickable { onRuta(Ruta.AcercaDe) }
+                        .padding(18.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        LogoApp(Modifier.size(44.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Shiori",
+                                fontFamily = com.example.lector.ui.mochy.InterFontFamily,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = LectorColors.Text,
+                            )
+                            Text(
+                                text = "Versión $version",
+                                fontFamily = com.example.lector.ui.mochy.InterFontFamily,
+                                fontSize = 13.sp,
+                                color = LectorColors.Text.copy(alpha = 0.55f),
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(18.dp))
+
+                // Divider
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(0.8.dp)
+                        .background(LectorColors.Text.copy(alpha = 0.1f)),
+                )
+
+                Spacer(Modifier.height(18.dp))
+
+                // Separate Bubble Pills for Categories (No outlines, individually bubble-wrapped)
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    APARTADOS_AJUSTES.forEachIndexed { i, a ->
+                        CategoryBubble(a.titulo, a.icono, Modifier.entrada(i)) { onRuta(a.ruta) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private class Apartado(val icono: androidx.compose.ui.graphics.vector.ImageVector, val titulo: String, val ruta: Ruta)
+
+private val APARTADOS_AJUSTES = listOf(
+    Apartado(Icons.Rounded.Create, "Personalización", Ruta.Apariencia),
+    Apartado(Icons.Rounded.List, "Biblioteca", Ruta.AjBiblioteca),
+    Apartado(Icons.Rounded.PlayArrow, "Visor", Ruta.AjVisor),
+    Apartado(Iconos.Descargar, "Descargas", Ruta.AjDescargas),
+    Apartado(Icons.Rounded.Refresh, "Seguimiento", Ruta.AjSeguimiento),
+    Apartado(Icons.Rounded.Search, "Explorar", Ruta.AjExplorar),
+    Apartado(Icons.Rounded.Share, "Datos y almacenamiento", Ruta.Datos),
+    Apartado(Icons.Rounded.Lock, "Seguridad y privacidad", Ruta.AjSeguridad),
+    Apartado(Icons.Rounded.Build, "Avanzado", Ruta.AjAvanzado),
+    Apartado(Icons.Rounded.Info, "Acerca de", Ruta.AcercaDe),
+)
+
+/** Lo que se puede buscar en Ajustes: (título, palabras clave, apartado donde está). */
+private val AJUSTES_BUSCABLES: List<Triple<String, String, Ruta>> = listOf(
+    Triple("Tema", "claro oscuro negro puro sistema", Ruta.Apariencia),
+    Triple("Color de acento", "color tema portada", Ruta.Apariencia),
+    Triple("Superficies", "cristal liquid glass sólido transparencia", Ruta.Apariencia),
+    Triple("Fondo", "aurora liso color fondo vivo", Ruta.Apariencia),
+    Triple("Animación al abrir", "agujero negro arranque inicio", Ruta.Apariencia),
+    Triple("Luz al tocar", "luz táctil toque", Ruta.Apariencia),
+    Triple("Vista de la biblioteca", "cuadrícula lista columnas portadas", Ruta.AjBiblioteca),
+    Triple("Categorías", "categoría ordenar ocultas", Ruta.AjBiblioteca),
+    Triple("Actualizar biblioteca", "actualizaciones automáticas novedades capítulos nuevos", Ruta.AjBiblioteca),
+    Triple("Modo de lectura", "paginado tira webtoon continuo derecha izquierda vertical", Ruta.AjVisor),
+    Triple("Zonas de toque", "tocar pasar página toque", Ruta.AjVisor),
+    Triple("Zoom", "doble toque ampliar", Ruta.AjVisor),
+    Triple("Filtros de color", "tinte sepia luz cálida brillo", Ruta.AjVisor),
+    Triple("Precarga de páginas", "precargar páginas siguiente capítulo", Ruta.AjVisor),
+    Triple("Teclas de volumen", "volumen pasar página", Ruta.AjVisor),
+    Triple("Pasar de capítulo solo", "continuo transición siguiente capítulo", Ruta.AjVisor),
+    Triple("Solo con Wi‑Fi", "wifi datos móviles descargas", Ruta.AjDescargas),
+    Triple("Borrar al leer", "borrar descargas leídos", Ruta.AjDescargas),
+    Triple("Descargar por adelantado", "descarga automática siguientes", Ruta.AjDescargas),
+    Triple("AniList", "seguimiento sincronizar progreso", Ruta.AjSeguimiento),
+    Triple("MyAnimeList, Kitsu y MangaUpdates", "mal kitsu mangaupdates seguimiento", Ruta.AjSeguimiento),
+    Triple("Contenido +18", "nsfw adultos", Ruta.AjExplorar),
+    Triple("Idiomas", "idioma lenguaje fuentes", Ruta.AjExplorar),
+    Triple("Listados de extensiones", "repositorios repos extensiones", Ruta.AjExplorar),
+    Triple("Copias de seguridad", "backup copia restaurar mihon komikku tachiyomi", Ruta.Datos),
+    Triple("Carpeta de la app", "almacenamiento carpeta descargas ubicación", Ruta.Datos),
+    Triple("Borrar cachés", "caché memoria espacio", Ruta.Datos),
+    Triple("Bloqueo de la app", "huella bloqueo seguridad pin", Ruta.AjSeguridad),
+    Triple("Modo incógnito", "incógnito historial privacidad", Ruta.AjSeguridad),
+    Triple("Modo SFW", "sfw nsfw +18 adultos ocultar contenido", Ruta.AjSeguridad),
+    Triple("Modo NSFW", "nsfw +18 adultos solo contenido", Ruta.AjSeguridad),
+    Triple("Pantalla segura", "capturas pantalla segura", Ruta.AjSeguridad),
+    Triple("DNS sobre HTTPS", "dns doh cloudflare google bloqueo red", Ruta.AjAvanzado),
+    Triple("Cookies", "cookies webview borrar", Ruta.AjAvanzado),
+    Triple("Batería", "batería optimización segundo plano", Ruta.AjAvanzado),
+    Triple("Versión y actualizaciones", "versión actualizar app novedades", Ruta.AcercaDe),
+)
+
+private val BubbleColor: Color get() = com.example.lector.ui.mochy.LabColors.Card
+private val IconBgColor: Color get() = if (TemaActual.oscuro) Color(0xFF333338) else LectorColors.CardHigh
+
+/** CategoryBubble de MochySettingsScreen: 64 dp, esquinas de 22 dp, icono en círculo de 40 dp y título de 17 sp. */
+@Composable
+private fun CategoryBubble(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
+            .background(BubbleColor)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(IconBgColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, null, tint = LectorColors.Text, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = title,
+                fontFamily = com.example.lector.ui.mochy.InterFontFamily,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                fontSize = 17.sp,
+                color = LectorColors.Text,
+            )
+        }
+    }
+}
+
+// ───────────────────── Apariencia ─────────────────────
+
+private fun nombreTema(m: ModoTema) = when (m) {
+    ModoTema.SISTEMA -> "Según el sistema"
+    ModoTema.OSCURO_PURO -> "Negro puro"
+    ModoTema.OSCURO -> "Oscuro"
+    ModoTema.CLARO -> "Claro"
 }
 
 @Composable
-fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit, onBibliotecaFx: () -> Unit = {}) {
+fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit) {
     val opciones = Paletas.fijas.map { it.nombre to it.color } +
         if (Build.VERSION.SDK_INT >= 31) listOf(Paletas.SISTEMA to colorDePaleta(Paletas.SISTEMA)) else emptyList()
+    val acento = androidx.compose.material3.MaterialTheme.colorScheme.primary
     PaginaAjustes("Apariencia", onBack) {
+        TituloSeccion("Tema")
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ModoTema.entries.forEach { m ->
+                val (fondo, tarjeta, texto) = when (m) {
+                    ModoTema.CLARO -> Triple(Color(0xFFF6F6F8), Color.White, Color(0xFF111114))
+                    ModoTema.OSCURO -> Triple(Color(0xFF111114), Color(0xFF26262C), Color.White)
+                    ModoTema.OSCURO_PURO -> Triple(Color.Black, Color(0xFF1E1E20), Color.White)
+                    ModoTema.SISTEMA -> Triple(Color(0xFF6B6B73), Color(0xFFB0B0B8), Color.White)
+                }
+                TarjetaTema(nombreTema(m), acento, almacen.modoTema == m, fondo, tarjeta, texto) { almacen.modoTema = m }
+            }
+        }
+        Divisor()
         TituloSeccion("Color de acento")
         Row(
             Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             opciones.forEach { (nombre, color) ->
-                TarjetaTema(nombre, color, almacen.paleta == nombre) { almacen.elegirPaleta(nombre) }
+                TarjetaTema(nombre, color, almacen.paleta == nombre, LectorColors.Bg, LectorColors.CardHigh, LectorColors.Text) { almacen.elegirPaleta(nombre) }
             }
         }
         if (Build.VERSION.SDK_INT >= 31) {
             LText("«Sistema» usa los colores de tu fondo de pantalla.", LectorType.Label, Modifier.padding(24.dp, 12.dp), color = LectorColors.Muted)
         }
         Divisor()
-        TituloSeccion("Personalización")
-        FilaAjuste(Icons.Rounded.Star, "Biblioteca de animaciones y funciones", "${com.example.lector.fx.Fx.count(com.example.lector.fx.CatalogoShiori.map { it.id })} de ${com.example.lector.fx.CatalogoShiori.size} activas · Magic UI, Motion Primitives, NumberFlow y más", onBibliotecaFx)
+        TituloSeccion("Superficies")
+        FilaVistas {
+            Superficie.entries.forEach { s ->
+                TarjetaVista(s.nombre, Aspecto.superficie == s, acento, { Aspecto.elegir(s) }) { VistaSuperficie(s, acento) }
+            }
+        }
+        LText(
+            "Cómo se ven la barra, el mini lector y los avisos. «Liquid glass» deja ver más el fondo y le da brillo de cristal.",
+            LectorType.Label, Modifier.padding(24.dp, 10.dp), color = LectorColors.Muted,
+        )
+        Divisor()
+        TituloSeccion("Fondo")
+        FilaVistas {
+            FondoApp.entries.forEach { f ->
+                TarjetaVista(f.nombre, Aspecto.fondo == f, acento, { Aspecto.elegir(f) }) {
+                    Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
+                        FondoVivo(f, Modifier.fillMaxSize(), fijo = true, acento = acento)
+                        VistaBarra(Aspecto.superficie, Modifier.align(Alignment.BottomCenter))
+                    }
+                }
+            }
+        }
+        Divisor()
+        TituloSeccion("Animación de inicio")
+        FilaVistas {
+            AnimArranque.entries.forEach { a ->
+                TarjetaVista(a.nombre, Aspecto.arranque == a, acento, { Aspecto.elegir(a) }) {
+                    Box(Modifier.fillMaxSize().background(if (a == AnimArranque.NINGUNA) LectorColors.Bg else Color.Black), Alignment.Center) {
+                        when (a) {
+                            AnimArranque.AGUJERO -> LogoApp(Modifier.size(70.dp), conFondo = false)
+                            AnimArranque.RAPIDA -> LogoApp(Modifier.size(46.dp).graphicsLayer { alpha = 0.55f }, conFondo = false)
+                            AnimArranque.NINGUNA -> VistaBarra(Aspecto.superficie, Modifier.align(Alignment.BottomCenter))
+                        }
+                    }
+                }
+            }
+        }
+        Box(Modifier.padding(horizontal = 24.dp, vertical = 10.dp)) {
+            PillButton("Ver animación", Icons.Rounded.Refresh, { ArranqueRevelado.repetir++ })
+        }
+        Divisor()
+        TituloSeccion("Respuesta")
+        FilaSwitch("Luz al tocar", "Un brillo suave sigue a tu dedo en botones, portadas y la barra (Living Flow).", Aspecto.luzTactil) {
+            Aspecto.elegirLuz(it)
+        }
         Divisor()
         TituloSeccion("Información del cómic")
         FilaSwitch(
-            "Tema según la portada", "La página del cómic y el lector toman el color de la portada.",
-            almacen.colorPortada
+            "Tema según la portada", "La ficha y el lector toman el color de la portada.",
+            almacen.colorPortada,
         ) { almacen.elegirColorPortada(it) }
     }
 }
 
 /** Mini maqueta de teléfono con el color elegido, como las tarjetas de tema de Komikku. */
 @Composable
-private fun TarjetaTema(nombre: String, color: Color, seleccionada: Boolean, onClick: () -> Unit) {
+private fun TarjetaTema(
+    nombre: String, color: Color, seleccionada: Boolean, fondo: Color, tarjeta: Color, texto: Color, onClick: () -> Unit,
+) {
     val forma = SuaveShape(24.dp)
     Column(Modifier.width(104.dp).pressable(onClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.fillMaxWidth().height(150.dp).clip(forma).background(Color.Black)
-                .border(if (seleccionada) 3.dp else 2.dp, if (seleccionada) color else Color(0xFF3A3A3C), forma)
+            Modifier.fillMaxWidth().height(150.dp).clip(forma).background(fondo)
+                .border(if (seleccionada) 3.dp else 2.dp, if (seleccionada) color else LectorColors.Linea, forma),
         ) {
-            Box(Modifier.padding(12.dp).size(width = 46.dp, height = 12.dp).clip(CircleShape).background(Color.White))
-            Box(Modifier.align(Alignment.Center).size(width = 56.dp, height = 62.dp).clip(SuaveShape(10.dp)).background(Color(0xFF44464F))) {
+            Box(Modifier.padding(12.dp).size(width = 46.dp, height = 12.dp).clip(CircleShape).background(texto))
+            Box(Modifier.align(Alignment.Center).size(width = 56.dp, height = 62.dp).clip(SuaveShape(10.dp)).background(tarjeta)) {
                 Box(Modifier.padding(6.dp).size(width = 22.dp, height = 12.dp).clip(CircleShape).background(color))
             }
             Row(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xFF1A1B20)).padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(tarjeta).padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.size(14.dp).clip(CircleShape).background(color))
                 Spacer(Modifier.width(6.dp))
-                Box(Modifier.weight(1f).height(12.dp).clip(CircleShape).background(Color(0xFF9E9E9E)))
+                Box(Modifier.weight(1f).height(12.dp).clip(CircleShape).background(texto.copy(alpha = 0.5f)))
             }
             if (seleccionada) {
                 Box(
                     Modifier.align(Alignment.TopEnd).padding(8.dp).size(22.dp).clip(CircleShape).background(color),
-                    Alignment.Center
+                    Alignment.Center,
                 ) { Icon(Icons.Rounded.Check, null, tint = textoSobre(color), modifier = Modifier.size(14.dp)) }
             }
         }
@@ -112,58 +432,144 @@ private fun TarjetaTema(nombre: String, color: Color, seleccionada: Boolean, onC
     }
 }
 
+// ───────────────────── Biblioteca y actualizaciones ─────────────────────
+
 @Composable
 fun AjBibliotecaScreen(almacen: Almacen, onBack: () -> Unit, onRuta: (Ruta) -> Unit) {
+    val ctx = LocalContext.current
+    fun reprogramar() = Programador.programar(ctx)
     PaginaAjustes("Biblioteca", onBack) {
         TituloSeccion("Vista")
         Vista.entries.forEach { v -> FilaRadio(nombreVista(v), almacen.vista == v) { almacen.elegirVista(v) } }
         if (almacen.vista != Vista.LISTA) {
             TituloSeccion("Columnas")
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                listOf(0, 2, 3, 4, 5).forEach { n ->
-                    ChipSel(if (n == 0) "Auto" else "$n", almacen.columnas == n) { almacen.elegirColumnas(n) }
-                }
+            FilaChips(listOf("Auto", "2", "3", "4", "5", "6"), listOf(0, 2, 3, 4, 5, 6).indexOf(almacen.columnas).coerceAtLeast(0)) {
+                almacen.elegirColumnas(listOf(0, 2, 3, 4, 5, 6)[it])
             }
         }
+        FilaAjuste(Icons.Rounded.Menu, "Categorías", "Crear, ordenar, ocultar y renombrar") { onRuta(Ruta.Categorias) }
+        run {
+            val cats = almacen.categorias()
+            val opciones = listOf("" to "Preguntar siempre", "-" to "Ninguna, sin preguntar") + cats.map { it.id to it.nombre }
+            val i = opciones.indexOfFirst { it.first == almacen.catDefecto }.coerceAtLeast(0)
+            FilaAjuste(Icons.Rounded.Add, "Categoría por defecto al añadir", opciones[i].second + " · toca para cambiar") {
+                almacen.catDefecto = opciones[(i + 1) % opciones.size].first
+            }
+        }
+
         Divisor()
-        FilaSwitch("Mostrar la página actual", "«Pág. X de Y» junto a cada cómic.", almacen.mostrarPagina) { almacen.elegirMostrarPagina(it) }
-        FilaSwitch("Insignia de progreso", "Porcentaje sobre la portada, o ✓ si está terminado.", almacen.insigniaProgreso) { almacen.elegirInsigniaProgreso(it) }
-        Divisor()
-        FilaAjuste(Icons.Rounded.Menu, "Categorías", "Crear, ocultar y renombrar") { onRuta(Ruta.Categorias) }
+        TituloSeccion("Buscar capítulos nuevos automáticamente")
+        val horas = listOf(0, 6, 12, 24, 48, 168)
+        FilaChips(listOf("A mano", "Cada 6 h", "Cada 12 h", "Diario", "Cada 2 días", "Semanal"), horas.indexOf(almacen.intervaloActualizacion).coerceAtLeast(0)) {
+            almacen.intervaloActualizacion = horas[it]; reprogramar()
+        }
+        if (almacen.intervaloActualizacion > 0) {
+            FilaSwitch("Solo con Wi‑Fi", null, almacen.actSoloWifi) { almacen.actSoloWifi = it; reprogramar() }
+            FilaSwitch("Solo cargando", null, almacen.actSoloCargando) { almacen.actSoloCargando = it; reprogramar() }
+        }
+        FilaSwitch("Saltar los completados", "No revisa los mangas terminados y sin capítulos por leer", almacen.actSaltarTerminados) { almacen.actSaltarTerminados = it }
+        FilaSwitch("Saltar los que tienen capítulos sin leer", "Solo revisa los mangas que llevas al día", almacen.actSaltarSinLeer) { almacen.actSaltarSinLeer = it }
+        FilaSwitch("Revisión inteligente", "Solo revisa los mangas que esperan capítulo hoy, según su ritmo de publicación (como Komikku). Los parados se revisan cada vez menos", almacen.actInteligente) { almacen.actInteligente = it }
+        FilaSwitch("Saltar los no empezados", "No revisa los mangas de los que aún no has leído nada", almacen.actSaltarNoEmpezados) { almacen.actSaltarNoEmpezados = it }
+        FilaCategoriasExcluidas(almacen, "Categorías que no se revisan", almacen.actCatExcluidas) { almacen.actCatExcluidas = it }
+        FilaSwitch("Marcar leído el capítulo repetido", "Si sale otra versión de un capítulo cuyo número ya leíste, queda leída", almacen.marcarDuplicadosNuevos) { almacen.marcarDuplicadosNuevos = it }
+        FilaSwitch("Descargar los capítulos nuevos", "Los pone en la cola de descargas al encontrarlos", almacen.descargarNuevos) { almacen.descargarNuevos = it }
+        if (almacen.descargarNuevos) FilaCategoriasExcluidas(almacen, "Categorías que no se descargan solas", almacen.descCatExcluidas) { almacen.descCatExcluidas = it }
+        LText(
+            "Las revisiones automáticas avisan con una notificación de los capítulos nuevos. Android puede retrasarlas para ahorrar batería.",
+            LectorType.Label.copy(fontSize = 13.sp), Modifier.padding(horizontal = 24.dp, vertical = 8.dp), color = LectorColors.Muted,
+        )
     }
 }
+
+// ───────────────────── Descargas ─────────────────────
+
+@Composable
+fun AjDescargasScreen(almacen: Almacen, onBack: () -> Unit, onRuta: (Ruta) -> Unit) {
+    val ctx = LocalContext.current
+    var confirmar by remember { mutableStateOf(false) }
+    var version by remember { mutableIntStateOf(0) }
+    val espacio = remember(version, almacen.version) { Formatter.formatShortFileSize(ctx, almacen.bytesDescargas()) }
+    PaginaAjustes("Descargas", onBack) {
+        FilaAjuste(Iconos.Descargar, "Cola de descargas", "${com.example.lector.Descargas.cola.size} pendientes") { onRuta(Ruta.Descargas) }
+        Divisor()
+        FilaSwitch("Solo con Wi‑Fi", "Las descargas esperan a tener Wi‑Fi", almacen.descSoloWifi) { almacen.descSoloWifi = it }
+        TituloSeccion("Fuentes a la vez")
+        FilaChips(listOf("1", "2", "3", "4"), (almacen.descParalelas - 1).coerceIn(0, 3)) { almacen.descParalelas = it + 1 }
+        LText(
+            "Como en Komikku: de cada fuente se baja un capítulo cada vez (3 páginas a la vez), para que la web no bloquee. Si una página falla, al reintentar solo se bajan las que faltan.",
+            LectorType.Label, Modifier.padding(horizontal = 24.dp, vertical = 4.dp), color = LectorColors.Muted,
+        )
+        Divisor()
+        TituloSeccion("Al leer")
+        FilaSwitch("Borrar al terminar de leer", "Borra el capítulo descargado cuando lo terminas", almacen.borrarAlLeer) { almacen.borrarAlLeer = it }
+        FilaSwitch("Borrar al marcar como leído", "También cuando lo marcas a mano desde la ficha", almacen.borrarAlMarcar) { almacen.borrarAlMarcar = it }
+        if (almacen.borrarAlLeer || almacen.borrarAlMarcar) FilaSwitch("Borrar también los capítulos con marcador", null, almacen.borrarMarcados) { almacen.borrarMarcados = it }
+        LText("Descargar por adelantado (mangas de la biblioteca)", LectorType.Body.copy(fontSize = 15.sp), Modifier.padding(start = 24.dp, top = 10.dp))
+        val opciones = listOf(0, 1, 2, 3, 5, 10)
+        FilaChips(listOf("No", "1", "2", "3", "5", "10"), opciones.indexOf(almacen.descargarAdelante).coerceAtLeast(0)) {
+            almacen.descargarAdelante = opciones[it]
+        }
+        Divisor()
+        TituloSeccion("Almacenamiento")
+        FilaAjuste(Icons.Rounded.Delete, "Borrar todas las descargas", "Ocupan $espacio") { confirmar = true }
+    }
+    if (confirmar) {
+        DialogoAlerta(
+            onDismissRequest = { confirmar = false },
+            title = { Text("¿Borrar todas las descargas?") },
+            text = { Text("Se borran los capítulos descargados. Podrás seguir leyéndolos online.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    almacen.cargar().filter { it.enLinea }.forEach { almacen.borrarDescargasDe(it.fuenteId, it.urlManga.orEmpty()) }
+                    File(ctx.filesDir, "descargas").listFiles()?.forEach { it.delete() }
+                    com.example.lector.Descargas.version.value++
+                    version++
+                    confirmar = false
+                }) { Text("Borrar") }
+            },
+            dismissButton = { TextButton(onClick = { confirmar = false }) { Text("Cancelar") } },
+        )
+    }
+}
+
+// ───────────────────── Seguimiento ─────────────────────
 
 @Composable
 fun AjSeguimientoScreen(almacen: Almacen, onBack: () -> Unit) {
     val contexto = LocalContext.current
     var clientId by remember { mutableStateOf(almacen.anilistClientId) }
     PaginaAjustes("Seguimiento", onBack) {
+        FilaSwitch("Subir el progreso al marcar como leído", "También al marcar capítulos a mano, no solo al leerlos", almacen.segAlMarcar) { almacen.segAlMarcar = it }
+        Divisor()
+        TituloSeccion("Otros servicios")
+        CuentasSeguimiento()
+        Divisor()
+        TituloSeccion("AniList")
         if (almacen.anilistToken != null) {
             FilaAjuste(Icons.Rounded.Person, "Conectado como ${almacen.anilistUsuario ?: "…"}", "AniList") {}
             LText(
-                "Abre un cómic y toca «Seguimiento» para vincularlo con su serie. Al llegar a su última página, se sube el progreso.",
-                LectorType.Label.copy(fontSize = 13.sp), Modifier.padding(24.dp, 8.dp), color = LectorColors.Muted
+                "En la ficha de un cómic o de un manga de tu biblioteca, toca «Seguimiento» para vincularlo con su serie. " +
+                    "Los cómics suben el progreso al llegar a la última página; los mangas en línea, al terminar cada capítulo.",
+                LectorType.Label.copy(fontSize = 13.sp), Modifier.padding(24.dp, 8.dp), color = LectorColors.Muted,
             )
             Box(Modifier.padding(24.dp, 8.dp)) { PillButton("Cerrar sesión", Icons.Rounded.Close, { almacen.cerrarSesionAnilist() }) }
         } else {
             LText(
                 "1. En anilist.co → Settings → Developer, crea una aplicación con la URL de redirección  lector://anilist\n" +
                     "2. Pega aquí su Client ID (un número) y pulsa «Iniciar sesión».",
-                LectorType.Label.copy(fontSize = 13.sp), Modifier.padding(24.dp, 8.dp), color = LectorColors.Muted
+                LectorType.Label.copy(fontSize = 13.sp), Modifier.padding(24.dp, 8.dp), color = LectorColors.Muted,
             )
-            OutlinedTextField(
+            CampoTextoShiori(
                 value = clientId, onValueChange = { clientId = it.filter { c -> c.isDigit() } },
                 singleLine = true, label = { Text("Client ID") },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             )
             Box(Modifier.padding(24.dp, 12.dp)) {
                 PillButton("Iniciar sesión", Icons.Rounded.Person, {
                     if (clientId.isNotEmpty()) {
                         almacen.guardarClientId(clientId)
-                        contexto.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Anilist.urlDeLogin(clientId))))
+                        runCatching { contexto.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Anilist.urlDeLogin(clientId)))) }
                     }
                 })
             }
@@ -171,57 +577,550 @@ fun AjSeguimientoScreen(almacen: Almacen, onBack: () -> Unit) {
     }
 }
 
+// ───────────────────── Explorar ─────────────────────
+
+@Composable
+fun AjExplorarScreen(almacen: Almacen, ext: ExtManager, onBack: () -> Unit, onRuta: (Ruta) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var idiomas by remember { mutableStateOf(false) }
+    var revisando by remember { mutableStateOf(false) }
+    val elegirApk = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            val error = withContext(Dispatchers.IO) {
+                val tmp = java.io.File(java.io.File(ctx.cacheDir, "ext").apply { mkdirs() }, "archivo.apk")
+                runCatching {
+                    ctx.contentResolver.openInputStream(uri)!!.use { e -> tmp.outputStream().use { e.copyTo(it) } }
+                    ext.instalarPrivadaDe(tmp)
+                }.getOrElse { it.message ?: "No se pudo leer el archivo" }.also { tmp.delete() }
+            }
+            Avisos.mostrar(error ?: "Extensión instalada. Si no aparece en Fuentes, pulsa «Confiar» en Extensiones")
+        }
+    }
+    PaginaAjustes("Explorar", onBack) {
+        FilaAjuste(Icons.Rounded.List, "Listados de extensiones", "${ext.repos.size} listados") { onRuta(Ruta.ListadosExt) }
+        FilaAjuste(Icons.Rounded.Place, "Idiomas", ext.idiomas.take(8).joinToString(" ") { bandera(it) }) { idiomas = true }
+        FilaSwitch("Mostrar contenido +18", "Fuentes y extensiones para adultos", ext.mostrarNsfw) { ext.alternarNsfw() }
+        Divisor()
+        TituloSeccion("Navegar una fuente")
+        FilaChips(listOf("Cuadrícula", "Lista", "Compacta", "Solo portadas"), almacen.vistaExplorar.ordinal) { almacen.vistaExplorar = VistaExplorar.entries[it] }
+        FilaSwitch("Esconder lo que ya está en la biblioteca", null, almacen.explorarEnBiblioteca == com.example.lector.Tri.EXCLUIR) {
+            almacen.explorarEnBiblioteca = if (it) com.example.lector.Tri.EXCLUIR else com.example.lector.Tri.IGNORAR
+        }
+        FilaSwitch("Búsqueda global solo en fuentes ancladas", "Más rápida si tienes muchas fuentes", almacen.globalSoloAncladas) { almacen.globalSoloAncladas = it }
+        Divisor()
+        TituloSeccion("Extensiones")
+        FilaSwitch("Avisar de actualizaciones de extensiones", "Revisa cada 12 horas", almacen.revisarExtensiones) {
+            almacen.revisarExtensiones = it; Programador.programar(ctx)
+        }
+        FilaSwitch("Extensiones privadas", "Se guardan dentro de Shiori sin instalarse en Android: sin permisos ni confirmaciones", ext.extPrivadas) { ext.cambiarExtPrivadas(it) }
+        FilaAjuste(Icons.Rounded.Add, "Instalar una extensión desde un archivo", "Un .apk de extensión; se instala como privada") { elegirApk.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) }
+        FilaAjuste(Icons.Rounded.Refresh, if (revisando) "Revisando…" else "Buscar actualizaciones ahora", null) {
+            if (!revisando) {
+                revisando = true
+                scope.launch {
+                    withContext(Dispatchers.IO) { runCatching { ext.actualizarListaAhora() } }
+                    val n = ext.conActualizacion().size
+                    Avisos.mostrar(if (n == 0) "Todas las extensiones están al día" else "$n extensión(es) con actualización")
+                    revisando = false
+                }
+            }
+        }
+    }
+    if (idiomas) {
+        val todos = (ext.disponibles.map { it.lang } + ext.instaladas.map { it.lang } + ext.idiomas + "all")
+            .filter { it.isNotBlank() }.distinct().sortedBy { nombreIdioma(it) }
+        DialogoAlerta(
+            onDismissRequest = { idiomas = false },
+            title = { Text("Idiomas") },
+            text = {
+                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                    todos.forEach { l ->
+                        Row(Modifier.fillMaxWidth().pressable { ext.alternarIdioma(l) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            CasillaShiori(checked = l in ext.idiomas, onCheckedChange = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text("${bandera(l)}  ${nombreIdioma(l)}")
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { idiomas = false }) { Text("Listo") } },
+            dismissButton = { TextButton(onClick = { ext.activarTodosIdiomas() }) { Text("Todos") } },
+        )
+    }
+}
+
+// ───────────────────── Datos y almacenamiento ─────────────────────
+
 @Composable
 fun DatosScreen(almacen: Almacen, alRecargar: () -> Unit, onBack: () -> Unit) {
     val contexto = LocalContext.current
+    val scope = rememberCoroutineScope()
     var resultado by remember { mutableStateOf<String?>(null) }
+    var version by remember { mutableIntStateOf(0) }
 
-    val crear = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) {
-            resultado = try {
-                val salida = contexto.contentResolver.openOutputStream(uri) ?: throw IllegalStateException("Sin salida")
-                salida.use { it.write(almacen.crearCopia().toByteArray(Charsets.UTF_8)) }
-                "Copia guardada."
-            } catch (e: Exception) {
-                "No se pudo guardar la copia."
+    // Carpeta de la app (descargas y copias), como «Ubicación de almacenamiento» de Komikku.
+    var rutaCarpeta by remember { mutableStateOf(com.example.lector.CarpetaApp.ruta(contexto)) }
+    val elegirCarpetaApp = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val ruta = uri?.let { com.example.lector.CarpetaApp.rutaDeArbol(it) } ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val movidas = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.example.lector.CarpetaApp.cambiar(contexto, ruta).also { almacen.recargarCarpeta() }
             }
+            rutaCarpeta = ruta
+            Tacto.confirmar()
+            Avisos.mostrar(if (movidas > 0) "Carpeta lista: $movidas descargas movidas" else "Carpeta lista")
         }
+    }
+
+    // Crear y restaurar van en segundo plano con avance (píldora arriba + notificación) e informe al terminar.
+    fun ocupado() = Avisos.mostrar("Ya hay una copia en marcha: espera a que termine")
+    val crear = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null && !TareaCopia.lanzar(contexto, "Creando copia") {
+                val (texto, informe) = CopiaSeguridad.crearConInforme(contexto, this)
+                contexto.contentResolver.openOutputStream(uri)?.use { it.write(texto.toByteArray(Charsets.UTF_8)) } ?: error("No se pudo escribir el archivo")
+                informe
+            }
+        ) ocupado()
     }
     val restaurar = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            resultado = try {
-                val entrada = contexto.contentResolver.openInputStream(uri) ?: throw IllegalStateException("Sin entrada")
-                val texto = entrada.use { it.readBytes().toString(Charsets.UTF_8) }
-                val r = almacen.restaurarCopia(texto)
-                alRecargar()
-                "Copia restaurada: ${r.actualizados} cómics actualizados" +
-                    if (r.pendientes > 0) {
-                        " y ${r.pendientes} pendientes. Su progreso y categorías se aplicarán cuando añadas esos archivos."
-                    } else {
-                        "."
-                    }
-            } catch (e: Exception) {
-                "El archivo no es una copia válida."
+        if (uri != null && !TareaCopia.lanzar(contexto, "Restaurando copia") {
+                paso(0.02f, "Abriendo el archivo…")
+                val bytes = contexto.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("No se pudo leer el archivo")
+                if (com.example.lector.Tachibk.esTachibk(bytes)) {
+                    // Copia de Mihon / Komikku / TachiyomiSY / J2K (.tachibk o .proto.gz).
+                    com.example.lector.Tachibk.restaurar(contexto, bytes, this)
+                } else {
+                    val texto = com.example.lector.Tachibk.descomprimirSiHace(bytes).toString(Charsets.UTF_8)
+                    runCatching { CopiaSeguridad.restaurarConInforme(contexto, texto, this) }
+                        .getOrElse { throw IllegalStateException("El archivo no es una copia válida (${it.message ?: it.javaClass.simpleName})") }
+                }
             }
+        ) ocupado()
+    }
+    // Copia en el formato de Mihon / Komikku (.tachibk): para pasar la biblioteca a esas apps.
+    val crearCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val fuentes = com.example.lector.ext.ExtManager.obtener(contexto).fuentes.associate { it.id to it.nombre }
+                    val texto = almacen.bibliotecaCsv { id -> fuentes[id] ?: "Fuente $id" }
+                    contexto.contentResolver.openOutputStream(uri)!!.use { it.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())); it.write(texto.toByteArray()) }
+                }.isSuccess
+            }
+            Avisos.mostrar(if (ok) "Lista exportada" else "No se pudo exportar")
+        }
+    }
+    val crearTachibk = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null && !TareaCopia.lanzar(contexto, "Creando copia .tachibk") {
+                val informe = contexto.contentResolver.openOutputStream(uri)?.use { com.example.lector.Tachibk.crear(contexto, it, this) }
+                    ?: error("No se pudo escribir el archivo")
+                informe.copy(bien = informe.bien + "Restáurala en Mihon, Komikku o TachiyomiSY (Ajustes → Copia de seguridad → Restaurar)")
+            }
+        ) ocupado()
+    }
+    val elegirCarpeta = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                contexto.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            almacen.copiaCarpeta = uri.toString()
         }
     }
 
+    // Copias en WebDAV (de BitChord): subpantalla propia, sin ruta nueva.
+    var verWebdav by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    if (verWebdav) { com.example.lector.ui.bitchord.WebdavScreen { verWebdav = false }; return }
+
+    val tamImagenes = remember(version) { Formatter.formatShortFileSize(contexto, Imagenes.tamanoDisco()) }
     PaginaAjustes("Datos y almacenamiento", onBack) {
+        TituloSeccion("Carpeta de la app")
+        val permiso = com.example.lector.CarpetaApp.hayPermiso(contexto)
+        FilaAjuste(
+            Icons.Rounded.Add,
+            if (rutaCarpeta == null) "Elegir carpeta" else rutaCarpeta!!.substringAfterLast('/').ifBlank { rutaCarpeta!! },
+            when {
+                rutaCarpeta == null -> "Ahora se guarda dentro de la app (no se ve). Elige o crea una carpeta para las descargas y las copias."
+                !permiso -> "Falta el permiso de acceso a archivos: toca para darlo"
+                else -> "$rutaCarpeta · dentro: descargas y copias"
+            },
+        ) {
+            if (!com.example.lector.CarpetaApp.hayPermiso(contexto)) {
+                Avisos.mostrar("Activa «Permitir acceso para gestionar todos los archivos» y vuelve")
+                com.example.lector.CarpetaApp.pedirPermiso(contexto)
+            } else elegirCarpetaApp.launch(null)
+        }
+        Divisor()
         TituloSeccion("Copia de seguridad")
         LText(
-            "Guarda tu progreso, categorías, modos de lectura y ajustes. No incluye los archivos de los cómics.",
-            LectorType.Label.copy(fontSize = 13.sp), Modifier.padding(horizontal = 24.dp), color = LectorColors.Muted
+            "Guarda tu biblioteca (también la de Explorar), categorías, progreso, historial, capítulos leídos y marcados, " +
+                "listados de extensiones, búsquedas guardadas y ajustes. No incluye los archivos de los cómics ni las descargas.",
+            LectorType.Label.copy(fontSize = 13.sp), Modifier.padding(horizontal = 24.dp), color = LectorColors.Muted,
         )
         Spacer(Modifier.height(8.dp))
-        FilaAjuste(Icons.Rounded.Share, "Crear copia", "Guardar en un archivo .json") { crear.launch("lector-copia.json") }
-        FilaAjuste(Icons.Rounded.Refresh, "Restaurar copia", "Elegir un archivo de copia") { restaurar.launch(arrayOf("*/*")) }
+        FilaAjuste(Icons.Rounded.Share, "Crear copia", "Guardar en un archivo .json") { crear.launch(CopiaSeguridad.nombreArchivo()) }
+        FilaAjuste(Icons.Rounded.Refresh, "Restaurar copia", "De Lector (.json) o de Mihon, Komikku, TachiyomiSY… (.tachibk)") { restaurar.launch(arrayOf("*/*")) }
+        FilaAjuste(Icons.Rounded.List, "Exportar la lista de la biblioteca", "Archivo .csv con título, autor, fuente y progreso") { crearCsv.launch("biblioteca-shiori.csv") }
+        FilaAjuste(Icons.Rounded.Share, "Exportar para Mihon / Komikku", "Archivo .tachibk con tus mangas de fuentes, capítulos leídos, categorías e historial") {
+            crearTachibk.launch(com.example.lector.Tachibk.nombreArchivo())
+        }
+        FilaAjuste(
+            Icons.Rounded.Refresh, "Copias en WebDAV",
+            com.example.lector.bitchord.WebDavAjustes(contexto).let { w ->
+                if (w.configurado) "${com.example.lector.bitchord.WebDavClient.hostOf(w.url)}${if (w.autoSubir) " · sube las automáticas" else ""}"
+                else "Nextcloud, ownCloud, NAS…: subir y restaurar copias"
+            },
+        ) { verWebdav = true }
+
+        Divisor()
+        TituloSeccion("Copias automáticas")
+        val dias = listOf(0, 1, 2, 3, 7)
+        FilaChips(listOf("No", "Diaria", "Cada 2 días", "Cada 3 días", "Semanal"), dias.indexOf(almacen.copiaAutoDias).coerceAtLeast(0)) {
+            almacen.copiaAutoDias = dias[it]; Programador.programar(contexto)
+        }
+        if (almacen.copiaAutoDias > 0) {
+            FilaAjuste(
+                Icons.Rounded.Home, "Carpeta de las copias",
+                if (almacen.copiaCarpeta.isBlank()) "Interna: ${CopiaSeguridad.carpetaInterna(contexto).path}" else "Una carpeta que elegiste",
+            ) { elegirCarpeta.launch(null) }
+            LText("Copias que se guardan", LectorType.Body.copy(fontSize = 15.sp), Modifier.padding(start = 24.dp, top = 10.dp))
+            val maximos = listOf(2, 5, 10, 20)
+            FilaChips(maximos.map { "$it" }, maximos.indexOf(almacen.copiasMax).let { if (it < 0) 1 else it }) { almacen.copiasMax = maximos[it] }
+        }
+        FilaAjuste(
+            Icons.Rounded.Check, "Hacer una copia ahora",
+            if (almacen.ultimaCopia > 0) "Última automática: ${hace(almacen.ultimaCopia)}" else "En la carpeta de las copias automáticas",
+        ) {
+            if (!TareaCopia.lanzar(contexto, "Creando copia") {
+                    paso(0.2f, "Reuniendo la biblioteca…")
+                    val donde = CopiaSeguridad.guardarAutomatica(contexto)
+                    TareaCopia.Informe("Copia de seguridad", listOf("Copia guardada en $donde"))
+                }
+            ) ocupado()
+        }
+
+        Divisor()
+        TituloSeccion("Almacenamiento")
+        FilaAjuste(Icons.Rounded.Delete, "Limpiar datos de mangas que no tienes", "Fichas y listas de capítulos guardadas de mangas que no están en la biblioteca ni en el historial") {
+            scope.launch {
+                val n = withContext(Dispatchers.IO) { almacen.limpiarHuerfanos() }
+                Avisos.mostrar(if (n == 0) "No había nada que limpiar" else "$n archivos borrados")
+            }
+        }
+        FilaAjuste(Icons.Rounded.Delete, "Vaciar la caché de imágenes", "Portadas guardadas: $tamImagenes") {
+            scope.launch {
+                withContext(Dispatchers.IO) { Imagenes.vaciar() }
+                CacheVisor.vaciar()
+                version++
+                Avisos.mostrar("Caché vaciada")
+            }
+        }
+        FilaAjuste(Icons.Rounded.Delete, "Vaciar la caché de páginas del visor", "Las páginas leídas que siguen en memoria") {
+            CacheVisor.vaciar(); Avisos.mostrar("Caché del visor vaciada")
+        }
     }
     resultado?.let {
-        AlertDialog(
+        DialogoAlerta(
             onDismissRequest = { resultado = null },
             title = { Text("Copia de seguridad") },
             text = { Text(it) },
             confirmButton = { TextButton(onClick = { resultado = null }) { Text("Aceptar") } },
         )
     }
+}
+
+// ───────────────────── Seguridad y privacidad ─────────────────────
+
+@Composable
+fun AjSeguridadScreen(almacen: Almacen, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val seguro = remember { (ctx.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager)?.isDeviceSecure == true }
+    PaginaAjustes("Seguridad y privacidad", onBack) {
+        TituloSeccion("Bloqueo")
+        FilaSwitch(
+            "Pedir desbloqueo",
+            if (seguro) "Con el PIN, patrón, contraseña o huella del teléfono" else "Primero configura un bloqueo de pantalla en Android",
+            almacen.bloqueo && seguro,
+        ) { if (seguro) almacen.bloqueo = it else Avisos.mostrar("Configura un bloqueo de pantalla en los ajustes de Android") }
+        if (almacen.bloqueo) {
+            LText("Pedirlo al volver a la app", LectorType.Body.copy(fontSize = 15.sp), Modifier.padding(start = 24.dp, top = 10.dp))
+            val minutos = listOf(0, 1, 2, 5, 10, 30)
+            FilaChips(listOf("Siempre", "1 min", "2 min", "5 min", "10 min", "30 min"), minutos.indexOf(almacen.bloqueoMinutos).coerceAtLeast(0)) {
+                almacen.bloqueoMinutos = minutos[it]
+            }
+        }
+        Divisor()
+        TituloSeccion("Privacidad")
+        FilaSwitch("Ocultar el contenido de las notificaciones", "No se ven en la pantalla de bloqueo", almacen.ocultarNotificaciones) { almacen.ocultarNotificaciones = it }
+        FilaSwitch("Pantalla segura", "Oculta la app en la lista de recientes e impide capturas", almacen.pantallaSegura) { almacen.pantallaSegura = it }
+        FilaSwitch("Modo incógnito", "No se anota nada en el historial mientras esté activo", almacen.incognito) { almacen.incognito = it }
+        val modoC = com.example.lector.ModoContenido.modo
+        FilaSwitch("Modo SFW", "Oculta todo lo +18: extensiones, fuentes y mangas de adultos en toda la app", modoC == com.example.lector.ModoContenido.Modo.SFW) {
+            com.example.lector.ModoContenido.fijar(if (it) com.example.lector.ModoContenido.Modo.SFW else com.example.lector.ModoContenido.Modo.NORMAL)
+        }
+        FilaSwitch("Modo NSFW", "Muestra solo contenido +18", modoC == com.example.lector.ModoContenido.Modo.NSFW) {
+            com.example.lector.ModoContenido.fijar(if (it) com.example.lector.ModoContenido.Modo.NSFW else com.example.lector.ModoContenido.Modo.NORMAL)
+        }
+    }
+}
+
+// ───────────────────── Avanzado ─────────────────────
+
+@Composable
+fun AjAvanzadoScreen(almacen: Almacen, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    var informe by remember { mutableStateOf<String?>(null) }
+    val ext = remember { com.example.lector.ext.ExtManager.obtener(ctx) }
+    val scope = rememberCoroutineScope()
+    fun escanear() {
+        ext.refrescarInstaladas()
+        scope.launch {
+            kotlinx.coroutines.delay(2500) // que termine de leer y cargar las extensiones
+            informe = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ext.informe() }
+        }
+    }
+    informe?.let { texto ->
+        DialogoAlerta(
+            onDismissRequest = { informe = null },
+            title = { androidx.compose.material3.Text("Diagnóstico de extensiones") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    LText(texto, LectorType.Label)
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    val cm = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                    cm?.setPrimaryClip(android.content.ClipData.newPlainText("Diagnóstico Shiori", texto))
+                    Avisos.mostrar("Informe copiado: pégalo en el chat")
+                }) { androidx.compose.material3.Text("Copiar") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { escanear() }) { androidx.compose.material3.Text("Volver a escanear") } },
+        )
+    }
+    PaginaAjustes("Avanzado", onBack) {
+        TituloSeccion("Extensiones")
+        FilaAjuste(Icons.Rounded.Delete, "Revocar la confianza en extensiones desconocidas", "Las que no vienen de tus listados vuelven a pedir «Confiar»") {
+            com.example.lector.ext.ExtManager.obtener(ctx).revocarConfianza(); Avisos.mostrar("Confianza revocada")
+        }
+        FilaAjuste(Icons.Rounded.Refresh, "Diagnóstico de extensiones", "Escanea las extensiones instaladas y dice por qué falta alguna. Se puede copiar para enviarlo.") {
+            Avisos.mostrar("Escaneando extensiones…")
+            escanear()
+        }
+        Divisor()
+        TituloSeccion("Red")
+        var ahorro by remember { mutableStateOf(ctx.getSharedPreferences("lector", android.content.Context.MODE_PRIVATE).getBoolean("ahorro_datos", false)) }
+        FilaSwitch("Ahorro de datos", "Las páginas se piden recomprimidas (WebP, 1080 px) a wsrv.nl, como en Komikku. Si una web no lo permite, se usa la imagen normal.", ahorro) {
+            ahorro = it
+            ctx.getSharedPreferences("lector", android.content.Context.MODE_PRIVATE).edit().putBoolean("ahorro_datos", it).apply()
+        }
+        var uaAbierto by remember { mutableStateOf(false) }
+        val prefsUa = remember { ctx.getSharedPreferences("lector", android.content.Context.MODE_PRIVATE) }
+        var ua by remember { mutableStateOf(prefsUa.getString("user_agent", "").orEmpty()) }
+        FilaAjuste(Icons.Rounded.Edit, "Agente de usuario", if (ua.isBlank()) "El de fábrica (Chrome en Android)" else ua) { uaAbierto = true }
+        if (uaAbierto) {
+            var texto by remember { mutableStateOf(ua) }
+            DialogoAlerta(
+                onDismissRequest = { uaAbierto = false },
+                title = { Text("Agente de usuario") },
+                text = {
+                    androidx.compose.material3.OutlinedTextField(
+                        texto, { texto = it }, placeholder = { Text("Vacío = el de fábrica") }, maxLines = 4,
+                    )
+                },
+                dismissButton = { TextButton({ texto = "" }) { Text("Restablecer") } },
+                confirmButton = {
+                    TextButton({
+                        ua = texto.trim(); prefsUa.edit().putString("user_agent", ua).apply(); uaAbierto = false
+                        Avisos.mostrar("Se aplica a las peticiones nuevas")
+                    }) { Text("Guardar") }
+                },
+            )
+        }
+        LText("DNS sobre HTTPS (para las fuentes)", LectorType.Body.copy(fontSize = 15.sp), Modifier.padding(start = 24.dp, top = 4.dp))
+        FilaChips(listOf("Desactivado", "Cloudflare", "Google", "AdGuard", "Quad9"), almacen.doh.coerceIn(0, 4)) {
+            almacen.doh = it
+            Avisos.mostrar("Se aplicará al volver a abrir la app")
+        }
+        FilaAjuste(Icons.Rounded.Delete, "Borrar las cookies", "Cierra las sesiones iniciadas en los sitios de las fuentes") {
+            CookieManager.getInstance().removeAllCookies { Avisos.mostrar("Cookies borradas") }
+        }
+        FilaAjuste(Icons.Rounded.Refresh, "Restablecer el modo de lectura de cada serie", "Todas vuelven al modo general") {
+            Avisos.mostrar("${almacen.restablecerModosDeSerie()} series restablecidas")
+        }
+        FilaAjuste(Icons.Rounded.Delete, "Borrar los datos de WebView", "Caché y almacenamiento del navegador interno (Cloudflare, inicios de sesión)") {
+            runCatching {
+                android.webkit.WebStorage.getInstance().deleteAllData()
+                android.webkit.WebView(ctx).apply { clearCache(true); clearHistory(); destroy() }
+            }
+            Avisos.mostrar("Datos de WebView borrados")
+        }
+        FilaAjuste(Icons.Rounded.Delete, "Vaciar la caché de red", null) {
+            File(ctx.cacheDir, "network_cache").deleteRecursively()
+            Avisos.mostrar("Caché de red vaciada")
+        }
+        Divisor()
+        TituloSeccion("Sistema")
+        FilaAjuste(Icons.Rounded.Notifications, "Notificaciones", "Permiso y canales de la app") {
+            runCatching {
+                ctx.startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+        FilaAjuste(Icons.Rounded.Build, "Optimización de batería", "Desactívala para que las revisiones automáticas no se retrasen") {
+            runCatching {
+                ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
+        FilaAjuste(Icons.Rounded.Info, "Información de la app", null) {
+            runCatching {
+                ctx.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+    }
+}
+
+// ───────────────────── Acerca de ─────────────────────
+
+@Composable
+fun AcercaDeScreen(onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val version = remember {
+        runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "?"
+    }
+    PaginaAjustes("Acerca de", onBack) {
+        // Cabecera viva: el logo «respira» sobre un halo del color de acento, con nombre y versión en píldora.
+        val acento = androidx.compose.material3.MaterialTheme.colorScheme.primary
+        val ola = androidx.compose.animation.core.rememberInfiniteTransition(label = "halo")
+        val r by ola.animateFloat(0.85f, 1.1f, androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(2600, easing = EnfasisEasing), androidx.compose.animation.core.RepeatMode.Reverse), label = "r")
+        val radio = if (Mov.reducido) 1f else r
+        Column(Modifier.fillMaxWidth().padding(vertical = 24.dp).entrada(0), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(200.dp).drawBehind {
+                drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(
+                    listOf(acento.copy(alpha = 0.35f), androidx.compose.ui.graphics.Color.Transparent),
+                    radius = size.minDimension / 2f * radio), radius = size.minDimension / 2f * radio)
+            }, Alignment.Center) { LogoApp(Modifier.size(120.dp).graphicsLayer { scaleX = 0.96f + (radio - 0.85f) * 0.16f; scaleY = scaleX }) }
+            LText("Shiori", LectorType.Display.copy(fontSize = 34.sp))
+            Spacer(Modifier.height(8.dp))
+            Box(Modifier.clip(SuaveShape(14.dp)).background(LectorColors.PillFill).padding(horizontal = 14.dp, vertical = 6.dp)) {
+                LText("Versión $version", LectorType.Label, color = LectorColors.Muted)
+            }
+        }
+        val hay = com.example.lector.NuevaVersion.disponible
+        FilaAjuste(
+            Icons.Rounded.Refresh,
+            when {
+                com.example.lector.NuevaVersion.comprobando -> "Buscando actualizaciones…"
+                hay != null -> "Actualizar a la ${hay.nombre}"
+                else -> "Buscar actualizaciones"
+            },
+            "Las versiones nuevas se publican en GitHub (Saerling/lector) y se instalan encima de esta",
+        ) {
+            if (hay != null) com.example.lector.NuevaVersion.verDialogo = true
+            else com.example.lector.NuevaVersion.buscarAhora(ctx)
+        }
+        LText(
+            "Lector de cómics y manga para Android, inspirado en Komikku (fork de Mihon/Tachiyomi). " +
+                "Usa las extensiones de Mihon/Komikku (source-api y red copiados de Komikku, licencia Apache 2.0).",
+            LectorType.Body, Modifier.padding(24.dp), color = LectorColors.Muted,
+        )
+        FilaAjuste(Icons.Rounded.Share, "Komikku en GitHub", "github.com/komikku-app/komikku") {
+            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/komikku-app/komikku")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }
+        LText(
+            "Fuente tipográfica: Inter, © The Inter Project Authors, licencia SIL Open Font License 1.1.",
+            LectorType.Label, Modifier.padding(24.dp), color = LectorColors.Muted,
+        )
+    }
+}
+
+@Composable
+private fun Dato2(etiqueta: String, valor: String) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp)) {
+        LText(etiqueta, LectorType.Body, Modifier.width(110.dp), color = LectorColors.Muted)
+        LText(valor, LectorType.Body, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun FilaVistas(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp), content = content,
+    )
+}
+
+/** Tarjeta de previsualización (mini pantalla) con su nombre; el borde se ilumina si está elegida. */
+@Composable
+private fun TarjetaVista(nombre: String, elegida: Boolean, acento: Color, onClick: () -> Unit, vista: @Composable () -> Unit) {
+    val forma = SuaveShape(24.dp)
+    val borde by androidx.compose.animation.animateColorAsState(if (elegida) acento else LectorColors.Linea, label = "borde")
+    Column(Modifier.width(112.dp).pressable(onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxWidth().height(170.dp).clip(forma).border(if (elegida) 3.dp else 2.dp, borde, forma)) { vista() }
+        Spacer(Modifier.height(8.dp))
+        LText(nombre, LectorType.Label, color = if (elegida) LectorColors.Text else LectorColors.Muted, maxLines = 1)
+    }
+}
+
+/** Mini pantalla con fondo de color y la barra flotante dibujada con ese estilo de superficie. */
+@Composable
+private fun VistaSuperficie(s: Superficie, acento: Color) {
+    Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
+        FondoVivo(FondoApp.COLOR, Modifier.fillMaxSize(), fijo = true, acento = acento)
+        // «Contenido» detrás de la barra: unas portadas.
+        Row(Modifier.align(Alignment.Center).padding(bottom = 30.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            repeat(3) { i -> Box(Modifier.size(26.dp, 38.dp).clip(SuaveShape(6.dp)).background(acento.copy(alpha = 0.35f + i * 0.2f))) }
+        }
+        VistaBarra(s, Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+@Composable
+internal fun VistaBarra(s: Superficie, modifier: Modifier = Modifier) {
+    val forma = CircleShape
+    val oscuro = TemaActual.oscuro
+    Box(
+        modifier.padding(10.dp).fillMaxWidth().height(26.dp).clip(forma)
+            .background(
+                when (s) {
+                    Superficie.SOLIDO -> LectorColors.Cristal
+                    Superficie.CRISTAL -> LectorColors.Cristal.copy(alpha = 0.78f)
+                    Superficie.LIQUIDO -> LectorColors.Cristal.copy(alpha = 0.40f)
+                },
+            )
+            .then(
+                if (s == Superficie.LIQUIDO) Modifier.background(
+                    Brush.verticalGradient(0f to Color.White.copy(alpha = if (oscuro) 0.16f else 0.4f), 0.5f to Color.Transparent),
+                ).border(1.dp, Brush.verticalGradient(0f to Color.White.copy(alpha = 0.45f), 1f to Color.White.copy(alpha = 0.08f)), forma)
+                else Modifier.border(1.dp, LectorColors.Linea, forma),
+            ),
+    ) {
+        Box(Modifier.padding(4.dp).size(28.dp, 18.dp).clip(forma).background(LectorColors.Iluminada))
+    }
+}
+
+
+/** Fila que abre las casillas de categorías y guarda las elegidas como ids separados por coma. */
+@Composable
+private fun FilaCategoriasExcluidas(almacen: Almacen, titulo: String, valor: String, alCambiar: (String) -> Unit) {
+    var abierto by remember { mutableStateOf(false) }
+    val cats = almacen.categorias()
+    val elegidas = almacen.idsDe(valor)
+    val nombres = cats.filter { it.id in elegidas }.joinToString(", ") { it.nombre }
+    FilaAjuste(Icons.Rounded.Close, titulo, nombres.ifBlank { "Ninguna" }) {
+        if (cats.isEmpty()) Avisos.mostrar("Aún no tienes categorías") else abierto = true
+    }
+    if (abierto) DialogoAsignarCategorias(
+        categorias = cats, seleccionInicial = elegidas,
+        alEditar = { abierto = false }, alCancelar = { abierto = false },
+        alAceptar = { alCambiar(it.joinToString(",")); abierto = false },
+    )
 }

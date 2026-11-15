@@ -74,8 +74,8 @@ object ExtRepos {
     /** Nombre y web del listado según su repo.json (como hace Komikku). Null si no lo tiene. */
     fun meta(carpeta: String): Pair<String, String?>? = runCatching {
         val o = JSONObject(String(descargar("$carpeta/repo.json"), Charsets.UTF_8)).getJSONObject("meta")
-        val nombre = o.optString("name").ifBlank { o.optString("shortName") }
-        if (nombre.isBlank()) null else nombre to o.optString("website").ifBlank { null }
+        val nombre = o.txt("name").ifBlank { o.txt("shortName") }
+        if (nombre.isBlank()) null else nombre to o.txt("website").ifBlank { null }
     }.getOrNull()
 
     fun base(urlIndice: String) = urlIndice.substringBeforeLast('/')
@@ -94,48 +94,64 @@ object ExtRepos {
         }
     }
 
-    private fun abrir(url: String): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 30_000
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", UA)
-        }
-
-    fun descargar(url: String): ByteArray {
-        val c = abrir(url)
-        try {
-            if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
-            return c.inputStream.use { it.readBytes() }
-        } finally {
-            c.disconnect()
-        }
+    private val http by lazy {
+        okhttp3.OkHttpClient.Builder().dns(eu.kanade.tachiyomi.network.DnsRespaldo)
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS).build()
     }
 
-    fun descargarA(url: String, destino: File, alProgreso: (Int) -> Unit) {
-        val c = abrir(url)
-        try {
-            if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
-            val total = c.contentLengthLong
-            c.inputStream.use { ent ->
-                destino.outputStream().use { sal ->
-                    val buf = ByteArray(32 * 1024)
-                    var hecho = 0L
-                    var ultimo = -1
-                    while (true) {
-                        val n = ent.read(buf)
-                        if (n < 0) break
-                        sal.write(buf, 0, n)
-                        hecho += n
-                        if (total > 0) {
-                            val p = (hecho * 100 / total).toInt()
-                            if (p != ultimo) { ultimo = p; alProgreso(p) }
-                        }
+    /** raw.githubusercontent.com/u/r/rama/ruta → espejo de jsDelivr (por si GitHub está bloqueado en tu red). */
+    private fun espejo(url: String): String? {
+        val p = url.removePrefix("https://").removePrefix("http://").split('/')
+        if (p[0] != "raw.githubusercontent.com" || p.size < 5) return null
+        return "https://cdn.jsdelivr.net/gh/${p[1]}/${p[2]}@${p[3]}/" + p.drop(4).joinToString("/")
+    }
+
+    private fun abrir(url: String, aceptar: String? = null): okhttp3.Response {
+        fun pedir1(u: String) = http.newCall(okhttp3.Request.Builder().url(u).header("User-Agent", UA)
+            .apply { if (aceptar != null) header("Accept", aceptar) }.build()).execute()
+        // Errores pasajeros del servidor (502/503/504, típicos del CDN de GitHub): dos reintentos con espera.
+        fun pedir(u: String): okhttp3.Response {
+            var r = pedir1(u)
+            repeat(2) { i ->
+                if (r.code !in 500..599) return r
+                r.close(); Thread.sleep(1500L * (i + 1)); r = pedir1(u)
+            }
+            return r
+        }
+        val r = try { pedir(url) } catch (e: java.io.IOException) {
+            return pedir(espejo(url) ?: throw e)
+        }
+        if (r.isSuccessful) return r
+        val alt = espejo(url) ?: return r
+        r.close()
+        return pedir(alt)
+    }
+
+    fun descargar(url: String): ByteArray = abrir(url).use { r ->
+        if (!r.isSuccessful) throw IllegalStateException("HTTP ${r.code}")
+        r.body.bytes()
+    }
+
+    fun descargarA(url: String, destino: File, aceptar: String? = null, alProgreso: (Int) -> Unit) = abrir(url, aceptar).use { r ->
+        if (!r.isSuccessful) throw IllegalStateException("HTTP ${r.code}")
+        val total = r.body.contentLength()
+        r.body.byteStream().use { ent ->
+            destino.outputStream().use { sal ->
+                val buf = ByteArray(32 * 1024)
+                var hecho = 0L
+                var ultimo = -1
+                while (true) {
+                    val n = ent.read(buf)
+                    if (n < 0) break
+                    sal.write(buf, 0, n)
+                    hecho += n
+                    if (total > 0) {
+                        val pr = (hecho * 100 / total).toInt()
+                        if (pr != ultimo) { ultimo = pr; alProgreso(pr) }
                     }
                 }
             }
-        } finally {
-            c.disconnect()
         }
     }
 
@@ -202,15 +218,15 @@ object ExtRepos {
 
     // repo.json clásico: { "meta": { name, shortName, website, signingKeyFingerprint }, "index_v2": "..." }
     private fun leerRepoClasico(o: JSONObject, url: String): TiendaLeida {
-        val v2 = o.optString("index_v2").ifBlank { null }
+        val v2 = o.txt("index_v2").ifBlank { null }
         if (v2 != null) return leerTienda(v2)
         val m = o.getJSONObject("meta")
-        val nombre = m.optString("name").ifBlank { m.optString("shortName") }.ifBlank { nombreDe(url) }
+        val nombre = m.txt("name").ifBlank { m.txt("shortName") }.ifBlank { nombreDe(url) }
         val repo = RepoExt(
             url = url, nombre = nombre, activo = true,
-            web = m.optString("website").ifBlank { webDe(url) },
-            etiqueta = m.optString("shortName").ifBlank { nombre },
-            claveFirma = m.optString("signingKeyFingerprint"),
+            web = m.txt("website").ifBlank { webDe(url) },
+            etiqueta = m.txt("shortName").ifBlank { nombre },
+            claveFirma = m.txt("signingKeyFingerprint"),
             esLegacy = true,
         )
         return TiendaLeida(repo, null)
@@ -219,15 +235,15 @@ object ExtRepos {
     // Tienda nueva en JSON (mismos campos que el protobuf, con nombres en camelCase).
     private fun leerTiendaJson(o: JSONObject, url: String): TiendaLeida {
         val contacto = o.optJSONObject("contact")
-        val nombre = o.optString("name").ifBlank { nombreDe(url) }
+        val nombre = o.txt("name").ifBlank { nombreDe(url) }
         val repo = RepoExt(
             url = url, nombre = nombre, activo = true,
-            web = contacto?.optString("website")?.ifBlank { null } ?: webDe(url),
-            etiqueta = o.optString("badgeLabel").ifBlank { nombre },
-            claveFirma = o.optString("signingKey"),
+            web = contacto?.txt("website")?.ifBlank { null } ?: webDe(url),
+            etiqueta = o.txt("badgeLabel").ifBlank { nombre },
+            claveFirma = o.txt("signingKey"),
             esLegacy = false,
-            urlLista = o.optString("extensionListUrl").ifBlank { null },
-            discord = contacto?.optString("discord")?.ifBlank { null },
+            urlLista = o.txt("extensionListUrl").ifBlank { null },
+            discord = contacto?.txt("discord")?.ifBlank { null },
         )
         return TiendaLeida(repo, o.optJSONObject("extensionList")?.optJSONArray("extensions")?.let { crudasJson(it) })
     }
@@ -251,14 +267,14 @@ object ExtRepos {
                 val fa = o.optJSONArray("sources")
                 val fuentes = (0 until (fa?.length() ?: 0)).map { j ->
                     val so = fa!!.getJSONObject(j)
-                    FuenteCruda(so.optString("id", "0").toLongOrNull() ?: 0L, so.optString("name"), so.optString("language"), so.optString("homeUrl"))
+                    FuenteCruda(so.optString("id", "0").toLongOrNull() ?: 0L, so.txt("name"), so.txt("language"), so.txt("homeUrl"))
                 }
                 val res = o.optJSONObject("resources")
                 salida += ExtCruda(
                     nombre = o.getString("name"), pkg = o.getString("packageName"),
-                    apk = res?.optString("apkUrl").orEmpty(), icono = res?.optString("iconUrl").orEmpty(),
+                    apk = res?.txt("apkUrl").orEmpty(), icono = res?.txt("iconUrl").orEmpty(),
                     lib = o.opt("extensionLib")?.toString()?.toDoubleOrNull() ?: 0.0,
-                    code = o.optLong("versionCode"), version = o.optString("versionName"),
+                    code = o.optLong("versionCode"), version = o.txt("versionName"),
                     nsfw = avisoEsNsfw(o.opt("contentWarning")), lang = langDe(fuentes), fuentes = fuentes,
                 )
             }
@@ -281,9 +297,9 @@ object ExtRepos {
                     listOf(FuenteCruda(0L, nombre, lang, ""))
                 } else (0 until sa.length()).map { j ->
                     val so = sa.getJSONObject(j)
-                    FuenteCruda(so.optString("id", "0").toLongOrNull() ?: 0L, so.optString("name"), so.optString("lang", lang), so.optString("baseUrl"))
+                    FuenteCruda(so.optString("id", "0").toLongOrNull() ?: 0L, so.txt("name"), so.optString("lang", lang), so.txt("baseUrl"))
                 }
-                val version = o.optString("version")
+                val version = o.txt("version")
                 salida += ExtCruda(
                     nombre = nombre, pkg = pkg, apk = "$base/apk/${o.getString("apk")}", icono = "$base/icon/$pkg.png",
                     lib = version.substringBeforeLast('.').toDoubleOrNull() ?: 0.0,
@@ -431,4 +447,10 @@ object ExtRepos {
             )
         }
     }
+
+    /**
+     * Como optString pero un `null` de JSON cuenta como vacío. optString devuelve el texto "null" para un valor null
+     * (p. ej. el `"index_v2": null` de algunos repo.json), y la app intentaba descargar la dirección «null».
+     */
+    private fun JSONObject.txt(k: String): String = if (isNull(k)) "" else optString(k)
 }
