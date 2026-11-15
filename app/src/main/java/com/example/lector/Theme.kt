@@ -73,8 +73,14 @@ fun textoSobre(color: Color): Color =
 object ColorPortada {
     fun de(archivo: File): Color? {
         if (!archivo.exists()) return null
-        val original = BitmapFactory.decodeFile(archivo.path) ?: return null
+        // Solo hacen falta 24×24 px: se decodifica reducida (se llama desde la composición, en el hilo principal).
+        val medidas = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(archivo.path, medidas)
+        var muestra = 1
+        while (minOf(medidas.outWidth, medidas.outHeight) / (muestra * 2) >= 48) muestra *= 2
+        val original = BitmapFactory.decodeFile(archivo.path, BitmapFactory.Options().apply { inSampleSize = muestra }) ?: return null
         val chico = Bitmap.createScaledBitmap(original, 24, 24, true)
+        if (chico !== original) original.recycle()
 
         // Agrupa los píxeles por tono (12 grupos de 30°) y da más peso a los vivos y claros.
         val hsv = FloatArray(3)

@@ -937,7 +937,12 @@ class Almacen private constructor(private val contexto: Context) {
 
     /** Usa una imagen (bytes de una página, una foto…) como portada de la serie. */
     fun cambiarPortada(id: String, bytes: ByteArray): Boolean = runCatching {
-        val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return false
+        // Una foto de 50 Mpx entera en memoria solo para acabar en 600 px: se decodifica ya reducida.
+        val medidas = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, medidas)
+        var muestra = 1
+        while (maxOf(medidas.outWidth, medidas.outHeight) / (muestra * 2) >= 600) muestra *= 2
+        val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = muestra }) ?: return false
         val escala = minOf(1f, 600f / maxOf(bmp.width, bmp.height))
         val chica = if (escala < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * escala).toInt(), (bmp.height * escala).toInt(), true) else bmp
         portadaDe(id).outputStream().use { chica.compress(Bitmap.CompressFormat.JPEG, 88, it) }
