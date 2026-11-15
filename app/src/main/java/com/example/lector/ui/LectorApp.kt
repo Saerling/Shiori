@@ -661,7 +661,8 @@ fun Inicio(
             exit = slideOutVertically(tween(200)) { it } + fadeOut(tween(160)),
         ) {
             Column(
-                Modifier.navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 8.dp)
+                // En tablet la barra y el mini lector no se estiran de lado a lado: píldora centrada de ancho máximo.
+                Modifier.navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 8.dp).widthIn(max = AnchoCromoMax)
             ) {
                 // El botón de reanudar abre la ficha del último manga leído (no el capítulo).
                 // Solo donde tiene sentido seguir leyendo (Inicio e Historial): en Biblioteca, Explorar, Actualizaciones y
@@ -738,6 +739,9 @@ object OrigenToque {
 }
 
 const val ContenedorCierreMs = 560
+
+/** Ancho máximo de la barra flotante y del mini lector (pantallas anchas). */
+private val AnchoCromoMax = 520.dp
 
 /** Marca una portada como origen del «container transform»: al pulsarla se guarda su rectángulo. */
 fun Modifier.origenTransicion(): Modifier = composed {

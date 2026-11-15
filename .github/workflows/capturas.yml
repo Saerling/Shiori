@@ -1,0 +1,44 @@
+name: Capturas tablet
+
+# Pinta las pantallas principales en tamaño tablet (Roborazzi + Robolectric, sin emulador) y las sube como artefacto
+# «capturas-tablet». Sirve para revisar a ojo cómo queda la app en pantallas anchas tras cada cambio.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: ['app/**', '.github/workflows/capturas.yml']
+
+jobs:
+  capturas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+      - name: Capturas
+        run: |
+          set -o pipefail
+          gradle testDebugUnitTest --tests 'com.example.lector.tablet.*' --continue 2>&1 | tee capturas.log | grep -E "^e: |FAILED|BUILD|tests completed|What went wrong" || true
+      - name: Resumen
+        if: always()
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^e: |FAILED|BUILD|tests completed" capturas.log | head -80 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -R app/build/tablet 2>/dev/null | head -80 >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capturas-tablet
+          path: |
+            app/build/tablet
+            app/build/reports/tests/testDebugUnitTest
+            capturas.log
+      - name: Fallar si no hay capturas
+        run: test -n "$(ls app/build/tablet/*/*.png 2>/dev/null)"
