@@ -91,7 +91,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("com.squareup.okio:okio:3.17.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.13.0")
     implementation("io.github.pdvrieze.xmlutil:core-android:0.91.3")
     implementation("io.github.pdvrieze.xmlutil:serialization:0.91.3")
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
