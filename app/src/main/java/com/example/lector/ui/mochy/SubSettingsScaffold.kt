@@ -5,6 +5,7 @@
 
 package com.example.lector.ui.mochy
 
+import com.example.lector.ui.anchoLectura
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
@@ -154,7 +155,8 @@ fun SubSettingsScaffold(
                 Spacer(modifier = Modifier.height(SearchBarHeight + 16.dp))
             }
 
-            content()
+            // Shiori (tablet): columna centrada de 840 dp como máximo.
+            Column(Modifier.anchoLectura()) { content() }
 
             Spacer(modifier = Modifier.height(bottomInset.calculateBottomPadding() + 24.dp))
         }

@@ -134,7 +134,8 @@ fun PaginaAjustes(titulo: String, onBack: () -> Unit, content: @Composable Colum
         title = titulo,
         onBack = onBack,
         contentPadding = 0.dp,
-    ) { Column(Modifier.anchoLectura()) { content() } }
+        content = content,
+    )
 }
 
 /*

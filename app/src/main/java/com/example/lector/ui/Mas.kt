@@ -59,7 +59,7 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
     val acento = MaterialTheme.colorScheme.primary
     Column(
         Modifier.fillMaxSize().background(LectorColors.Bg).verticalScroll(rememberScrollState()).padding(bottom = 110.dp)
-    ) { Column(Modifier.anchoLectura()) {
+    ) {
         // Cabecera: logo grande sobre un halo de acento, nombre de la app y lema.
         Box(
             Modifier.fillMaxWidth().background(
@@ -78,6 +78,7 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
             }
         }
 
+        Column(Modifier.anchoLectura()) {
         var i = 2
         GrupoMas("Lectura", Modifier.entrada(i++))
         BurbujaMas(
