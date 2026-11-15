@@ -120,7 +120,7 @@ abstract class CapturasBase(private val id: String, private val carpeta: String)
 }
 
 @RunWith(ParameterizedRobolectricTestRunner::class)
-@Config(sdk = [34], qualifiers = "w1280dp-h800dp-land-mdpi")
+@Config(sdk = [32], qualifiers = "w1280dp-h800dp-land-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CapturasTabletHorizontalTest(id: String) : CapturasBase(id, "horizontal-1280x800") {
     companion object {
@@ -130,7 +130,7 @@ class CapturasTabletHorizontalTest(id: String) : CapturasBase(id, "horizontal-12
 }
 
 @RunWith(ParameterizedRobolectricTestRunner::class)
-@Config(sdk = [34], qualifiers = "w800dp-h1280dp-port-mdpi")
+@Config(sdk = [32], qualifiers = "w800dp-h1280dp-port-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CapturasTabletVerticalTest(id: String) : CapturasBase(id, "vertical-800x1280") {
     companion object {
@@ -141,7 +141,7 @@ class CapturasTabletVerticalTest(id: String) : CapturasBase(id, "vertical-800x12
 
 /** Tablet pequeña / plegable (≥600 dp, por debajo de 840): el otro punto de corte. */
 @RunWith(ParameterizedRobolectricTestRunner::class)
-@Config(sdk = [34], qualifiers = "w600dp-h960dp-port-mdpi")
+@Config(sdk = [32], qualifiers = "w600dp-h960dp-port-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CapturasTabletPequenaTest(id: String) : CapturasBase(id, "vertical-600x960") {
     companion object {
@@ -152,7 +152,7 @@ class CapturasTabletPequenaTest(id: String) : CapturasBase(id, "vertical-600x960
 
 /** Móvil, como referencia: los cambios de tablet no deben mover nada aquí. */
 @RunWith(ParameterizedRobolectricTestRunner::class)
-@Config(sdk = [34], qualifiers = "w400dp-h800dp-port-mdpi")
+@Config(sdk = [32], qualifiers = "w400dp-h800dp-port-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CapturasMovilTest(id: String) : CapturasBase(id, "movil-400x800") {
     companion object {

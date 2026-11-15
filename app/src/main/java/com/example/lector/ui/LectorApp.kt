@@ -440,7 +440,7 @@ fun Inicio(
                         alEliminar = alEliminar,
                     )
                 }
-                LectorTab.Updates -> Box(Modifier.statusBarsPadding().padding(bottom = 76.dp)) {
+                LectorTab.Updates -> Box(Modifier.statusBarsPadding().padding(bottom = 76.dp).anchoLectura()) {
                     ActualizacionesScreen(
                         almacen = almacen, ext = ext,
                         // Abre el capítulo nuevo directamente (la ficha carga y salta al lector).
@@ -454,7 +454,7 @@ fun Inicio(
                         alBuscarGlobal = { t -> consultaGlobal = t; ruta = Ruta.BusquedaGlobal },
                     )
                 }
-                LectorTab.History -> Box(Modifier.statusBarsPadding().padding(bottom = 76.dp)) {
+                LectorTab.History -> Box(Modifier.statusBarsPadding().padding(bottom = 76.dp).anchoLectura()) {
                     HistorialScreen(
                         comics = visibles, almacen = almacen,
                         alAbrir = leerComic,
