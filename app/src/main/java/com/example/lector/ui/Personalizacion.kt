@@ -185,6 +185,7 @@ private enum class SeccionP(val titulo: String, val palabras: String) {
     INICIO("Animación de inicio", "inicio arranque agujero negro abrir"),
     RESPUESTA("Respuesta", "luz tocar tactil portada color ficha"),
     GESTOS("Gestos", "gestos deslizar izquierda derecha capitulos marcar leido descargar"),
+    BIBLIOTECA_FX("Biblioteca de animaciones y funciones", "biblioteca animaciones funciones efectos magic ui motion primitives numberflow blocks coss opensourceui"),
     ESTILO("Estilo", "estilo mochy bitchord esquinas continuas menu mantener pulsado catalogo actualizacion ventana indicador descargas carga orbes thinking orbs");
 
     fun coincide(q: String): Boolean {
@@ -199,7 +200,7 @@ private fun normalizar(t: String) = java.text.Normalizer.normalize(t.lowercase()
 
 /** Ajustes → Personalización (la «Customisation» de Mochy). */
 @Composable
-fun PersonalizacionScreen(almacen: Almacen, onBack: () -> Unit) {
+fun PersonalizacionScreen(almacen: Almacen, onBack: () -> Unit, onBibliotecaFx: () -> Unit = {}) {
     var q by rememberSaveable { mutableStateOf("") }
     val arriba = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val abajo = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -223,14 +224,14 @@ fun PersonalizacionScreen(almacen: Almacen, onBack: () -> Unit) {
             }
             vistas.forEachIndexed { i, s ->
                 if (i > 0) LineaSeccion()
-                Box(Modifier.entrada(i)) { ContenidoSeccion(s, almacen) }
+                Box(Modifier.entrada(i)) { ContenidoSeccion(s, almacen, onBibliotecaFx) }
             }
         }
     }
 }
 
 @Composable
-private fun ContenidoSeccion(s: SeccionP, almacen: Almacen) {
+private fun ContenidoSeccion(s: SeccionP, almacen: Almacen, onBibliotecaFx: () -> Unit = {}) {
     val sangrar = Modifier.sangrarHorizontal(MargenPagina)
     val radio = Aspecto.radioPortada
     when (s) {
@@ -281,6 +282,13 @@ private fun ContenidoSeccion(s: SeccionP, almacen: Almacen) {
             }
         }
         SeccionP.GESTOS -> SeccionGestos()
+        SeccionP.BIBLIOTECA_FX -> Column(
+            Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)).background(ColP.Tarjeta).pressable(onBibliotecaFx).padding(18.dp),
+        ) {
+            LText("Biblioteca de animaciones y funciones", LectorType.Section.copy(fontSize = 17.sp))
+            Spacer(Modifier.height(4.dp))
+            LText("${com.example.lector.fx.Fx.count(com.example.lector.fx.CatalogoShiori.map { it.id })} de ${com.example.lector.fx.CatalogoShiori.size} activas · blocks.so, Magic UI, coss ui, opensourceui, NumberFlow y Motion Primitives. Actívalas una a una a tu gusto.", EstiloPie, color = LectorColors.Muted)
+        }
         SeccionP.ESTILO -> SeccionEstilo()
     }
 }

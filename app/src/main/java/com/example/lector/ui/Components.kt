@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Brush
@@ -81,7 +82,7 @@ fun LText(
 fun ComicCover(comic: Comic, almacen: Almacen, modifier: Modifier = Modifier, shape: Shape = FormaPortada) {
     val portada = rememberPortada(almacen, comic.id)
     if (portada != null) androidx.compose.runtime.SideEffect { com.example.lector.ui.mochy.EstiloApp.anotarPortada("c:" + comic.id, portada.width, portada.height) }
-    Box(modifier.clip(shape).background(LectorColors.CardHigh), contentAlignment = Alignment.Center) {
+    Box(modifier.fx("tilt") { inclinar() }.fx("glow") { halo() }.clip(shape).background(LectorColors.CardHigh).fx("magiccard") { foco() }.fx("glare") { destello() }, contentAlignment = Alignment.Center) {
         when {
             portada != null ->
                 Image(bitmap = portada, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

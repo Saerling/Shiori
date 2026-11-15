@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.*
 import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
@@ -647,13 +648,23 @@ fun Visor(
             Box(Modifier.fillMaxSize().background(colorTinte(almacen.tinte).copy(alpha = almacen.intensidadTinte)))
         }
 
+        // Biblioteca de animaciones: progreso, hora/batería y confeti al terminar el capítulo.
+        if (n != null && n > 0) {
+            if (Fx.on("scrollprogress")) BarraProgresoScroll((paginaReal + 1f) / n, Modifier.align(Alignment.TopCenter).statusBarsPadding(), MaterialTheme.colorScheme.primary)
+            if (Fx.on("battery") && !barras) RelojBateria(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp).pildoraCristal(CircleShape, sombra = false).padding(horizontal = 10.dp, vertical = 4.dp), color = TintaBarra)
+            val confeti = rememberConfeti()
+            LaunchedEffect(paginaReal) { if (Fx.on("confetti") && n > 1 && paginaReal == n - 1) confeti.disparar() }
+            Confeti(confeti, Modifier.fillMaxSize())
+        }
+
         // Número de página cuando el menú está oculto.
         AnimatedVisibility(
             visible = !barras && n != null && almacen.mostrarNumeroPagina,
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
             enter = entraPildora(), exit = salePildora(),
         ) {
-            Text(
+            if (Fx.on("nf_page")) NumeroFlowGrupo(paginaReal + 1, n ?: 0, EstiloContador, Modifier.pildoraCristal(CircleShape, sombra = false).padding(horizontal = 14.dp, vertical = 5.dp), TintaBarra)
+            else Text(
                 "${paginaReal + 1} / ${n ?: 0}",
                 style = EstiloContador, color = TintaBarra,
                 modifier = Modifier.pildoraCristal(CircleShape, sombra = false).padding(horizontal = 14.dp, vertical = 5.dp),

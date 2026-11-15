@@ -96,6 +96,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.lector.fx.Fx.init(this)
         Fallos.instalar(applicationContext)
         // Si la memoria aprieta mientras trabaja una fuente: se vacían las cachés de imágenes (se recargan solas).
         com.example.lector.ext.FuentesEnUso.alLiberarMemoria = { liberarMemoria() }

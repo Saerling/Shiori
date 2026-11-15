@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import com.example.lector.fx.aparecerDifuso
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -36,6 +37,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun Modifier.entrada(indice: Int, pasoMs: Int = 60): Modifier {
     if (MovimientoReducido.activo) return this
+    if (com.example.lector.fx.Fx.on("blurfade") || com.example.lector.fx.Fx.on("inview")) return this.then(Modifier.aparecerDifuso(indice.coerceIn(0, 8), 40))
     val visto = com.example.lector.ui.mochy.rememberRevealSeenState()
     return this.revealOnAppear(
         key = "entrada",
