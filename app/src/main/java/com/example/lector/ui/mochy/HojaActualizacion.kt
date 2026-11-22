@@ -81,6 +81,7 @@ fun HojaActualizacion(
     val descargando = estado is EstadoDescarga.Descargando
     key(vuelta) {
         PopupSheet(onClosed = { if (descargando) vuelta++ else onDismiss() }) {
+            if (com.example.lector.fx.fxOn("th_stickers")) { com.example.lector.ui.StickersNovedad(); Spacer(Modifier.height(14.dp)) }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Box(Modifier.size(60.dp).clip(SuaveShape(16.dp)).background(MenuRowSurface), Alignment.Center) {
                     LogoApp(Modifier.size(44.dp), conFondo = false)

@@ -21,7 +21,16 @@ import androidx.compose.ui.text.font.FontWeight
 import java.io.File
 import android.graphics.Color as ColorAndroid
 
-val Inter = FontFamily(
+/** Atkinson Hyperlegible (idea de Threads «th_fuente»). */
+val FuenteLegible = FontFamily(
+    Font(R.font.atkinson_regular, FontWeight.Normal),
+    Font(R.font.atkinson_regular, FontWeight.Medium),
+    Font(R.font.atkinson_bold, FontWeight.SemiBold),
+    Font(R.font.atkinson_bold, FontWeight.Bold),
+)
+
+// Se decide una vez al arrancar (Fx.init va antes en MainActivity): cambiarla pide reiniciar Shiori.
+val Inter = if (com.example.lector.fx.Fx.on("th_fuente")) FuenteLegible else FontFamily(
     Font(R.font.inter_regular, FontWeight.Normal),
     Font(R.font.inter_medium, FontWeight.Medium),
     Font(R.font.inter_semibold, FontWeight.SemiBold),

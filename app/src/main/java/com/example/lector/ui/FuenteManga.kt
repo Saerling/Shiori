@@ -579,6 +579,12 @@ fun FichaMangaScreen(
             }
             if (fi != null) {
                 if (info) {
+                item(key = "th_modulos", contentType = "th_modulos") {
+                    if (fxOn("th_modulos")) ModulosFicha(
+                        fi.detalle.estado, fi.capitulos.size, fi.capitulos.count { ext.esLeido(f.id, manga.url, it.url) },
+                        f.nombre, fi.capitulos.maxOfOrNull { it.fecha } ?: 0L,
+                    )
+                }
                 if (generos.isNotEmpty()) {
                     item(key = "generos", contentType = "generos") {
                         Row(

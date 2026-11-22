@@ -87,7 +87,9 @@ fun BusquedaGlobalScreen(
     val glassState = remember { GlassState() }
     val collapse = rememberCollapseProgress(listState)
     val progressProvider = remember(collapse) { { collapse.value } }
-    val enviar: (String) -> Unit = { texto -> enviada = texto.trim(); focusManager.clearFocus() }
+    val recientesFx = com.example.lector.fx.fxOn("th_recientes")
+    LaunchedEffect(Unit) { BusquedasRecientes.iniciar(ctx) }
+    val enviar: (String) -> Unit = { texto -> enviada = texto.trim(); focusManager.clearFocus(); if (recientesFx) BusquedasRecientes.anotar(texto) }
     val alto = searchTopBarHeight(withTitle = true, extra = 50.dp, titleBlockHeight = LibraryTitleBlockHeight)
     val abajo = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
@@ -102,6 +104,9 @@ fun BusquedaGlobalScreen(
                 fuentes.isEmpty() -> MensajeVacio(
                     "No hay fuentes. Instala una extensión y pulsa «Confiar» (o desactiva «Solo ancladas»).",
                     modifier = Modifier.padding(top = alto),
+                )
+                enviada.isBlank() && recientesFx -> ChipsRecientes(
+                    { q -> consulta = TextFieldValue(q, TextRange(q.length)); enviar(q) }, Modifier.padding(top = alto),
                 )
                 enviada.isBlank() -> MensajeVacio("Escribe un título y pulsa buscar.", modifier = Modifier.padding(top = alto))
                 else -> LazyColumn(

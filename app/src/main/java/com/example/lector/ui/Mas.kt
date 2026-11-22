@@ -107,6 +107,8 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
             ) { Interruptor(nsfw, { com.example.lector.ModoContenido.fijar(if (it) com.example.lector.ModoContenido.Modo.NSFW else com.example.lector.ModoContenido.Modo.NORMAL) }) }
         }
 
+        if (com.example.lector.fx.fxOn("th_perfil")) PerfilLector(almacen, Modifier.entrada(i++))
+
         GrupoMas("Añadir", Modifier.entrada(i++))
         BurbujaMas(Icons.Rounded.Add, "Añadir cómic", "Archivo .cbz, .zip o .pdf de tu móvil", Modifier.entrada(i++), onClick = onAdd)
         BurbujaMas(Icons.Rounded.AddCircle, "Añadir carpeta", "Una carpeta de imágenes (o con capítulos)", Modifier.entrada(i++), onClick = onAddFolder)
@@ -210,6 +212,7 @@ fun EstadisticasScreen(comics: List<Comic>, almacen: Almacen, ext: ExtManager, o
         com.example.lector.ui.bitchord.ReplayTarjeta(almacen) { verReplay = true }
         // Biblioteca de animaciones: Daily Activity Calendar / Github Contribution con tu historial real.
         if (com.example.lector.fx.fxOn("activity")) MapaLecturaShiori(almacen)
+        if (com.example.lector.fx.fxOn("th_graficas")) GraficaSemanal(almacen, comics)
         // Anillo de la biblioteca (terminados / en curso / sin empezar) que se dibuja al entrar.
         AnilloBiblioteca(terminados, enCurso, sinEmpezar, comics.size)
         TituloSeccion("Biblioteca")

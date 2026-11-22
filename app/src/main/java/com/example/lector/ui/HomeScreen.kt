@@ -195,6 +195,7 @@ fun HomeScreen(
                     onLongPress = pulsacionLarga,
                 )
             }
+            item(key = "th_resumen", contentType = "th_resumen") { if (com.example.lector.fx.fxOn("th_resumen")) ResumenInicio(comics) }
 
             if (recientes.isNotEmpty()) {
                 homeItem("recientes_title", revealSeen, "title") {

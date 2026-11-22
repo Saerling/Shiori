@@ -264,6 +264,7 @@ fun ChipSel(texto: String, seleccionado: Boolean, onLongClick: (() -> Unit)? = n
         shape = RoundedCornerShape(cornerRadius),
         border = null,
         modifier = Modifier
+            .then(if (com.example.lector.fx.fxOn("th_pills")) Modifier.saltoAlElegir(isSelected) else Modifier)
             .then(if (onLongClick != null) Modifier.pulsacionLarga { largo?.invoke() } else Modifier)
             .animateContentSize(
                 animationSpec = spring(

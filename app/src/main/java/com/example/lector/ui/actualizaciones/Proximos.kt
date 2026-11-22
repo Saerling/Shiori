@@ -5,6 +5,7 @@
 // paginador y días con la portada del manga previsto.
 package com.example.lector.ui.actualizaciones
 
+import com.example.lector.ui.ondaSeleccion
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
@@ -444,6 +445,7 @@ private fun DiaCalendario(
     Box(
         Modifier.fillMaxSize()
             .graphicsLayer { scaleX = escala; scaleY = escala }
+            .then(if (com.example.lector.fx.fxOn("th_calendario")) Modifier.ondaSeleccion(elegido, acento) else Modifier)
             .clip(forma)
             .background(
                 when {

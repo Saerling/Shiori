@@ -209,7 +209,8 @@ fun MigrarScreen(
                 Column {
                     Text("«${m.titulo}» sustituirá a «${comic.titulo}» en tu biblioteca.")
                     Spacer(Modifier.size(8.dp))
-                    Text("Se conservan categorías y portada; los capítulos leídos se emparejan por número. Las descargas de la fuente anterior no se mueven.")
+                    if (com.example.lector.fx.fxOn("th_confirmar")) ResumenMigracion(origen.nombre, f.nombre, comic, capsOrigen?.size)
+                    else Text("Se conservan categorías y portada; los capítulos leídos se emparejan por número. Las descargas de la fuente anterior no se mueven.")
                     if (migrando) {
                         Spacer(Modifier.size(12.dp))
                         IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.dp, estado = com.example.lector.ui.orbes.EstadoOrbe.WEAVING)

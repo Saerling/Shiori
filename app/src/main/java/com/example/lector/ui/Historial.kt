@@ -162,6 +162,9 @@ fun HistorialScreen(
         } else {
             val semanaFx = com.example.lector.fx.fxOn("weekstrip")
             LazyColumn(contentPadding = PaddingValues(bottom = 190.dp)) {
+                // Ideas de Threads: racha de lectura y gráfica semanal.
+                item(key = "th_racha") { if (com.example.lector.fx.fxOn("th_racha")) RachaLectura(almacen, comics) }
+                item(key = "th_graficas") { if (com.example.lector.fx.fxOn("th_graficas")) GraficaSemanal(almacen, comics) }
                 // Biblioteca de animaciones: Week Strip Calendar — toca un día para ver solo lo de ese día.
                 if (semanaFx) item(key = "fx_semana") {
                     androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { com.example.lector.fx.TiraSemana(diaFx ?: -1, { diaFx = if (diaFx == it) null else it }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
