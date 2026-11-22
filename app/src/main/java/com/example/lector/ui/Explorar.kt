@@ -1268,7 +1268,8 @@ internal fun CampoBusqueda(valor: String, alCambiar: (String) -> Unit, pista: St
         cursorBrush = SolidColor(SearchColors.Primary),
         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
         keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { focusManager.clearFocus() }),
-        modifier = Modifier.onFocusChanged { foco = it.isFocused }.then(if (foco && fxOn("searchinput")) Modifier.hazBorde(24.dp, MaterialTheme.colorScheme.primary) else Modifier),
+        modifier = Modifier.onFocusChanged { foco = it.isFocused }.then(if (foco && fxOn("searchinput")) Modifier.hazBorde(24.dp, MaterialTheme.colorScheme.primary) else Modifier)
+            .then(if (fxOn("th_liquido")) Modifier.gotaLiquida(foco, valor.length) else Modifier),
         decorationBox = { inner ->
             Row(
                 Modifier.fillMaxWidth().height(SearchFieldHeight).clip(RoundedCornerShape(50))

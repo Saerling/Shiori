@@ -43,10 +43,10 @@ private const val HORIZONTE = 17.6f / 108f
  * negro, para que el agujero se vea igual sobre el tema claro; sin él, el horizonte es transparente.
  */
 @Composable
-fun LogoApp(modifier: Modifier = Modifier, conFondo: Boolean = true) {
+fun LogoApp(modifier: Modifier = Modifier, conFondo: Boolean = true, agujero: Boolean = false) {
     Box(modifier) {
         if (conFondo) Canvas(Modifier.matchParentSize()) { drawCircle(Color.Black, radius = size.minDimension * 0.33f) }
-        Image(painterResource(R.drawable.ic_launcher_foreground), contentDescription = "Shiori", modifier = Modifier.matchParentSize())
+        Image(painterResource(if (agujero) R.drawable.ic_logo_agujero else R.drawable.ic_launcher_foreground), contentDescription = "Shiori", modifier = Modifier.matchParentSize())
     }
 }
 
@@ -61,6 +61,13 @@ private val Caida = CubicBezierEasing(0.55f, 0f, 0.8f, 0.2f)
  */
 @Composable
 fun ArranqueOverlay(alTerminar: () -> Unit) {
+    // «Puntos» (por defecto): el icono de puntos se cierra en una lente y escribe el nombre. Ver AperturaPuntos.
+    if (Aspecto.arranque == AnimArranque.PUNTOS && !MovimientoReducido.activo) {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val tipo = remember { runCatching { androidx.core.content.res.ResourcesCompat.getFont(ctx, R.font.inter_bold) }.getOrNull() }
+        AperturaPuntos(PuntosIcono, "Shiori", tipo = tipo, alRevelar = { ArranqueRevelado.valor = it }, alTerminar = alTerminar)
+        return
+    }
     val densidad = LocalDensity.current
     val inspirar = remember { Animatable(1f) }
     val caer = remember { Animatable(0f) }
@@ -111,7 +118,7 @@ fun ArranqueOverlay(alTerminar: () -> Unit) {
                 // La luz se apaga según pasa de largo (ya casi nada cuando el icono es 5 veces mayor).
                 alpha = (1f - (e - 1.6f) / 3.4f).coerceIn(0f, 1f)
             },
-            conFondo = false,
+            conFondo = false, agujero = true,
         )
     }
 }

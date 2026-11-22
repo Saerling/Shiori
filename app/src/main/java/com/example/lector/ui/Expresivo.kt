@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -112,21 +114,29 @@ fun BotonExpresivo(
         EstiloBoton.CONTORNO, EstiloBoton.TEXTO -> Color.Transparent to (if (estilo == EstiloBoton.TEXTO) acento else LectorColors.Text)
     }
     val forma = RoundedCornerShape(50)
+    // Idea de Threads «th_optico»: interlineado recortado y el ícono compensado para centrar a la vista.
+    val optico = fxOn("th_optico")
+    val estiloTexto = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold).let {
+        if (optico) it.copy(lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center, androidx.compose.ui.text.style.LineHeightStyle.Trim.Both)) else it
+    }
     Row(
         modifier.heightIn(min = alto)
             .graphicsLayer { alpha = if (habilitado) 1f else 0.38f; scaleX = escala; scaleY = escala }
             .clip(forma).background(fondo)
             .then(if (estilo == EstiloBoton.CONTORNO) Modifier.border(1.dp, LectorColors.Linea, forma) else Modifier)
             .clickable(fuente, null, enabled = habilitado) { Tacto.tic(); onClick() }
-            .padding(horizontal = if (texto == null) 13.dp else 22.dp),
+            .then(
+                if (optico && icono != null && texto != null) Modifier.padding(start = 18.dp, end = 22.dp)
+                else Modifier.padding(horizontal = if (texto == null) 13.dp else 22.dp)
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
         if (icono != null) Icon(icono, null, tint = tinta, modifier = Modifier.size(22.dp))
         if (icono != null && texto != null) Spacer(Modifier.width(8.dp))
-        if (texto != null && fxOn("textmorph")) TextoMorph(texto, MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold), color = tinta)
+        if (texto != null && fxOn("textmorph")) TextoMorph(texto, estiloTexto, color = tinta)
         else if (texto != null) LText(
-            texto, MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
+            texto, estiloTexto,
             color = tinta, maxLines = 1,
         )
     }
@@ -139,7 +149,7 @@ fun BotonExpresivo(
 @Composable
 fun GrupoBotones(opciones: List<String>, elegida: Int, onElegir: (Int) -> Unit, modifier: Modifier = Modifier) {
     if (opciones.isEmpty()) return
-    if (fxOn("segmented")) { Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { SegmentadoDeslizante(opciones, elegida, onElegir, color = MaterialTheme.colorScheme.primary) } }; return }
+    if (fxOn("segmented")) { Box(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), contentAlignment = Alignment.Center) { androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { SegmentadoDeslizante(opciones, elegida, onElegir, color = MaterialTheme.colorScheme.primary) } }; return }
     val pos = remember { Animatable(elegida.toFloat()) }
     androidx.compose.runtime.LaunchedEffect(elegida) {
         if (Mov.reducido) pos.snapTo(elegida.toFloat())
@@ -216,7 +226,7 @@ fun IndicadorCarga(
     // Qué está haciendo la app: elige la animación del thinking orb (Personalización → Estilo).
     estado: com.example.lector.ui.orbes.EstadoOrbe = com.example.lector.ui.orbes.EstadoOrbe.BREATHING,
 ) {
-    if (fxOn("spinner")) { Box(modifier, contentAlignment = Alignment.Center) { Girador(Modifier.fillMaxSize(.8f), color) }; return }
+    if (fxOn("spinner")) { Box(modifier.size(28.dp), contentAlignment = Alignment.Center) { Girador(Modifier.fillMaxSize(.8f), color) }; return }
     if (com.example.lector.ui.mochy.EstiloApp.orbes) {
         val estados = com.example.lector.ui.orbes.EstadoOrbe.entries
         val variar = com.example.lector.ui.mochy.EstiloApp.variarOrbes

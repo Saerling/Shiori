@@ -78,6 +78,7 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
             }
         }
 
+        Column(Modifier.anchoLectura()) {
         var i = 2
         GrupoMas("Lectura", Modifier.entrada(i++))
         BurbujaMas(
@@ -105,6 +106,8 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
                 Modifier.entrada(i++), destacado = nsfw, onClick = { com.example.lector.ModoContenido.fijar(if (nsfw) com.example.lector.ModoContenido.Modo.NORMAL else com.example.lector.ModoContenido.Modo.NSFW) },
             ) { Interruptor(nsfw, { com.example.lector.ModoContenido.fijar(if (it) com.example.lector.ModoContenido.Modo.NSFW else com.example.lector.ModoContenido.Modo.NORMAL) }) }
         }
+
+        if (com.example.lector.fx.fxOn("th_perfil")) PerfilLector(almacen, Modifier.entrada(i++))
 
         GrupoMas("Añadir", Modifier.entrada(i++))
         BurbujaMas(Icons.Rounded.Add, "Añadir cómic", "Archivo .cbz, .zip o .pdf de tu móvil", Modifier.entrada(i++), onClick = onAdd)
@@ -136,7 +139,7 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
         }
         BurbujaMas(Icons.Rounded.Settings, "Ajustes", null, Modifier.entrada(i++), onClick = { onRuta(Ruta.Ajustes) })
         BurbujaMas(Icons.Rounded.Face, "Acerca de", null, Modifier.entrada(i), onClick = { onRuta(Ruta.AcercaDe) })
-    }
+    } }
 }
 
 @Composable
@@ -209,6 +212,7 @@ fun EstadisticasScreen(comics: List<Comic>, almacen: Almacen, ext: ExtManager, o
         com.example.lector.ui.bitchord.ReplayTarjeta(almacen) { verReplay = true }
         // Biblioteca de animaciones: Daily Activity Calendar / Github Contribution con tu historial real.
         if (com.example.lector.fx.fxOn("activity")) MapaLecturaShiori(almacen)
+        if (com.example.lector.fx.fxOn("th_graficas")) GraficaSemanal(almacen, comics)
         // Anillo de la biblioteca (terminados / en curso / sin empezar) que se dibuja al entrar.
         AnilloBiblioteca(terminados, enCurso, sinEmpezar, comics.size)
         TituloSeccion("Biblioteca")

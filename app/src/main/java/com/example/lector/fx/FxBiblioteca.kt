@@ -27,11 +27,11 @@ import androidx.compose.ui.unit.sp
 /** Un componente de la biblioteca. [id] es la clave del interruptor; [uso] dice dónde actúa en esta app. */
 data class FxItem(val id: String, val nombre: String, val origen: String, val uso: String, val demo: String = id, val vista: (@Composable () -> Unit)? = null)
 
-val OrigenesFx = listOf("blocks.so", "Magic UI", "coss ui", "opensourceui", "NumberFlow", "Motion Primitives")
+val OrigenesFx = listOf("Threads", "blocks.so", "Magic UI", "coss ui", "opensourceui", "NumberFlow", "Motion Primitives")
 val UrlOrigenFx = mapOf(
     "blocks.so" to "https://blocks.so/", "Magic UI" to "https://magicui.design/docs/components",
     "coss ui" to "https://coss.com/ui/docs/components", "opensourceui" to "https://opensourceui.in/components",
-    "NumberFlow" to "https://number-flow.barvian.me/", "Motion Primitives" to "https://motion-primitives.com/docs",
+    "NumberFlow" to "https://number-flow.barvian.me/", "Threads" to "https://www.threads.com/search?q=UIUX%20Design", "Motion Primitives" to "https://motion-primitives.com/docs",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

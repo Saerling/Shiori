@@ -602,7 +602,8 @@ fun PlaylistHeader(
             }
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PlayPill(label = playLabel, enabled = playEnabled, onClick = onPlayClick)
+                // En pantallas estrechas el texto del botón se recorta (…) antes que empujar los botones redondos fuera.
+                Box(Modifier.weight(1f, fill = false)) { PlayPill(label = playLabel, enabled = playEnabled, onClick = onPlayClick) }
                 Spacer(Modifier.width(9.dp))
                 actions()
             }
@@ -664,6 +665,7 @@ internal fun PlayPill(label: String, enabled: Boolean, onClick: () -> Unit) {
                 style = PillLabelStyle,
                 color = content,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

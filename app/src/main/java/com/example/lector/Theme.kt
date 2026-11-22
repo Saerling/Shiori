@@ -21,7 +21,16 @@ import androidx.compose.ui.text.font.FontWeight
 import java.io.File
 import android.graphics.Color as ColorAndroid
 
-val Inter = FontFamily(
+/** Atkinson Hyperlegible (idea de Threads «th_fuente»). */
+val FuenteLegible = FontFamily(
+    Font(R.font.atkinson_regular, FontWeight.Normal),
+    Font(R.font.atkinson_regular, FontWeight.Medium),
+    Font(R.font.atkinson_bold, FontWeight.SemiBold),
+    Font(R.font.atkinson_bold, FontWeight.Bold),
+)
+
+// Se decide una vez al arrancar (Fx.init va antes en MainActivity): cambiarla pide reiniciar Shiori.
+val Inter = if (com.example.lector.fx.Fx.on("th_fuente")) FuenteLegible else FontFamily(
     Font(R.font.inter_regular, FontWeight.Normal),
     Font(R.font.inter_medium, FontWeight.Medium),
     Font(R.font.inter_semibold, FontWeight.SemiBold),
@@ -73,8 +82,14 @@ fun textoSobre(color: Color): Color =
 object ColorPortada {
     fun de(archivo: File): Color? {
         if (!archivo.exists()) return null
-        val original = BitmapFactory.decodeFile(archivo.path) ?: return null
+        // Solo hacen falta 24×24 px: se decodifica reducida (se llama desde la composición, en el hilo principal).
+        val medidas = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(archivo.path, medidas)
+        var muestra = 1
+        while (minOf(medidas.outWidth, medidas.outHeight) / (muestra * 2) >= 48) muestra *= 2
+        val original = BitmapFactory.decodeFile(archivo.path, BitmapFactory.Options().apply { inSampleSize = muestra }) ?: return null
         val chico = Bitmap.createScaledBitmap(original, 24, 24, true)
+        if (chico !== original) original.recycle()
 
         // Agrupa los píxeles por tono (12 grupos de 30°) y da más peso a los vivos y claros.
         val hsv = FloatArray(3)

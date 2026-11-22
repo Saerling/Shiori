@@ -87,24 +87,53 @@ fun Modifier.fx(id: String, block: Modifier.() -> Modifier): Modifier = composed
 
 private val Acc = Color(0xFF7C9CFF)
 
+/**
+ * Bucle infinito de adorno. Con «quitar animaciones» (MovimientoReducido) la escala de duración ya es 0 y la
+ * transición se quedaría en su valor final pero seguiría pidiendo fotogramas; aquí se devuelve ese mismo valor fijo
+ * sin transición, así se ve igual y no gasta batería.
+ */
+@Composable
+private fun bucle(desde: Float, hasta: Float, spec: InfiniteRepeatableSpec<Float>, label: String): State<Float> =
+    if (com.example.lector.ui.MovimientoReducido.activo) remember(hasta) { mutableFloatStateOf(hasta) }
+    else rememberInfiniteTransition(label = label).animateFloat(desde, hasta, spec, label = label)
+
+/** Puntos del grano por semilla: se generan una vez para toda la app (antes, 1400 pares por cada superficie con grano). */
+private val cacheRuido = HashMap<Int, FloatArray>()
+private fun puntosRuido(seed: Int): FloatArray = synchronized(cacheRuido) {
+    cacheRuido.getOrPut(seed) { val r = Random(seed); FloatArray(1400 * 3).also { a -> for (i in 0 until 1400) { a[i * 3] = r.nextFloat(); a[i * 3 + 1] = r.nextFloat(); a[i * 3 + 2] = r.nextFloat() } } }
+}
+
 /* ───────────────────────── Fondos y texturas ───────────────────────── */
 
 /** Grano fino (Magic UI Noise Texture / opensourceui Fine Grain). Se genera una vez y se reutiliza. */
-fun Modifier.noise(alpha: Float = 0.06f, seed: Int = 7): Modifier = composed {
-    val pts = remember(seed) { val r = Random(seed); List(1400) { Offset(r.nextFloat(), r.nextFloat()) to r.nextFloat() } }
-    drawWithCache {
-        onDrawWithContent {
-            drawContent()
-            pts.forEach { (o, b) -> drawCircle(if (b > .5f) Color.White else Color.Black, 0.8f, Offset(o.x * size.width, o.y * size.height), alpha * (0.5f + b)) }
-        }
+fun Modifier.noise(alpha: Float = 0.06f, seed: Int = 7): Modifier = drawWithCache {
+    val pts = puntosRuido(seed)
+    onDrawWithContent {
+        drawContent()
+        var i = 0
+        while (i < pts.size) { val b = pts[i + 2]; drawCircle(if (b > .5f) Color.White else Color.Black, 0.8f, Offset(pts[i] * size.width, pts[i + 1] * size.height), alpha * (0.5f + b)); i += 3 }
     }
 }
 
 enum class Patron { Puntos, Cuadricula, Rayas, Hexagonos, Diagonal, Milimetrado, Lineas }
 
 /** Patrones de fondo: Dot / Grid / Striped / Hexagon Pattern (Magic UI) y Dot Grid, Graph Paper, Line Grid, Diagonal Box (opensourceui). */
-fun Modifier.patron(tipo: Patron, color: Color = Color(0x33888888), paso: Dp = 22.dp): Modifier = drawBehind {
-    val s = paso.toPx()
+fun Modifier.patron(tipo: Patron, color: Color = Color(0x33888888), paso: Dp = 22.dp): Modifier = drawWithCache {
+    val s = paso.toPx(); val ancho = size.width; val alto = size.height
+    // Hexágonos: los trazados dependen solo del tamaño; se construyen una vez y no en cada dibujo.
+    val hexagonos: List<Path> = if (tipo != Patron.Hexagonos) emptyList() else buildList {
+        val r = s / 1.7f; val w = sqrt(3f) * r; var fila = 0; var y = 0f
+        while (y < alto + r) {
+            var x = if (fila % 2 == 0) 0f else w / 2
+            while (x < ancho + w) {
+                val p = Path(); for (i in 0..5) { val a = Math.toRadians((60 * i - 30).toDouble()); val px = x + r * cos(a).toFloat(); val py = y + r * sin(a).toFloat(); if (i == 0) p.moveTo(px, py) else p.lineTo(px, py) }; p.close()
+                add(p); x += w
+            }
+            y += r * 1.5f; fila++
+        }
+    }
+    val trazo = Stroke(1f)
+    onDrawBehind {
     when (tipo) {
         Patron.Puntos -> { var y = s / 2; while (y < size.height) { var x = s / 2; while (x < size.width) { drawCircle(color, 1.6f, Offset(x, y)); x += s }; y += s } }
         Patron.Cuadricula, Patron.Milimetrado -> {
@@ -114,27 +143,21 @@ fun Modifier.patron(tipo: Patron, color: Color = Color(0x33888888), paso: Dp = 2
         }
         Patron.Lineas -> { var y = s * 1.5f; while (y < size.height) { drawLine(color, Offset(0f, y), Offset(size.width, y), 1.2f); y += s } }
         Patron.Rayas, Patron.Diagonal -> { var x = -size.height; while (x < size.width) { drawLine(color, Offset(x, size.height), Offset(x + size.height, 0f), if (tipo == Patron.Rayas) 6f else 1f); x += s } }
-        Patron.Hexagonos -> {
-            val r = s / 1.7f; val w = sqrt(3f) * r; var fila = 0; var y = 0f
-            while (y < size.height + r) {
-                var x = if (fila % 2 == 0) 0f else w / 2
-                while (x < size.width + w) {
-                    val p = Path(); for (i in 0..5) { val a = Math.toRadians((60 * i - 30).toDouble()); val px = x + r * cos(a).toFloat(); val py = y + r * sin(a).toFloat(); if (i == 0) p.moveTo(px, py) else p.lineTo(px, py) }; p.close()
-                    drawPath(p, color, style = Stroke(1f)); x += w
-                }
-                y += r * 1.5f; fila++
-            }
-        }
+        Patron.Hexagonos -> hexagonos.forEach { drawPath(it, color, style = trazo) }
+    }
     }
 }
 
 /** Fondos degradados animados (Aurora, mallas y gradientes de opensourceui + Light Rays de Magic UI). */
 @Composable
 fun FondoGradiente(colores: List<Color>, modifier: Modifier = Modifier, animado: Boolean = true) {
-    val t = if (animado) rememberInfiniteTransition(label = "aur").animateFloat(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Reverse), label = "t").value else 0f
+    // El valor se lee al dibujar (no al componer): así no se recompone en cada fotograma.
+    val ts = if (animado) bucle(0f, 1f, infiniteRepeatable(tween(14000, easing = LinearEasing), RepeatMode.Reverse), "aur") else null
+    val resto = remember(colores) { colores.drop(1) }
     Canvas(modifier) {
+        val t = ts?.value ?: 0f
         drawRect(colores.first().copy(alpha = 1f))
-        colores.drop(1).forEachIndexed { i, c ->
+        resto.forEachIndexed { i, c ->
             val a = t * 2 * PI.toFloat() + i * 1.7f
             val cx = size.width * (0.5f + 0.35f * cos(a)); val cy = size.height * (0.5f + 0.35f * sin(a * .8f))
             drawCircle(Brush.radialGradient(listOf(c, Color.Transparent), Offset(cx, cy), size.maxDimension * .6f), size.maxDimension * .6f, Offset(cx, cy))
@@ -213,7 +236,7 @@ fun FondoOndas(modifier: Modifier = Modifier, color: Color = Acc) {
 
 @Composable
 fun Particulas(modifier: Modifier = Modifier, n: Int = 40, color: Color = Color.White) {
-    val ps = remember { List(n) { floatArrayOf(Random.nextFloat(), Random.nextFloat(), Random.nextFloat() * .002f + .0005f, Random.nextFloat() * 2f + 1f) } }
+    val ps = remember(n) { List(n) { floatArrayOf(Random.nextFloat(), Random.nextFloat(), Random.nextFloat() * .002f + .0005f, Random.nextFloat() * 2f + 1f) } }
     var tick by remember { mutableLongStateOf(0L) }
     LaunchedEffect(Unit) { while (isActive) { withFrameMillis { tick = it } } }
     Canvas(modifier) { tick; ps.forEach { p -> p[1] = (p[1] - p[2] + 1f) % 1f; drawCircle(color.copy(alpha = .5f), p[3], Offset(p[0] * size.width, p[1] * size.height)) } }
@@ -253,28 +276,32 @@ fun Contraluz(modifier: Modifier = Modifier, radio: Dp = 40.dp, content: @Compos
 
 /** Glow Effect (Motion Primitives) / Neon Gradient Card (Magic UI): halo de color girando detrás. */
 fun Modifier.halo(colores: List<Color> = listOf(Color(0xFFFF2975), Color(0xFF00FFF1), Color(0xFF7C3AED)), radio: Dp = 22.dp): Modifier = composed {
-    val a by rememberInfiniteTransition(label = "h").animateFloat(0f, 360f, infiniteRepeatable(tween(6000, easing = LinearEasing)), label = "h")
-    drawBehind { rotate(a) { drawCircle(Brush.sweepGradient(colores + colores.first()), size.maxDimension * .62f, alpha = .35f) } }
+    val a by bucle(0f, 360f, infiniteRepeatable(tween(6000, easing = LinearEasing)), "h")
+    val paradas = remember(colores) { colores + colores.first() }
+    // El degradado no cambia con el giro: se crea una vez por tamaño y en cada fotograma solo se rota.
+    drawWithCache { val b = Brush.sweepGradient(paradas); onDrawBehind { rotate(a) { drawCircle(b, size.maxDimension * .62f, alpha = .35f) } } }
 }
 
 /** Border Beam (Magic UI) / Border Trail (Motion Primitives): un haz de luz que recorre el borde. */
 fun Modifier.hazBorde(radio: Dp = 20.dp, color: Color = Acc, ancho: Dp = 2.dp, ms: Int = 2600): Modifier = composed {
-    val a by rememberInfiniteTransition(label = "b").animateFloat(0f, 360f, infiniteRepeatable(tween(ms, easing = LinearEasing)), label = "b")
-    drawWithContent {
-        drawContent()
-        val w = ancho.toPx(); val r = radio.toPx()
-        rotate(0f) {
+    val a by bucle(0f, 360f, infiniteRepeatable(tween(ms, easing = LinearEasing)), "b")
+    drawWithCache {
+        val w = ancho.toPx(); val r = radio.toPx(); val trazo = Stroke(w)
+        onDrawWithContent {
+            drawContent()
             val b = Brush.sweepGradient(0f to Color.Transparent, ((a / 360f) - .08f).coerceAtLeast(0f) to Color.Transparent, (a / 360f) to color, ((a / 360f) + .001f).coerceAtMost(1f) to Color.Transparent, 1f to Color.Transparent, center = center)
-            drawRoundRect(b, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r), style = Stroke(w))
+            drawRoundRect(b, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r), style = trazo)
         }
     }
 }
 
 /** Shine Border / Shimmer (Magic UI): borde degradado que brilla. */
 fun Modifier.bordeBrillante(radio: Dp = 20.dp, colores: List<Color> = listOf(Color(0xFFA07CFE), Color(0xFFFE8FB5), Color(0xFFFFBE7B))): Modifier = composed {
-    val t by rememberInfiniteTransition(label = "s").animateFloat(0f, 1f, infiniteRepeatable(tween(3000, easing = LinearEasing)), label = "s")
-    drawWithContent { drawContent(); val o = t * size.width * 2 - size.width
-        drawRoundRect(Brush.linearGradient(colores + colores.first(), Offset(o, 0f), Offset(o + size.width, size.height), TileMode.Mirror), cornerRadius = CornerRadius(radio.toPx()), style = Stroke(1.5.dp.toPx())) }
+    val t by bucle(0f, 1f, infiniteRepeatable(tween(3000, easing = LinearEasing)), "s")
+    val paradas = remember(colores) { colores + colores.first() }
+    drawWithCache { val esquina = CornerRadius(radio.toPx()); val trazo = Stroke(1.5.dp.toPx())
+        onDrawWithContent { drawContent(); val o = t * size.width * 2 - size.width
+            drawRoundRect(Brush.linearGradient(paradas, Offset(o, 0f), Offset(o + size.width, size.height), TileMode.Mirror), cornerRadius = esquina, style = trazo) } }
 }
 
 /** Magic Card (Magic UI) / Spotlight (Motion Primitives): foco de luz que sigue al dedo. */
@@ -342,7 +369,7 @@ fun Modifier.aparecerDifuso(indice: Int = 0, pasoMs: Int = 40): Modifier = compo
 
 /** Pulsating Button (Magic UI): pulso suave alrededor. */
 fun Modifier.pulso(color: Color = Acc, radio: Dp = 24.dp): Modifier = composed {
-    val t by rememberInfiniteTransition(label = "p").animateFloat(0f, 1f, infiniteRepeatable(tween(1600)), label = "p")
+    val t by bucle(0f, 1f, infiniteRepeatable(tween(1600)), "p")
     drawBehind { val e = 10.dp.toPx() * t; drawRoundRect(color.copy(alpha = (1 - t) * .45f), Offset(-e, -e), Size(size.width + 2 * e, size.height + 2 * e), CornerRadius(radio.toPx() + e)) }
 }
 
@@ -395,8 +422,10 @@ fun CasillaTriCoss(estado: androidx.compose.ui.state.ToggleableState, modifier: 
 @Composable
 fun BarraProgresoCoss(progreso: Float?, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary, pista: Color = color.copy(alpha = .18f)) {
     val f by animateFloatAsState((progreso ?: 0f).coerceIn(0f, 1f), spring(stiffness = 300f), label = "pc")
-    val t by rememberInfiniteTransition(label = "pi").animateFloat(-.4f, 1.2f, infiniteRepeatable(tween(1300, easing = FastOutSlowInEasing)), label = "pi")
+    // El brillo que corre solo existe en la barra indeterminada: con progreso no hay bucle gastando fotogramas.
+    val ts = if (progreso == null) bucle(-.4f, 1.2f, infiniteRepeatable(tween(1300, easing = FastOutSlowInEasing)), "pi") else null
     Canvas(modifier.fillMaxWidth().height(4.dp)) {
+        val t = ts?.value ?: 0f
         val r = CornerRadius(size.height / 2)
         drawRoundRect(pista, cornerRadius = r)
         if (progreso != null) drawRoundRect(Brush.horizontalGradient(listOf(color.copy(alpha = .55f), color), 0f, size.width * f), size = Size(size.width * f, size.height), cornerRadius = r)
@@ -415,6 +444,8 @@ fun textoContando(texto: String): String {
     return texto.substring(0, primero) + actual + texto.substring(ultimo + 1)
 }
 
+private val ColoresConfeti = listOf(Color(0xFFFF4D6D), Color(0xFFFFD166), Color(0xFF06D6A0), Color(0xFF118AB2), Color(0xFFB388FF))
+
 /** Confetti (Magic UI). Llama a disparar() para lanzarlo. */
 class ConfetiEstado { internal var n by mutableIntStateOf(0); fun disparar() { n++ } }
 @Composable fun rememberConfeti() = remember { ConfetiEstado() }
@@ -423,7 +454,7 @@ fun Confeti(estado: ConfetiEstado, modifier: Modifier = Modifier) {
     val t = remember { Animatable(1f) }
     val ps = remember(estado.n) { List(90) { floatArrayOf(Random.nextFloat() * 2 - 1, -Random.nextFloat() * 1.6f - .4f, Random.nextFloat() * 360, Random.nextInt(5).toFloat()) } }
     LaunchedEffect(estado.n) { if (estado.n > 0) { t.snapTo(0f); t.animateTo(1f, tween(1800, easing = LinearEasing)) } }
-    val cs = listOf(Color(0xFFFF4D6D), Color(0xFFFFD166), Color(0xFF06D6A0), Color(0xFF118AB2), Color(0xFFB388FF))
+    val cs = ColoresConfeti
     if (t.value < 1f) Canvas(modifier) {
         val k = t.value
         ps.forEach { p -> val x = size.width / 2 + p[0] * size.width * .6f * k; val y = size.height * .6f + (p[1] * k + 1.4f * k * k) * size.height * .6f
@@ -485,10 +516,11 @@ fun TextoMorph(texto: String, estilo: TextStyle, modifier: Modifier = Modifier, 
 /** Animated Shiny Text / Text Shimmer / Text Shimmer Wave / Dia Text Reveal: barrido de brillo sobre el texto. */
 @Composable
 fun TextoBrillo(texto: String, estilo: TextStyle, modifier: Modifier = Modifier, base: Color = Color(0xFF9AA0AA), brillo: Color = Color.White, ola: Boolean = false) {
-    val t by rememberInfiniteTransition(label = "sh").animateFloat(-1f, 2f, infiniteRepeatable(tween(2200, easing = LinearEasing)), label = "sh")
+    val t by bucle(-1f, 2f, infiniteRepeatable(tween(2200, easing = LinearEasing)), "sh")
+    val paradas = remember(base, brillo) { listOf(base, brillo, base) }
     if (ola) Row(modifier) { texto.forEachIndexed { i, c -> val y = sin((t * 3 - i * .25f)).coerceAtLeast(0f); Text(c.toString(), Modifier.graphicsLayer { translationY = -y * 4f }, style = estilo, color = lerp(base, brillo, y)) } }
     else Text(texto, modifier.graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen).drawWithContent { drawContent()
-        drawRect(Brush.linearGradient(listOf(base, brillo, base), Offset(size.width * t - 120, 0f), Offset(size.width * t + 120, 0f)), blendMode = BlendMode.SrcIn) }, style = estilo)
+        drawRect(Brush.linearGradient(paradas, Offset(size.width * t - 120, 0f), Offset(size.width * t + 120, 0f)), blendMode = BlendMode.SrcIn) }, style = estilo)
 }
 
 /** Animated Gradient Text / Aurora Text (Magic UI): texto con degradado que se mueve. */
@@ -545,7 +577,9 @@ fun TextoComic(texto: String, modifier: Modifier = Modifier, tam: TextUnit = 34.
 fun TextoCircular(texto: String, modifier: Modifier = Modifier.size(110.dp), color: Color = Color.White) {
     val a by rememberInfiniteTransition(label = "sp").animateFloat(0f, 360f, infiniteRepeatable(tween(12000, easing = LinearEasing)), label = "sp")
     val med = rememberTextMeasurer()
-    Canvas(modifier) { rotate(a) { val n = texto.length; texto.forEachIndexed { i, c -> rotate(360f * i / n) { val l = med.measure(c.toString(), TextStyle(color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold)); drawText(l, topLeft = Offset(center.x - l.size.width / 2, 0f)) } } } }
+    // Cada letra se mide una vez (antes, en cada fotograma: la caché del medidor solo guarda 8 textos).
+    val letras = remember(texto, color, med) { texto.map { c -> med.measure(c.toString(), TextStyle(color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold)) } }
+    Canvas(modifier) { rotate(a) { val n = letras.size; letras.forEachIndexed { i, l -> rotate(360f * i / n) { drawText(l, topLeft = Offset(center.x - l.size.width / 2, 0f)) } } } }
 }
 
 /** Line Shadow Text / Kinetic Text / Text 3D Flip (Magic UI): texto con sombra de líneas y giro 3D por letra. */
@@ -573,6 +607,7 @@ fun NumeroFlow(valor: Number, estilo: TextStyle, modifier: Modifier = Modifier, 
     var previo by remember { mutableDoubleStateOf(valor.toDouble()) }
     val sube = valor.toDouble() >= previo
     SideEffect { previo = valor.toDouble() }
+    val estiloDigito = remember(estilo) { estilo.copy(fontFeatureSettings = "tnum") }
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         if (prefijo.isNotEmpty()) Text(prefijo, style = estilo, color = color)
         texto.padStart(texto.length).forEachIndexed { i, c ->
@@ -580,7 +615,7 @@ fun NumeroFlow(valor: Number, estilo: TextStyle, modifier: Modifier = Modifier, 
                 AnimatedContent(c, transitionSpec = {
                     val d = if (sube) 1 else -1
                     (slideInVertically(spring(dampingRatio = .8f, stiffness = 400f)) { it * d } + fadeIn()) togetherWith (slideOutVertically { -it * d } + fadeOut()) using SizeTransform(clip = true)
-                }, label = "d") { Text(it.toString(), style = estilo.copy(fontFeatureSettings = "tnum"), color = color) }
+                }, label = "d") { Text(it.toString(), style = estiloDigito, color = color) }
             }
         }
         if (sufijo.isNotEmpty()) Text(sufijo, style = estilo, color = color)
@@ -599,7 +634,9 @@ fun NumeroFlowGrupo(a: Int, b: Int, estilo: TextStyle, modifier: Modifier = Modi
 @Composable
 fun BarraProgresoScroll(fraccion: Float, modifier: Modifier = Modifier, color: Color = Acc, colores: List<Color>? = null) {
     val f by animateFloatAsState(fraccion.coerceIn(0f, 1f), spring(stiffness = 500f), label = "sp")
-    Box(modifier.fillMaxWidth().height(3.dp)) { Box(Modifier.fillMaxHeight().fillMaxWidth(f).background(colores?.let { Brush.horizontalGradient(it) } ?: SolidColor(color))) }
+    val pincel = remember(colores, color) { colores?.let { Brush.horizontalGradient(it) } ?: SolidColor(color) }
+    // El ancho animado se lee al dibujar: sin recomposición ni nueva medida en cada fotograma.
+    Box(modifier.fillMaxWidth().height(3.dp).drawBehind { drawRect(pincel, size = Size(size.width * f, size.height)) })
 }
 
 /** Animated Circular Progress Bar (Magic UI) / Progress Ring (opensourceui) / Meter (coss). */
@@ -615,7 +652,7 @@ fun AnilloProgreso(fraccion: Float, modifier: Modifier = Modifier.size(56.dp), c
 /** Spinner (coss) / Spin Loader (opensourceui). */
 @Composable
 fun Girador(modifier: Modifier = Modifier.size(28.dp), color: Color = Acc) {
-    val a by rememberInfiniteTransition(label = "sp").animateFloat(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), label = "a")
+    val a by bucle(0f, 360f, infiniteRepeatable(tween(900, easing = LinearEasing)), "a")
     Canvas(modifier) { for (i in 0 until 8) rotate(a + i * 45f) { drawLine(color.copy(alpha = (i + 1) / 8f), Offset(center.x, size.height * .1f), Offset(center.x, size.height * .3f), 3f, StrokeCap.Round) } }
 }
 
@@ -635,29 +672,34 @@ fun HolaApple(modifier: Modifier = Modifier.size(180.dp, 70.dp), color: Color = 
         val m = PathMeasure(); m.setPath(p, false); val d = Path(); m.getSegment(0f, m.length * f.value, d); drawPath(d, color, style = Stroke(5f, cap = StrokeCap.Round, join = StrokeJoin.Round)) }
 }
 
+private val BrilloEsqueleto = listOf(Color.Transparent, Color.White.copy(.08f), Color.Transparent)
+
 /** Skeleton (coss): rectángulo con brillo mientras carga. */
 fun Modifier.esqueleto(radio: Dp = 14.dp, base: Color = Color(0x22FFFFFF)): Modifier = composed {
-    val t by rememberInfiniteTransition(label = "sk").animateFloat(-1f, 2f, infiniteRepeatable(tween(1300, easing = LinearEasing)), label = "sk")
-    drawBehind { drawRoundRect(base, cornerRadius = CornerRadius(radio.toPx())); drawRoundRect(Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(.08f), Color.Transparent), Offset(size.width * t - 200, 0f), Offset(size.width * t + 200, 0f)), cornerRadius = CornerRadius(radio.toPx())) }
+    val t by bucle(-1f, 2f, infiniteRepeatable(tween(1300, easing = LinearEasing)), "sk")
+    drawBehind { drawRoundRect(base, cornerRadius = CornerRadius(radio.toPx())); drawRoundRect(Brush.linearGradient(BrilloEsqueleto, Offset(size.width * t - 200, 0f), Offset(size.width * t + 200, 0f)), cornerRadius = CornerRadius(radio.toPx())) }
 }
 
 /* ───────────────────────── Botones e interacción ───────────────────────── */
 
 private val Pildora = RoundedCornerShape(50)
 
+private val ColoresArcoiris = listOf(Color(0xFFFF0040), Color(0xFFFFB800), Color(0xFF00FF88), Color(0xFF00B7FF), Color(0xFFB000FF), Color(0xFFFF0040))
+
 /** Shimmer / Shiny / Rainbow / Interactive Hover Button (Magic UI). estilo: 0 shimmer, 1 shiny, 2 rainbow, 3 interactivo. */
 @Composable
 fun BotonMagico(texto: String, modifier: Modifier = Modifier, estilo: Int = 0, onClick: () -> Unit) {
-    val t by rememberInfiniteTransition(label = "bm").animateFloat(0f, 1f, infiniteRepeatable(tween(2500, easing = LinearEasing)), label = "bm")
+    // Solo el shimmer (0) y el arcoíris (2) se mueven; el valor se lee al dibujar, no al componer.
+    val ts = if (estilo == 0 || estilo == 2) bucle(0f, 1f, infiniteRepeatable(tween(2500, easing = LinearEasing)), "bm") else null
     val src = remember { MutableInteractionSource() }; val pr by src.collectIsPressedAsState()
-    val fondo: Brush = when (estilo) { 2 -> Brush.linearGradient(listOf(Color(0xFFFF0040), Color(0xFFFFB800), Color(0xFF00FF88), Color(0xFF00B7FF), Color(0xFFB000FF), Color(0xFFFF0040)), Offset(t * 800, 0f), Offset(t * 800 + 400, 0f), TileMode.Repeated); 3 -> SolidColor(if (pr) Acc else Color(0xFF1C1C22)); else -> SolidColor(Color(0xFF111114)) }
-    Box(modifier.clip(Pildora).background(fondo).then(if (estilo != 2) Modifier.bordeBrillante(50.dp) else Modifier)
+    val fondo: Modifier = when (estilo) { 2 -> Modifier.drawBehind { val t = ts?.value ?: 0f; drawRect(Brush.linearGradient(ColoresArcoiris, Offset(t * 800, 0f), Offset(t * 800 + 400, 0f), TileMode.Repeated)) }; 3 -> Modifier.background(if (pr) Acc else Color(0xFF1C1C22)); else -> Modifier.background(Color(0xFF111114)) }
+    Box(modifier.clip(Pildora).then(fondo).then(if (estilo != 2) Modifier.bordeBrillante(50.dp) else Modifier)
         .clickable(src, null, onClick = onClick).padding(horizontal = 22.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
         if (estilo == 1) TextoBrillo(texto, MaterialTheme.typography.labelLarge) else Row(verticalAlignment = Alignment.CenterVertically) {
             Text(texto, color = Color.White, style = MaterialTheme.typography.labelLarge)
             if (estilo == 3) AnimatedVisibility(pr) { Text("  →", color = Color.White) }
         }
-        if (estilo == 0) Box(Modifier.matchParentSize().drawBehind { val o = size.width * (t * 2 - .5f); drawRect(Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(.25f), Color.Transparent), Offset(o - 40, 0f), Offset(o + 40, size.height))) })
+        if (estilo == 0) Box(Modifier.matchParentSize().drawBehind { val t = ts?.value ?: 0f; val o = size.width * (t * 2 - .5f); drawRect(Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(.25f), Color.Transparent), Offset(o - 40, 0f), Offset(o + 40, size.height))) })
     }
 }
 
@@ -697,7 +739,7 @@ fun DeslizarConfirmar(texto: String, modifier: Modifier = Modifier, color: Color
     var ancho by remember { mutableFloatStateOf(1f) }; val x = remember { Animatable(0f) }; val sc = rememberCoroutineScope(); val d = LocalDensity.current
     val pomo = with(d) { 48.dp.toPx() }
     Box(modifier.fillMaxWidth().height(56.dp).clip(Pildora).background(color.copy(.14f)).onSizeChanged { ancho = it.width.toFloat() }, contentAlignment = Alignment.Center) {
-        TextoBrillo(texto, MaterialTheme.typography.labelLarge, Modifier.alpha(1f - x.value / (ancho - pomo).coerceAtLeast(1f)))
+        TextoBrillo(texto, MaterialTheme.typography.labelLarge, Modifier.graphicsLayer { alpha = 1f - x.value / (ancho - pomo).coerceAtLeast(1f) })
         Box(Modifier.align(Alignment.CenterStart).offset { IntOffset(x.value.roundToInt(), 0) }.padding(4.dp).size(48.dp).clip(CircleShape).background(color)
             .pointerInput(Unit) { detectHorizontalDragGestures(onDragEnd = { sc.launch { if (x.value > (ancho - pomo) * .85f) { x.animateTo(ancho - pomo - 8); onConfirmar(); delay(400) }; x.animateTo(0f, spring()) } }) { _, dx -> sc.launch { x.snapTo((x.value + dx).coerceIn(0f, ancho - pomo - 8)) } } },
             contentAlignment = Alignment.Center) { Text("›", color = Color.White, fontSize = 24.sp) }
@@ -793,8 +835,8 @@ fun TarjetasApiladas(n: Int, modifier: Modifier = Modifier, alto: Dp = 120.dp, t
 fun CarruselEscala(n: Int, modifier: Modifier = Modifier, item: @Composable (Int) -> Unit) {
     val st = rememberPagerState { n }
     HorizontalPager(st, modifier, contentPadding = PaddingValues(horizontal = 56.dp), pageSpacing = 12.dp) { p ->
-        val off = ((st.currentPage - p) + st.currentPageOffsetFraction).absoluteValue
-        Box(Modifier.graphicsLayer { val k = 1f - off.coerceIn(0f, 1f) * .15f; scaleX = k; scaleY = k; alpha = 1f - off.coerceIn(0f, 1f) * .4f }) { item(p) }
+        // La posición del pager se lee dentro de graphicsLayer: al deslizar solo se redibuja, no se recompone cada página.
+        Box(Modifier.graphicsLayer { val off = ((st.currentPage - p) + st.currentPageOffsetFraction).absoluteValue; val k = 1f - off.coerceIn(0f, 1f) * .15f; scaleX = k; scaleY = k; alpha = 1f - off.coerceIn(0f, 1f) * .4f }) { item(p) }
     }
 }
 
@@ -1082,7 +1124,7 @@ fun Modifier.modoGenial(emoji: String = "✨"): Modifier = composed {
     LaunchedEffect(ps.size) { while (ps.isNotEmpty()) { withFrameMillis { now = it }; ps.removeAll { now - it.third > 900 } } }
     val med = rememberTextMeasurer()
     pointerInput(Unit) { detectTapGestures { p -> val t = System.nanoTime() / 1_000_000; repeat(8) { ps.add(Triple(p, Offset(Random.nextFloat() * 2 - 1, -Random.nextFloat() - .3f), t)) } } }
-        .drawWithContent { drawContent(); ps.forEach { (o, v, t0) -> val k = ((now - t0) / 900f).coerceIn(0f, 1f); drawText(med.measure(emoji), topLeft = Offset(o.x + v.x * 120 * k, o.y + v.y * 160 * k + 200 * k * k), alpha = 1 - k) } }
+        .drawWithContent { drawContent(); if (ps.isEmpty()) return@drawWithContent; val l = med.measure(emoji); ps.forEach { (o, v, t0) -> val k = ((now - t0) / 900f).coerceIn(0f, 1f); drawText(l, topLeft = Offset(o.x + v.x * 120 * k, o.y + v.y * 160 * k + 200 * k * k), alpha = 1 - k) } }
 }
 
 /** Smooth Cursor / Pointer (Magic UI): punto suave que sigue al lápiz o al dedo. */

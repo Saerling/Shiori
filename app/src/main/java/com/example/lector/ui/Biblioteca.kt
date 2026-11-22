@@ -294,6 +294,7 @@ fun BibliotecaScreen(
     val anchoPantalla = LocalConfiguration.current.screenWidthDp
 
     Box(Modifier.fillMaxSize()) {
+        if (com.example.lector.fx.fxOn("th_ambiente")) AmbienteBiblioteca(com.example.lector.fx.Fx.variante("th_ambiente"), Modifier.matchParentSize())
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             // ---- Cabecera ----
             val acentoCab = MaterialTheme.colorScheme.primary

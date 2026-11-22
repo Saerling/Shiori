@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.TransformOrigin
@@ -575,7 +576,7 @@ fun Visor(
                     IndicadorCarga(Modifier.size(48.dp), color = MaterialTheme.colorScheme.primary, estado = com.example.lector.ui.orbes.EstadoOrbe.COMPOSING)
                     Spacer(Modifier.height(16.dp))
                     Text(cap.nombre, style = LectorType.Section, color = GrisNeutro, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 40.dp))
-                    if (fxOn("textshimmer")) TextoBrillo("Cargando capítulo…", LectorType.Label, base = GrisNeutro.copy(alpha = 0.7f), brillo = Color.White)
+                    if (fxOn("textshimmer")) TextoBrillo("Cargando capítulo…", LectorType.Label, base = GrisNeutro.copy(alpha = 0.7f), brillo = if (fondo.luminance() > 0.5f) Color.Black else Color.White)
                     else Text("Cargando capítulo…", style = LectorType.Label, color = GrisNeutro.copy(alpha = 0.7f))
                 }
                 else Column(

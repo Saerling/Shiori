@@ -198,13 +198,13 @@ fun catalogoShiori(almacen: Almacen, comics: List<Comic>, onRuta: (Ruta) -> Unit
         i("cmd", "Command Menu 01–04", "blocks.so", "En Más aparece «Comandos»: escribe y salta a cualquier pantalla") { var v by remember { mutableStateOf(false) }; BotonExpresivo("Abrir comandos", Icons.Rounded.Search, { v = true }); MenuComandos(v, comandosShiori(onRuta), { v = false }, "Buscar una pantalla o acción…") },
         i("onboarding", "Onboarding 01–07", "blocks.so", "Bienvenida de 3 pasos la próxima vez que abras Shiori") { var v by remember { mutableStateOf(false) }; BotonExpresivo("Ver la bienvenida", Icons.Rounded.PlayArrow, { v = true })
             if (v) androidx.compose.ui.window.Dialog({ v = false }, androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) { BienvenidaShiori { v = false } } },
-    )
+    ) + catalogoThreads(almacen, comics)
 }
 
 /** Ids del catálogo (para contar las activas sin construir las vistas). */
 val IdsFxShiori = listOf("blurfade", "themetoggle", "noise", "ripple", "switch", "checkbox", "segmented", "empty", "skeleton", "spinner", "dialogs", "sheet",
     "progress", "searchinput", "textmorph", "toast", "shinytext", "nf_unread", "progressring", "slidingnumber", "nf_stats", "follow", "download", "holddelete", "weekstrip", "textshimmer", "comictext", "pulsating", "tilt", "glow", "magiccard", "glare", "backlight", "marquee", "carousel",
-    "stats", "numberticker", "activity", "circularprogress", "nf_page", "scrollprogress", "battery", "confetti", "lens", "cmd", "onboarding")
+    "stats", "numberticker", "activity", "circularprogress", "nf_page", "scrollprogress", "battery", "confetti", "lens", "cmd", "onboarding") + IdsThreads
 
 // ───────────── Puntos de enganche: las piezas reales de la app pasan por aquí cuando su efecto está activo ─────────────
 

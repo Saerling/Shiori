@@ -124,7 +124,7 @@ fun PillButton(text: String, icon: ImageVector, onClick: () -> Unit, modifier: M
 @Composable
 fun SectionHeader(title: String, modifier: Modifier = Modifier) {
     Row(modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (fxOn("comictext")) TextoComic(title, tam = 22.sp, color = androidx.compose.ui.graphics.Color(0xFFFFD60A)) else LText(title, LectorType.Section)
+        if (fxOn("comictext")) TextoComic(title, Modifier.weight(1f, fill = false), tam = 22.sp, color = androidx.compose.ui.graphics.Color(0xFFFFD60A)) else LText(title, LectorType.Section)
         Icon(Icons.Rounded.KeyboardArrowRight, null, tint = LectorColors.Muted, modifier = Modifier.size(18.dp))
     }
 }

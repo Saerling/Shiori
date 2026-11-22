@@ -120,6 +120,14 @@ fun BotonAtras(onBack: () -> Unit, modifier: Modifier = Modifier) {
  * y se desliza junto al botón atrás con un desenfoque de paso, sobre una cabecera de cristal progresivo).
  * Las filas de las páginas de Shiori ponen su propio margen lateral, así que el contenido va sin él.
  */
+/**
+ * Tablet: el contenido de listas y ajustes no se estira de lado a lado; se queda en una columna centrada de como
+ * mucho 840 dp (en el móvil no cambia nada).
+ */
+fun Modifier.anchoLectura(): Modifier = this.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = AnchoLecturaMax)
+
+val AnchoLecturaMax = 840.dp
+
 @Composable
 fun PaginaAjustes(titulo: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     com.example.lector.ui.mochy.SubSettingsScaffold(
@@ -181,7 +189,6 @@ fun FilaRadio(etiqueta: String, marcada: Boolean, onClick: () -> Unit) {
 /** Botón de opción redondo: anillo gris; marcado, círculo blanco con un punto oscuro. */
 @Composable
 fun Marca(marcada: Boolean) {
-    if (fxOn("checkbox")) { CasillaCoss(marcada); return }
     val relleno by animateColorAsState(if (marcada) LectorColors.Text else Color.Transparent, tween(150), label = "marca")
     Box(
         Modifier.size(22.dp).clip(CircleShape).background(relleno)
@@ -257,6 +264,7 @@ fun ChipSel(texto: String, seleccionado: Boolean, onLongClick: (() -> Unit)? = n
         shape = RoundedCornerShape(cornerRadius),
         border = null,
         modifier = Modifier
+            .then(if (com.example.lector.fx.fxOn("th_pills")) Modifier.saltoAlElegir(isSelected) else Modifier)
             .then(if (onLongClick != null) Modifier.pulsacionLarga { largo?.invoke() } else Modifier)
             .animateContentSize(
                 animationSpec = spring(
