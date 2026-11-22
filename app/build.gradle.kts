@@ -81,7 +81,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.13.1")
     // Trabajos en segundo plano: buscar capítulos nuevos, descargas, revisar extensiones y copias automáticas.
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
 
     // --- Motor de fuentes (paso 4): source-api de Komikku/Mihon ---
     // Mismas versiones que Komikku: las extensiones se compilan contra ellas y llaman a sus métodos por nombre
