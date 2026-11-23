@@ -4,7 +4,7 @@ name: Probar en emulador
 on:
   workflow_dispatch:
   push:
-    branches: ['claude/**']
+    branches: ['claude/**', '!claude/silencio']
 
 jobs:
   probar:

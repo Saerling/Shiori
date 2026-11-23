@@ -4,7 +4,7 @@ name: Capturas de la apertura
 on:
   workflow_dispatch:
   push:
-    branches: ['claude/**']
+    branches: ['claude/**', '!claude/silencio']
     paths: ['app/src/main/java/com/example/lector/ui/AperturaPuntos.kt', 'app/src/main/java/com/example/lector/ui/PuntosIcono.kt', 'app/src/test/java/com/example/lector/ui/AperturaTest.kt', '.github/workflows/apertura.yml']
 
 jobs:
