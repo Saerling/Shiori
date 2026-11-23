@@ -1,7 +1,7 @@
 #!/bin/bash
 # Prueba rápida de Silencio: abre la app y toca cada pestaña; guarda capturas, el logcat y el informe de fallos.
 PKG=com.example.lector.silencio
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/silencio/app-silencio.apk
 adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS
 adb logcat -c
 adb shell am start -n $PKG/com.example.lector.MainActivity

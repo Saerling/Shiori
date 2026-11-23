@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,12 +56,12 @@ fun Modifier.vidrio(forma: Shape): Modifier = this
  */
 @Composable
 private fun FondoVidrioFlotante(modifier: Modifier = Modifier) =
-    FondoCristal(CristalApp, modifier, tinte = LectorColors.Cristal.copy(alpha = if (hayDesenfoque) 0.55f else 0.94f))
+    FondoCristal(CristalApp, modifier, tinte = LectorColors.Cristal.copy(alpha = if (hayDesenfoque) 0.36f else 0.9f))
 
 /** Vidrio para botones y barras dentro de las pantallas: translúcido, sin copiar el fondo. */
 @Composable
 private fun FondoVidrio(modifier: Modifier = Modifier) =
-    Box(modifier.background(if (TemaActual.oscuro) Color(0xFF2C2C2E).copy(alpha = 0.62f) else Color.White.copy(alpha = 0.7f)))
+    Box(modifier.background(if (TemaActual.oscuro) Color(0xFF3A3A3C).copy(alpha = 0.42f) else Color.White.copy(alpha = 0.55f)))
 
 /**
  * Barra de pestañas flotante: una píldora con Inicio, Biblioteca, Novedades, Historial y Más,
@@ -68,7 +69,7 @@ private fun FondoVidrio(modifier: Modifier = Modifier) =
  */
 @Composable
 fun BarraSilencio(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: Modifier = Modifier) {
-    val pestanas = remember { LectorTab.values().filter { it != LectorTab.Search } }
+    val pestanas = remember { listOf(LectorTab.Home, LectorTab.Library, LectorTab.Search, LectorTab.Updates, LectorTab.History) }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         val forma = RoundedCornerShape(32.dp)
         Box(Modifier.weight(1f).height(64.dp).vidrio(forma)) {
@@ -78,15 +79,15 @@ fun BarraSilencio(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: 
             }
         }
         Spacer(Modifier.width(10.dp))
-        val activa = selected == LectorTab.Search
+        val activa = selected == LectorTab.More
         Box(
             Modifier.size(64.dp).vidrio(CircleShape)
-                .clickable(role = Role.Tab, onClickLabel = "Explorar y buscar") { onSelect(LectorTab.Search) },
+                .clickable(role = Role.Tab, onClickLabel = "Más y ajustes") { onSelect(LectorTab.More) },
             contentAlignment = Alignment.Center,
         ) {
             FondoVidrioFlotante(Modifier.matchParentSize())
             if (activa) Box(Modifier.matchParentSize().padding(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)))
-            Icon(Icons.Rounded.Search, "Explorar", tint = if (activa) LectorColors.Text else LectorColors.Text.copy(alpha = 0.8f), modifier = Modifier.size(26.dp))
+            Icon(Icons.Rounded.Settings, "Más", tint = if (activa) LectorColors.Text else LectorColors.Text.copy(alpha = 0.8f), modifier = Modifier.size(26.dp))
         }
     }
 }
@@ -108,7 +109,7 @@ private fun PestanaSilencio(t: LectorTab, activa: Boolean, modifier: Modifier, o
         verticalArrangement = Arrangement.Center,
     ) {
         Icon(if (activa) t.icon else t.iconoApagado, null, tint = tinta, modifier = Modifier.size(22.dp))
-        LText(if (t == LectorTab.Updates) "Novedades" else t.label, LectorType.Label.copy(fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp), color = tinta, maxLines = 1)
+        LText(when (t) { LectorTab.Updates -> "Novedades"; LectorTab.Library -> "Biblioteca"; else -> t.label }, LectorType.Label.copy(fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp), color = tinta, maxLines = 1)
     }
 }
 

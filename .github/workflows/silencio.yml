@@ -16,7 +16,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: 8.9 }
       - name: Compilar APK de prueba
-        run: gradle assembleDebug
+        run: gradle assembleSilencio
       - name: Activar KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -43,4 +43,4 @@ jobs:
             captura-*.png
             logcat-*.txt
             fallos.txt
-            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/silencio/app-silencio.apk

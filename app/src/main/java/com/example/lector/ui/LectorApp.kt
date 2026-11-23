@@ -406,8 +406,10 @@ fun Inicio(
             transitionSpec = {
                 val derecha = targetState.ordinal >= initialState.ordinal
                 if (Mov.reducido) ContentTransform(fadeIn(tween(120)), fadeOut(tween(100))) else ContentTransform(
-                    slideInHorizontally { if (derecha) it / 8 else -it / 8 } + fadeIn(tween(200)),
-                    slideOutHorizontally { if (derecha) -it / 8 else it / 8 } + fadeOut(tween(200)),
+                    // Silencio: fundido suave con un leve acercamiento, sin rebote (como al cambiar de pestaña en iOS).
+                    fadeIn(tween(240, delayMillis = 60)) + scaleIn(spring(dampingRatio = 1f, stiffness = 380f), initialScale = 0.985f) +
+                        slideInHorizontally(spring(dampingRatio = 1f, stiffness = 380f)) { if (derecha) it / 24 else -it / 24 },
+                    fadeOut(tween(140)),
                 )
             }
         ) { t ->

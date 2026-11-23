@@ -35,9 +35,6 @@ android {
 
     buildTypes {
         debug {
-            // Versión de prueba «Silencio»: app aparte que se instala junto a Shiori (lee las mismas copias de seguridad).
-            applicationIdSuffix = ".silencio"
-            versionNameSuffix = "-silencio"
             signingConfig = signingConfigs.getByName("shiori")
         }
         release {
@@ -48,6 +45,14 @@ android {
             signingConfig = signingConfigs.getByName("shiori")
             // Solo para la prueba automática en el emulador (gradle assembleRelease -Pprueba).
             isDebuggable = project.hasProperty("prueba")
+        }
+        // Versión de prueba «Silencio»: optimizada como la release, pero es una app aparte que se instala junto a
+        // Shiori (lee las mismas copias de seguridad). gradle assembleSilencio
+        create("silencio") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".silencio"
+            versionNameSuffix = "-silencio"
+            matchingFallbacks += listOf("release")
         }
     }
 
