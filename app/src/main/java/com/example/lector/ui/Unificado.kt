@@ -124,29 +124,20 @@ fun DialogoAlerta(
     text: (@Composable () -> Unit)? = null,
     properties: DialogProperties = DialogProperties(),
 ) {
-    com.example.lector.ui.mochy.sheet.DefaultDialog(
-        onDismiss = onDismissRequest,
+    // Silencio: el diálogo nativo de Material 3 (atrás, TalkBack y tamaño de letra del sistema) con los colores de la app.
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismissRequest,
+        confirmButton = { CompositionLocalProvider(LocalContentColor provides LectorColors.Text) { confirmButton() } },
         modifier = modifier,
-        icon = icon,
-        title = title,
-        horizontalAlignment = Alignment.Start,
-        properties = DialogProperties(
-            properties.dismissOnBackPress, properties.dismissOnClickOutside, properties.securePolicy,
-            usePlatformDefaultWidth = false, decorFitsSystemWindows = properties.decorFitsSystemWindows,
-        ),
-        buttons = {
-            dismissButton?.let { CompositionLocalProvider(LocalContentColor provides LectorColors.Muted) { it() } }
-            confirmButton()
-        },
-    ) {
-        text?.let {
-            Box(Modifier.weight(1f, fill = false)) {
-                CompositionLocalProvider(LocalContentColor provides LectorColors.Muted) {
-                    ProvideTextStyle(MaterialTheme.typography.bodyMedium) { it() }
-                }
-            }
-        }
-    }
+        dismissButton = dismissButton?.let { d -> { CompositionLocalProvider(LocalContentColor provides LectorColors.Muted) { d() } } },
+        icon = icon, title = title,
+        text = text,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = LectorColors.Hoja,
+        iconContentColor = LectorColors.Text, titleContentColor = LectorColors.Text, textContentColor = LectorColors.Muted,
+        tonalElevation = 0.dp,
+        properties = properties,
+    )
 }
 
 /**
@@ -176,37 +167,15 @@ fun MenuShiori(expanded: Boolean, onDismissRequest: () -> Unit, modifier: Modifi
 /** Casilla al estilo Mochy: cuadrado de 22 dp con esquinas de 7 dp que se rellena con el primario y un muelle. */
 @Composable
 fun CasillaShiori(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    val acento = MaterialTheme.colorScheme.primary
-    val p by androidx.compose.animation.core.animateFloatAsState(
-        if (checked) 1f else 0f, Muelles.espacialRapido(), label = "casilla",
+    // Silencio: casilla nativa de Material 3, blanca con la marca negra.
+    androidx.compose.material3.Checkbox(
+        checked = checked,
+        onCheckedChange = onCheckedChange?.let { c -> { v: Boolean -> Tacto.tic(); c(v) } },
+        modifier = modifier, enabled = enabled,
+        colors = androidx.compose.material3.CheckboxDefaults.colors(
+            checkedColor = LectorColors.Text, uncheckedColor = LectorColors.Muted, checkmarkColor = LectorColors.Bg,
+        ),
     )
-    val forma = SuaveShape(7.dp)
-    Box(
-        modifier
-            .then(
-                if (onCheckedChange != null) Modifier.toggleable(
-                    value = checked, enabled = enabled, role = Role.Checkbox,
-                    interactionSource = remember { MutableInteractionSource() }, indication = null,
-                    onValueChange = { Tacto.tic(); onCheckedChange(it) },
-                ) else Modifier,
-            )
-            .size(48.dp)
-            .graphicsLayer { alpha = if (enabled) 1f else 0.38f },
-        Alignment.Center,
-    ) {
-        Box(
-            Modifier.size(22.dp).graphicsLayer { val e = 0.9f + 0.1f * p.coerceIn(0f, 1.1f); scaleX = e; scaleY = e }
-                .clip(forma)
-                .background(acento.copy(alpha = p.coerceIn(0f, 1f)))
-                .border(2.dp, LectorColors.Muted.copy(alpha = 1f - p.coerceIn(0f, 1f)), forma),
-            Alignment.Center,
-        ) {
-            if (p > 0.01f) Icon(
-                Icons.Rounded.Check, null, tint = com.example.lector.textoSobre(acento),
-                modifier = Modifier.size(16.dp).graphicsLayer { alpha = p.coerceIn(0f, 1f); val e = 0.6f + 0.4f * p; scaleX = e; scaleY = e },
-            )
-        }
-    }
 }
 
 /**

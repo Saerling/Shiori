@@ -213,7 +213,7 @@ fun HojaLector(onCerrar: () -> Unit, content: @Composable ColumnScope.() -> Unit
         onDismissRequest = onCerrar,
         sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        containerColor = com.example.lector.ui.mochy.sheet.MenuSurface,
+        containerColor = LectorColors.Hoja,
         contentColor = LectorColors.Text,
         tonalElevation = 0.dp,
         scrimColor = Color.Black.copy(alpha = 0.5f),

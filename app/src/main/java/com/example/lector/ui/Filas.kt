@@ -152,7 +152,7 @@ fun FilaAjuste(icon: ImageVector?, titulo: String, detalle: String? = null, onCl
 
 @Composable
 fun FilaSwitch(titulo: String, detalle: String? = null, activado: Boolean, onChange: (Boolean) -> Unit) {
-    FilaSilencio(null, titulo, detalle, { Tacto.alternar(!activado); onChange(!activado) }) { InterruptorSilencio(activado, { Tacto.alternar(it); onChange(it) }) }
+    FilaSilencio(null, titulo, detalle, { Tacto.alternar(!activado); onChange(!activado) }, final = { InterruptorSilencio(activado, null) }, interruptor = activado)
 }
 
 @Composable
@@ -202,17 +202,8 @@ fun Divisor() {
  */
 @Composable
 fun ChipSel(texto: String, seleccionado: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
-    // Píldora: blanca con texto negro al elegirla; si no, gris del sistema.
-    val fondo by animateColorAsState(if (seleccionado) LectorColors.Text else LectorColors.Card, spring(stiffness = Spring.StiffnessMediumLow), label = "chip")
-    val tinta by animateColorAsState(if (seleccionado) LectorColors.Bg else LectorColors.Text, spring(stiffness = Spring.StiffnessMediumLow), label = "chipTinta")
     val largo by rememberUpdatedState(onLongClick)
-    Box(
-        Modifier.height(36.dp).clip(CircleShape).background(fondo)
-            .then(if (onLongClick != null) Modifier.pulsacionLarga { largo?.invoke() } else Modifier)
-            .clickable(role = androidx.compose.ui.semantics.Role.Tab) { Tacto.tic(); onClick() }
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) { LText(texto, LectorType.Body.copy(fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold), color = tinta, maxLines = 1) }
+    ChipNativo(texto, seleccionado, if (onLongClick != null) Modifier.pulsacionLarga { largo?.invoke() } else Modifier, onClick)
 }
 
 /**

@@ -6,6 +6,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -82,7 +84,7 @@ fun BarraSilencio(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: 
         val activa = selected == LectorTab.More
         Box(
             Modifier.size(64.dp).vidrio(CircleShape)
-                .clickable(role = Role.Tab, onClickLabel = "Más y ajustes") { onSelect(LectorTab.More) },
+                .selectable(selected = activa, role = Role.Tab) { onSelect(LectorTab.More) },
             contentAlignment = Alignment.Center,
         ) {
             FondoVidrioFlotante(Modifier.matchParentSize())
@@ -104,7 +106,7 @@ private fun PestanaSilencio(t: LectorTab, activa: Boolean, modifier: Modifier, o
     )
     Column(
         modifier.fillMaxHeight().clip(RoundedCornerShape(28.dp)).background(fondo)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Tab, onClick = onClick),
+            .selectable(selected = activa, interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Tab, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -197,10 +199,14 @@ private fun Modifier.graphicsLayerAlpha(a: Float) = this.then(Modifier.graphicsL
 fun FilaSilencio(
     icon: androidx.compose.ui.graphics.vector.ImageVector?, titulo: String, detalle: String?,
     onClick: (() -> Unit)?, final: (@Composable () -> Unit)? = null,
+    interruptor: Boolean? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 1.dp).clip(RoundedCornerShape(16.dp)).background(LectorColors.Card)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(
+                if (interruptor != null && onClick != null) Modifier.toggleable(value = interruptor, role = Role.Switch) { onClick() }
+                else if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+            )
             .heightIn(min = 54.dp).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -219,17 +225,16 @@ fun FilaSilencio(
     }
 }
 
-/** Interruptor al estilo iOS: verde encendido, gris apagado, perilla blanca que se desliza con muelle. */
+/** Interruptor nativo de Material 3 (TalkBack, tamaño de letra y gestos del sistema) con los colores de Silencio. */
 @Composable
 fun InterruptorSilencio(activado: Boolean, onChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
-    val x by androidx.compose.animation.core.animateDpAsState(if (activado) 22.dp else 2.dp, spring(dampingRatio = 0.8f, stiffness = 700f), label = "perilla")
-    val fondo by animateColorAsState(if (activado) Color(0xFF30D158) else LectorColors.Text.copy(alpha = 0.16f), label = "fondo")
-    Box(
-        modifier.size(51.dp, 31.dp).clip(CircleShape).background(fondo)
-            .then(if (onChange != null) Modifier.clickable(role = Role.Switch) { onChange(!activado) } else Modifier),
-    ) {
-        Box(Modifier.padding(start = x, top = 2.dp).size(27.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(Color.White))
-    }
+    androidx.compose.material3.Switch(
+        checked = activado, onCheckedChange = onChange, modifier = modifier,
+        colors = androidx.compose.material3.SwitchDefaults.colors(
+            checkedThumbColor = LectorColors.Bg, checkedTrackColor = LectorColors.Text, checkedBorderColor = Color.Transparent,
+            uncheckedThumbColor = LectorColors.Muted, uncheckedTrackColor = LectorColors.CardHigh, uncheckedBorderColor = Color.Transparent,
+        ),
+    )
 }
 
 /** Tarjeta grande de «Seguir leyendo» (como las de Inicio en Apple Music): portada a sangre y franja de vidrio abajo. */
@@ -312,7 +317,7 @@ fun LibraryIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, con
     }
 }
 
-/** Categorías como control segmentado: pista gris y la elegida en blanco; se desplaza para dejar a la vista la elegida. */
+/** Categorías: FilterChip nativos de Material 3 en una fila; la elegida en blanco. Se desplaza para dejarla a la vista. */
 @Composable
 fun LibraryTabChips(labels: List<String>, counts: List<Int>?, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val estado = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -322,19 +327,27 @@ fun LibraryTabChips(labels: List<String>, counts: List<Int>?, selected: Int, onS
         contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         items(labels.size) { i ->
-            val activa = i == selected
-            val fondo by animateColorAsState(if (activa) LectorColors.Text else LectorColors.Card, spring(stiffness = Spring.StiffnessMediumLow), label = "tab")
-            val tinta by animateColorAsState(if (activa) LectorColors.Bg else LectorColors.Text, spring(stiffness = Spring.StiffnessMediumLow), label = "tabT")
-            Row(
-                Modifier.height(36.dp).clip(CircleShape).background(fondo).clickable(role = Role.Tab) { Tacto.tic(); onSelect(i) }.padding(horizontal = 15.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                LText(labels[i], LectorType.Body.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), color = tinta, maxLines = 1)
-                val c = counts?.getOrNull(i)
-                if (c != null) LText("  $c", LectorType.Label.copy(fontSize = 13.sp), color = tinta.copy(alpha = 0.6f), maxLines = 1)
-            }
+            val c = counts?.getOrNull(i)
+            ChipNativo(if (c != null) "${labels[i]}  $c" else labels[i], i == selected) { onSelect(i) }
         }
     }
+}
+
+/** Chip nativo (FilterChip de Material 3) con el aspecto Silencio: píldora gris; elegido, blanco con texto negro. */
+@Composable
+fun ChipNativo(texto: String, seleccionado: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    androidx.compose.material3.FilterChip(
+        selected = seleccionado,
+        onClick = { Tacto.tic(); onClick() },
+        label = { LText(texto, LectorType.Body.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), maxLines = 1, color = if (seleccionado) LectorColors.Bg else LectorColors.Text) },
+        modifier = modifier,
+        shape = CircleShape,
+        border = null,
+        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+            containerColor = LectorColors.Card, selectedContainerColor = LectorColors.Text,
+            labelColor = LectorColors.Text, selectedLabelColor = LectorColors.Bg,
+        ),
+    )
 }
 
 /** Encabezado de grupo (Hoy, Ayer, una fecha): negrita de 17 sp y la cuenta en gris. */
