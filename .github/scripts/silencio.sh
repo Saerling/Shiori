@@ -8,13 +8,13 @@ adb shell am start -n $PKG/com.example.lector.MainActivity
 sleep 12
 adb exec-out screencap -p > captura-0-inicio.png
 tocar() { # toca el centro del nodo con ese texto o descripción
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
+  for k in 1 2 3; do adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1; grep -q "$1" ui.xml && break; sleep 2; done
   b=$(grep -oE "(text|content-desc)=\"$1\"[^>]*bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" ui.xml | head -1 | grep -oE '\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]')
   if [ -z "$b" ]; then echo "no encontré «$1» (textos: $(grep -oE '(text|content-desc)="[^"]+"' ui.xml | head -30 | tr '\n' ' '))" >> resultado.txt; return; fi
   set -- $(echo $b | grep -oE '[0-9]+'); adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 ))
 }
 n=1
-for t in Biblioteca Novedades Historial Más Explorar Inicio; do
+for t in Biblioteca Actualizaciones Historial Más Ajustes Personalización Explorar Inicio; do
   tocar "$t"; sleep 5
   adb exec-out screencap -p > captura-$n-$t.png; n=$((n+1))
   vivo=$(adb shell pidof $PKG)

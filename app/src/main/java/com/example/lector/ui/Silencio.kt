@@ -49,9 +49,18 @@ fun Modifier.vidrio(forma: Shape): Modifier = this
     .clip(forma)
     .border(1.dp, BordeVidrio, forma)
 
+/**
+ * Vidrio que copia lo de detrás. SOLO para lo que flota fuera del contenido capturado (barra y mini lector):
+ * dentro de una pantalla se copiaría a sí mismo y el dibujo entraría en un bucle infinito.
+ */
+@Composable
+private fun FondoVidrioFlotante(modifier: Modifier = Modifier) =
+    FondoCristal(CristalApp, modifier, tinte = LectorColors.Cristal.copy(alpha = if (hayDesenfoque) 0.55f else 0.94f))
+
+/** Vidrio para botones y barras dentro de las pantallas: translúcido, sin copiar el fondo. */
 @Composable
 private fun FondoVidrio(modifier: Modifier = Modifier) =
-    FondoCristal(CristalApp, modifier, tinte = LectorColors.Cristal.copy(alpha = if (hayDesenfoque) 0.55f else 0.94f))
+    Box(modifier.background(if (TemaActual.oscuro) Color(0xFF2C2C2E).copy(alpha = 0.62f) else Color.White.copy(alpha = 0.7f)))
 
 /**
  * Barra de pestañas flotante: una píldora con Inicio, Biblioteca, Novedades, Historial y Más,
@@ -63,7 +72,7 @@ fun BarraSilencio(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: 
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         val forma = RoundedCornerShape(32.dp)
         Box(Modifier.weight(1f).height(64.dp).vidrio(forma)) {
-            FondoVidrio(Modifier.matchParentSize())
+            FondoVidrioFlotante(Modifier.matchParentSize())
             Row(Modifier.fillMaxSize().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 pestanas.forEach { t -> PestanaSilencio(t, t == selected, Modifier.weight(1f)) { onSelect(t) } }
             }
@@ -75,7 +84,7 @@ fun BarraSilencio(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: 
                 .clickable(role = Role.Tab, onClickLabel = "Explorar y buscar") { onSelect(LectorTab.Search) },
             contentAlignment = Alignment.Center,
         ) {
-            FondoVidrio(Modifier.matchParentSize())
+            FondoVidrioFlotante(Modifier.matchParentSize())
             if (activa) Box(Modifier.matchParentSize().padding(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)))
             Icon(Icons.Rounded.Search, "Explorar", tint = if (activa) LectorColors.Text else LectorColors.Text.copy(alpha = 0.8f), modifier = Modifier.size(26.dp))
         }
@@ -112,7 +121,7 @@ fun MiniSilencio(
 ) {
     val forma = RoundedCornerShape(30.dp)
     Box(modifier.fillMaxWidth().height(60.dp).vidrio(forma).clickable(onClickLabel = "Seguir leyendo", onClick = onClick)) {
-        FondoVidrio(Modifier.matchParentSize())
+        FondoVidrioFlotante(Modifier.matchParentSize())
         Row(Modifier.fillMaxSize().padding(start = 9.dp, end = 9.dp), verticalAlignment = Alignment.CenterVertically) {
             portada(Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)))
             Spacer(Modifier.width(12.dp))
