@@ -179,24 +179,8 @@ private fun Modifier.sombraCromo(forma: Shape): Modifier =
  * pestañas de Shiori. Inicio y Explorar llevan el icono a 22 dp y el resto a 24, como Home y Search en Mochy.
  */
 @Composable
-fun FloatingNavBar(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: Modifier = Modifier) {
-    val tabs = LectorTab.values()
-    val items = remember {
-        tabs.map { t ->
-            com.example.lector.ui.mochy.NavItem(
-                t.label, t.icon, t.iconoApagado,
-                if (t == LectorTab.Home || t == LectorTab.Search) 22.dp else 24.dp,
-            )
-        }
-    }
-    com.example.lector.ui.mochy.AppNavigationBar(
-        navigationItems = items,
-        selectedIndex = selected.ordinal,
-        onItemClick = { i, _ -> onSelect(tabs[i]) },
-        modifier = modifier,
-        clipped = Modifier.luzTactil().fx("noise") { noise(.07f) },
-    )
-}
+fun FloatingNavBar(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: Modifier = Modifier) =
+    BarraSilencio(selected, onSelect, modifier)
 
 /**
  * Se aplasta bajo el dedo y vuelve con un pequeño rebote. Un toque rápido dentro de una lista avisa de
@@ -245,34 +229,7 @@ fun MiniReaderGenerico(
     titulo: String, subtitulo: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     progreso: Float? = null,
     portada: @Composable (Modifier) -> Unit,
-) {
-    val forma = com.example.lector.ui.mochy.SmoothCornerShape(MiniEsquina)
-    Box(
-        modifier.fillMaxWidth().height(AltoCromo)
-            .press3D(4f, 0.985f)
-            .sombraCromo(forma)
-            .clip(forma)
-            .clickable(interactionSource = null, indication = null, onClick = onClick)
-            .drawWithContent { drawContent(); lineaCristal(MiniEsquina.toPx()) },
-    ) {
-        FondoCristal(CristalApp, Modifier.fillMaxSize())
-        Row(Modifier.fillMaxSize().padding(start = 8.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            portada(Modifier.size(48.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                LText(titulo, LectorType.Body.copy(fontSize = 15.sp, fontWeight = FontWeight.Bold), maxLines = 1)
-                LText(subtitulo, LectorType.Label, color = LectorColors.Muted, maxLines = 1)
-            }
-            Spacer(Modifier.width(6.dp))
-            Box(Modifier.size(36.dp)) { BotonMini(onClick) }
-        }
-        if (progreso != null) {
-            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.dp).background(LectorColors.Text.copy(alpha = 0.10f))) {
-                Box(Modifier.fillMaxWidth(progreso.coerceIn(0f, 1f)).fillMaxHeight().background(LectorColors.Text.copy(alpha = 0.75f)))
-            }
-        }
-    }
-}
+) = MiniSilencio(titulo, subtitulo, onClick, modifier, progreso, portada)
 
 /** Esquinas del mini lector (las de la píldora del mini reproductor de Mochy). */
 private val MiniEsquina = 20.dp

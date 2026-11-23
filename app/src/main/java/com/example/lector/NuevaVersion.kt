@@ -54,7 +54,7 @@ object NuevaVersion {
     private fun esDepurable(ctx: Context) = (ctx.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     /** Mira en GitHub la última versión publicada. Devuelve la versión si es más nueva que la instalada. */
-    suspend fun comprobar(ctx: Context): Version? = ultima(ctx)?.takeIf { it.codigo > codigoActual(ctx) }
+    suspend fun comprobar(ctx: Context): Version? = if (ctx.packageName.endsWith(".silencio")) null else ultima(ctx)?.takeIf { it.codigo > codigoActual(ctx) }
 
     /** La última versión publicada en GitHub (sea o no más nueva). null si aún no hay ninguna. */
     suspend fun ultima(ctx: Context): Version? = withContext(Dispatchers.IO) {

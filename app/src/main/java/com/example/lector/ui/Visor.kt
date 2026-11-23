@@ -891,12 +891,12 @@ private val ColorBarra: Color
     get() = when (Aspecto.superficie) {
         Superficie.SOLIDO -> LectorColors.Cristal
         Superficie.LIQUIDO -> LectorColors.Cristal.copy(alpha = 0.62f)
-        Superficie.CRISTAL -> LectorColors.Cristal.copy(alpha = 0.92f)
+        Superficie.CRISTAL -> LectorColors.Cristal.copy(alpha = 0.74f)
     }
 private val BordeBarra: Color
     get() = when {
         Aspecto.superficie == Superficie.LIQUIDO -> Color.White.copy(alpha = if (TemaActual.oscuro) 0.33f else 0.8f)
-        else -> LectorColors.Linea
+        else -> Color.White.copy(alpha = if (TemaActual.oscuro) 0.14f else 0.6f)
     }
 internal val TintaBarra: Color get() = LectorColors.Text
 private val SubBarra: Color get() = LectorColors.Muted

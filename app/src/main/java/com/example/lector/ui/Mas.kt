@@ -60,24 +60,10 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
     Column(
         Modifier.fillMaxSize().background(LectorColors.Bg).verticalScroll(rememberScrollState()).padding(bottom = 110.dp)
     ) {
-        // Cabecera: logo grande sobre un halo de acento, nombre de la app y lema.
-        Box(
-            Modifier.fillMaxWidth().background(
-                Brush.verticalGradient(0f to acento.copy(alpha = 0.20f), 1f to LectorColors.Bg)
-            ).statusBarsPadding().padding(top = 28.dp, bottom = 20.dp),
-            Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier.entrada(0).size(116.dp).clip(SuaveShape(40.dp)).background(acento.copy(alpha = 0.16f)),
-                    Alignment.Center,
-                ) { LogoApp(Modifier.size(100.dp)) }
-                Spacer(Modifier.height(14.dp))
-                LText("Shiori", LectorType.Display, Modifier.entrada(1))
-                LText("Tu lector de manga y cómics", LectorType.Label, Modifier.entrada(1), color = LectorColors.Muted)
-            }
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 22.dp, end = 16.dp, top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            LText("Más", LectorType.Display.copy(fontSize = 34.sp, fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+            LogoApp(Modifier.size(40.dp))
         }
-
         Column(Modifier.anchoLectura()) {
         var i = 2
         GrupoMas("Lectura", Modifier.entrada(i++))
@@ -144,10 +130,7 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
 
 @Composable
 private fun GrupoMas(titulo: String, modifier: Modifier) {
-    LText(
-        titulo, LectorType.Section.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
-        modifier.padding(start = 28.dp, end = 24.dp, top = 22.dp, bottom = 6.dp),
-    )
+    Box(modifier) { TituloSeccion(titulo) }
 }
 
 /** Burbuja de apartado (como la raíz de Ajustes): 64 dp+, esquinas de 22 dp, icono en círculo tonal de acento. */
@@ -157,25 +140,7 @@ private fun BurbujaMas(
     destacado: Boolean = false, onClick: () -> Unit,
     final: (@Composable () -> Unit)? = null,
 ) {
-    val acento = MaterialTheme.colorScheme.primary
-    val fondoIcono by animateColorAsState(if (destacado) acento else acento.copy(alpha = 0.18f), Muelles.efectos(), label = "icMas")
-    val tintaIcono by animateColorAsState(if (destacado) MaterialTheme.colorScheme.onPrimary else acento, Muelles.efectos(), label = "icMasT")
-    Row(
-        modifier.padding(horizontal = 20.dp, vertical = 5.dp).fillMaxWidth().heightIn(min = 68.dp).clip(SuaveShape(22.dp))
-            .background(LectorColors.Card).pressableCon(0.97f, onClick).padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(44.dp).clip(CircleShape).background(fondoIcono), Alignment.Center) {
-            Icon(icono, null, tint = tintaIcono, modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            LText(titulo, LectorType.Body.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold), maxLines = 1)
-            if (detalle != null) LText(detalle, LectorType.Label, color = LectorColors.Muted, maxLines = 2)
-        }
-        Spacer(Modifier.width(8.dp))
-        if (final != null) final() else Icon(Icons.Rounded.KeyboardArrowRight, null, tint = LectorColors.Muted)
-    }
+    Box(modifier) { FilaSilencio(icono, titulo, detalle, onClick, final) }
 }
 
 private fun duracion(ms: Long): String {

@@ -86,11 +86,9 @@ fun AjustesScreen(almacen: Almacen, onBack: () -> Unit, onRuta: (Ruta) -> Unit) 
         label = "contentAlpha",
     )
 
-    com.example.lector.ui.mochy.SubSettingsScaffold(
-        title = "Ajustes",
-        onBack = onBack,
-        searchBar = { com.example.lector.ui.mochy.SubSettingsSearchBar(q, { q = it }) },
-    ) {
+    PaginaSilencio("Ajustes", onBack) {
+        Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) { com.example.lector.ui.mochy.SubSettingsSearchBar(q, { q = it }) }
+        Column(Modifier.padding(horizontal = 16.dp)) {
         // Search results view when user types
         androidx.compose.animation.AnimatedVisibility(
             visible = texto.isNotEmpty(),
@@ -201,6 +199,7 @@ fun AjustesScreen(almacen: Almacen, onBack: () -> Unit, onRuta: (Ruta) -> Unit) 
                 }
             }
         }
+    }
     }
 }
 

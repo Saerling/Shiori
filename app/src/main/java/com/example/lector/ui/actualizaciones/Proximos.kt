@@ -57,7 +57,7 @@ import com.example.lector.ui.LectorType
 import com.example.lector.ui.SuaveShape
 import com.example.lector.ui.Tacto
 import com.example.lector.ui.mochy.library.HomeTrackRow
-import com.example.lector.ui.mochy.library.LibraryIconButton
+import com.example.lector.ui.LibraryIconButton
 import com.example.lector.ui.mochy.library.LibraryRowCoverCorner
 import com.example.lector.ui.mochy.library.LibraryRowCoverSize
 import com.example.lector.ui.mochy.library.SearchHorizontalPadding

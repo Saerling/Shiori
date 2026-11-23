@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -185,21 +186,25 @@ fun HomeScreen(
 
     Box(modifier.fillMaxSize().background(LectorColors.Bg)) {
         LazyColumn(state = lazylistState, contentPadding = PaddingValues(bottom = 190.dp)) {
-            item(key = "hero", contentType = "hero") {
-                HeroCarousel(
-                    items = heroe,
-                    almacen = almacen,
-                    onOpen = toque,
-                    onRead = leerOSel,
-                    heroScrollProgressProvider = heroScrollProgressProvider,
-                    onLongPress = pulsacionLarga,
-                )
+            item(key = "cabecera", contentType = "cabecera") {
+                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 22.dp, end = 16.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    LText("Inicio", LectorType.Display.copy(fontSize = 34.sp, fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+                    BotonVidrio(Icons.Rounded.Add, "Añadir", onClick = onAdd)
+                }
+            }
+            item(key = "seguir_t", contentType = "title") { TituloSilencio("Seguir leyendo") }
+            item(key = "seguir", contentType = "seguir") {
+                LazyRow(contentPadding = PaddingValues(horizontal = 22.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(heroe, key = { "s_" + it.comic.id }) { h ->
+                        TarjetaSeguir(h.comic, almacen, h.reason, onOpen = { toque(h.comic) }, onRead = { leerOSel(h.comic) }, onLong = { pulsacionLarga(h.comic) })
+                    }
+                }
             }
             item(key = "th_resumen", contentType = "th_resumen") { if (com.example.lector.fx.fxOn("th_resumen")) ResumenInicio(comics) }
 
             if (recientes.isNotEmpty()) {
                 homeItem("recientes_title", revealSeen, "title") {
-                    HomeSectionTitle(
+                    TituloSilencioSec(
                         title = "Leídos recientemente",
                         label = "${recientesTodos.size}",
                         expanded = verRecientes,
@@ -215,7 +220,7 @@ fun HomeScreen(
 
             if (enCurso.isNotEmpty()) {
                 homeItem("enCurso_title", revealSeen, "title") {
-                    HomeSectionTitle(
+                    TituloSilencioSec(
                         title = "En curso",
                         label = "${enCursoTodos.size}",
                         expanded = verEnCurso,
@@ -228,7 +233,7 @@ fun HomeScreen(
 
             if (sinLeer.isNotEmpty()) {
                 homeItem("sinLeer_title", revealSeen, "title") {
-                    HomeSectionTitle(
+                    TituloSilencioSec(
                         title = "Sin leer",
                         label = "${sinLeer.size}",
                         expanded = verSinLeer,
@@ -267,7 +272,7 @@ fun HomeScreen(
                     onInvertir = { seleccion = comics.mapTo(HashSet()) { it.id } - seleccion },
                 )
             }
-        } else HomeTopBar(heroScrollProgressProvider, glowIds, almacen, onAdd)
+        }
 
         // En el hueco del mini lector, justo encima de la barra flotante (64 dp + 8 de margen + 8 de separación;
         // BarraAcciones ya suma las barras del sistema y 10 dp propios).

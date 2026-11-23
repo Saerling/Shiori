@@ -35,6 +35,9 @@ android {
 
     buildTypes {
         debug {
+            // Versión de prueba «Silencio»: app aparte que se instala junto a Shiori (lee las mismas copias de seguridad).
+            applicationIdSuffix = ".silencio"
+            versionNameSuffix = "-silencio"
             signingConfig = signingConfigs.getByName("shiori")
         }
         release {

@@ -88,7 +88,11 @@ fun DetalleScreen(
     }
 
     val scroll = rememberScrollState()
-    Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
+    // Como la página de un álbum: el fondo entero se tiñe con el color de la portada y se funde al negro.
+    val tinte = remember(deLaPortada) { deLaPortada?.let { androidx.compose.ui.graphics.lerp(it, Color.Black, 0.55f) } }
+    Box(Modifier.fillMaxSize().background(LectorColors.Bg).then(
+        if (tinte != null && TemaActual.oscuro) Modifier.background(Brush.verticalGradient(0f to tinte, 0.55f to LectorColors.Bg)) else Modifier
+    )) {
         Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 130.dp)) {
             Box(Modifier.fillMaxWidth().height(400.dp)) {
                 ComicCover(comic, almacen, Modifier.fillMaxSize().graphicsLayer { translationY = scroll.value * 0.5f }.blur(32.dp).alpha(0.6f), SuaveShape(0.dp))

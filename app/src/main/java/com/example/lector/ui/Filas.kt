@@ -112,7 +112,7 @@ fun rememberPliegue(scroll: ScrollState, entra: Dp = 24.dp, sale: Dp = 6.dp): St
 /** Botón atrás redondo gris de 40 dp: el de las subpáginas de ajustes de Mochy (ui/mochy/SubSettingsScaffold.kt). */
 @Composable
 fun BotonAtras(onBack: () -> Unit, modifier: Modifier = Modifier) {
-    com.example.lector.ui.mochy.SubSettingsBackButton(onBack, modifier)
+    BotonVidrio(androidx.compose.material.icons.Icons.Rounded.ArrowBack, "Atrás", modifier, onClick = onBack)
 }
 
 /**
@@ -130,12 +130,7 @@ val AnchoLecturaMax = 840.dp
 
 @Composable
 fun PaginaAjustes(titulo: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    com.example.lector.ui.mochy.SubSettingsScaffold(
-        title = titulo,
-        onBack = onBack,
-        contentPadding = 0.dp,
-        content = content,
-    )
+    PaginaSilencio(titulo, onBack, content = content)
 }
 
 /*
@@ -152,26 +147,12 @@ private fun TarjetaFila(item: SettingsItem) {
 /** Fila de ajustes: tarjeta con icono en círculo, título y detalle. */
 @Composable
 fun FilaAjuste(icon: ImageVector?, titulo: String, detalle: String? = null, onClick: () -> Unit) {
-    TarjetaFila(
-        SettingsItem(
-            icon = icon?.let { rememberVectorPainter(it) },
-            title = { androidx.compose.material3.Text(titulo) },
-            descriptionText = detalle,
-            onClick = onClick,
-        )
-    )
+    FilaSilencio(icon, titulo, detalle, onClick)
 }
 
 @Composable
 fun FilaSwitch(titulo: String, detalle: String? = null, activado: Boolean, onChange: (Boolean) -> Unit) {
-    TarjetaFila(
-        SettingsItem(
-            title = { androidx.compose.material3.Text(titulo) },
-            descriptionText = detalle,
-            trailingContent = { Interruptor(activado, onChange) },
-            onClick = { onChange(!activado) },
-        )
-    )
+    FilaSilencio(null, titulo, detalle, { Tacto.alternar(!activado); onChange(!activado) }) { InterruptorSilencio(activado, { Tacto.alternar(it); onChange(it) }) }
 }
 
 @Composable
@@ -200,22 +181,14 @@ fun Marca(marcada: Boolean) {
 /** Interruptor: el AppSwitch de Mochy (ui/mochy/AppSwitch.kt), con el toque háptico de Shiori. */
 @Composable
 fun Interruptor(activado: Boolean, onChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
-    AppSwitch(
-        checked = activado,
-        onCheckedChange = onChange?.let { cambiar -> { v: Boolean -> Tacto.alternar(v); cambiar(v) } },
-        modifier = modifier,
-    )
+    InterruptorSilencio(activado, onChange?.let { c -> { v: Boolean -> Tacto.alternar(v); c(v) } }, modifier)
 }
 
 /** Título de un grupo de ajustes, como el de SettingsGroup de Mochy (labelLarge en el color de acento). */
 @Composable
 fun TituloSeccion(texto: String) {
-    androidx.compose.material3.Text(
-        text = texto,
-        style = AppTypography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 16.dp).padding(start = 4.dp, bottom = 8.dp, top = 8.dp + 10.dp),
-    )
+    LText(texto.uppercase(), LectorType.Label.copy(fontSize = 13.sp, letterSpacing = 0.5.sp), color = LectorColors.Muted,
+        modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 22.dp, bottom = 7.dp))
 }
 
 @Composable
@@ -229,50 +202,17 @@ fun Divisor() {
  */
 @Composable
 fun ChipSel(texto: String, seleccionado: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
-    val isSelected = seleccionado
-    val cornerRadius by animateDpAsState(
-        targetValue = if (isSelected) 20.dp else 8.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "corner_radius"
-    )
+    // Píldora: blanca con texto negro al elegirla; si no, gris del sistema.
+    val fondo by animateColorAsState(if (seleccionado) LectorColors.Text else LectorColors.Card, spring(stiffness = Spring.StiffnessMediumLow), label = "chip")
+    val tinta by animateColorAsState(if (seleccionado) LectorColors.Bg else LectorColors.Text, spring(stiffness = Spring.StiffnessMediumLow), label = "chipTinta")
     val largo by rememberUpdatedState(onLongClick)
-    FilterChip(
-        label = { androidx.compose.material3.Text(texto) },
-        selected = isSelected,
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = LectorColors.Card,
-            labelColor = LectorColors.Text,
-            selectedContainerColor = LectorColors.PillFill,
-            selectedLabelColor = LectorColors.Text,
-            selectedLeadingIconColor = LectorColors.Text,
-        ),
-        onClick = { Tacto.tic(); onClick() },
-        leadingIcon = if (isSelected) {
-            {
-                Icon(
-                    imageVector = Icons.Filled.Done,
-                    contentDescription = null,
-                    modifier = Modifier.size(FilterChipDefaults.IconSize),
-                )
-            }
-        } else {
-            null
-        },
-        shape = RoundedCornerShape(cornerRadius),
-        border = null,
-        modifier = Modifier
-            .then(if (com.example.lector.fx.fxOn("th_pills")) Modifier.saltoAlElegir(isSelected) else Modifier)
+    Box(
+        Modifier.height(36.dp).clip(CircleShape).background(fondo)
             .then(if (onLongClick != null) Modifier.pulsacionLarga { largo?.invoke() } else Modifier)
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMedium
-                )
-            )
-    )
+            .clickable(role = androidx.compose.ui.semantics.Role.Tab) { Tacto.tic(); onClick() }
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) { LText(texto, LectorType.Body.copy(fontSize = 14.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold), color = tinta, maxLines = 1) }
 }
 
 /**
