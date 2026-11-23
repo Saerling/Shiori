@@ -73,7 +73,7 @@ fun BarraSilencio(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: 
         val forma = RoundedCornerShape(32.dp)
         Box(Modifier.weight(1f).height(64.dp).vidrio(forma)) {
             FondoVidrioFlotante(Modifier.matchParentSize())
-            Row(Modifier.fillMaxSize().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxSize().padding(3.dp), verticalAlignment = Alignment.CenterVertically) {
                 pestanas.forEach { t -> PestanaSilencio(t, t == selected, Modifier.weight(1f)) { onSelect(t) } }
             }
         }
@@ -108,7 +108,7 @@ private fun PestanaSilencio(t: LectorTab, activa: Boolean, modifier: Modifier, o
         verticalArrangement = Arrangement.Center,
     ) {
         Icon(if (activa) t.icon else t.iconoApagado, null, tint = tinta, modifier = Modifier.size(22.dp))
-        LText(t.label, LectorType.Label.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold), color = tinta, maxLines = 1)
+        LText(if (t == LectorTab.Updates) "Novedades" else t.label, LectorType.Label.copy(fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp), color = tinta, maxLines = 1)
     }
 }
 
