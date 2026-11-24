@@ -85,6 +85,14 @@ fun Inicio(
     }
 
     var ruta by rememberSaveable { mutableStateOf<Ruta?>(null) }
+    // Datos y Acerca de se abren desde Más o desde Ajustes: atrás vuelve a donde estabas.
+    var desdeAjustes by rememberSaveable { mutableStateOf(false) }
+    var rutaPrevia by remember { mutableStateOf<Ruta?>(null) }
+    LaunchedEffect(ruta) {
+        if (ruta == Ruta.Datos || ruta == Ruta.AcercaDe) { if (rutaPrevia != Ruta.Datos && rutaPrevia != Ruta.AcercaDe) desdeAjustes = rutaPrevia == Ruta.Ajustes }
+        rutaPrevia = ruta
+    }
+    fun volverDe(r: Ruta?): Ruta? = if (r == Ruta.Datos || r == Ruta.AcercaDe) (if (desdeAjustes) Ruta.Ajustes else null) else r?.padre()
     var webUrl by rememberSaveable { mutableStateOf("") }
     var webTitulo by rememberSaveable { mutableStateOf("") }
     var webDesdeExt by rememberSaveable { mutableStateOf(false) }
@@ -317,7 +325,7 @@ fun Inicio(
                 GestoAtras.progreso = e.progress
             }
             val mismaPagina = ruta == Ruta.Ficha && fichasAnteriores.isNotEmpty()
-            if (ruta == Ruta.Ficha) volverDeFicha() else ruta = ruta?.padre()
+            if (ruta == Ruta.Ficha) volverDeFicha() else ruta = volverDe(ruta)
             // Entre fichas encadenadas la página sigue arriba: vuelve a su tamaño con muelle, sin salto.
             if (mismaPagina) GestoAtras.vuelta = ambitoGesto.launchGesto {
                 androidx.compose.animation.core.animate(GestoAtras.progreso, 0f, animationSpec = Muelles.espacial()) { v, _ -> GestoAtras.progreso = v }
@@ -519,7 +527,7 @@ fun Inicio(
                 else -> when (Ruta.valueOf(clave)) {
                     Ruta.Categorias -> EditarCategoriasScreen(almacen) { ruta = null }
                     Ruta.Estadisticas -> EstadisticasScreen(visibles, almacen, ext) { ruta = null }
-                    Ruta.Datos -> DatosScreen(almacen, alRecargar) { ruta = null }
+                    Ruta.Datos -> DatosScreen(almacen, alRecargar) { ruta = volverDe(Ruta.Datos) }
                     Ruta.Ajustes -> AjustesScreen(almacen, { ruta = null }) { ruta = it }
                     Ruta.Apariencia -> AparienciaScreen(almacen) { ruta = Ruta.Ajustes }
                     Ruta.AjBiblioteca -> AjBibliotecaScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = it }
@@ -529,7 +537,7 @@ fun Inicio(
                     Ruta.AjExplorar -> AjExplorarScreen(almacen, ext, { ruta = Ruta.Ajustes }) { ruta = it }
                     Ruta.AjSeguridad -> AjSeguridadScreen(almacen) { ruta = Ruta.Ajustes }
                     Ruta.AjAvanzado -> AjAvanzadoScreen(almacen) { ruta = Ruta.Ajustes }
-                    Ruta.AcercaDe -> AcercaDeScreen { ruta = Ruta.Ajustes }
+                    Ruta.AcercaDe -> AcercaDeScreen { ruta = volverDe(Ruta.AcercaDe) }
                     Ruta.Descargas -> ColaDescargasScreen(almacen) { ruta = null }
                     Ruta.BusquedaGlobal -> estadosPantallas.SaveableStateProvider("global") { BusquedaGlobalScreen(
                         ext, almacen, consultaGlobal,

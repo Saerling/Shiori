@@ -58,7 +58,7 @@ fun FondoFicha(portadaSuave: @Composable (Modifier) -> Unit, alto: Dp, progreso:
             Modifier.matchParentSize().graphicsLayer { alpha = 0.55f; scaleX = 1.2f; scaleY = 1.2f }
                 .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(48.dp) else Modifier),
         )
-        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to fondo.value.copy(alpha = 0.25f), 0.7f to fondo.value.copy(alpha = 0.85f), 1f to fondo.value)))
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to fondo.value.copy(alpha = 0.2f), 0.55f to fondo.value.copy(alpha = 0.8f), 0.85f to fondo.value, 1f to fondo.value)))
     }
 }
 

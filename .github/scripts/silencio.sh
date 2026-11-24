@@ -69,7 +69,27 @@ tocar "Eternal Mangas" && { sleep 10; cap catalogo; bajar; sleep 4; cap catalogo
   bajar; adb shell input swipe 200 1500 800 1500 300; sleep 2; cap ficha-deslizar
   atras; atras; }
 
-# ── Con un manga en la biblioteca (vuelve a la raíz primero)
+# ── Cómic local: se genera un .cbz de 8 páginas, se importa con el selector del sistema, ficha y lector
+for k in 1 2 3; do atras; done; abrir 6
+python3 - <<'PY'
+import zlib, struct, zipfile
+def png(w, h, rgb):
+    raw = b''.join(b'\x00' + bytes(rgb) * w for _ in range(h))
+    def ch(t, d): return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    return b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + ch(b'IDAT', zlib.compress(raw, 9)) + ch(b'IEND', b'')
+with zipfile.ZipFile('Prueba.cbz', 'w') as z:
+    for i in range(8): z.writestr('%02d.png' % i, png(600, 900, ((40 + i * 25) % 255, 90, (200 - i * 20) % 255)))
+PY
+adb push Prueba.cbz /sdcard/Download/Prueba.cbz
+adb shell content call --method scan_volume --uri content://media --arg external_primary >/dev/null 2>&1; sleep 3
+tocar "Inicio"; tocar "Añadir cómic" && { sleep 5; cap selector
+  tocar "Prueba.cbz" || { tocar "Show roots" || tocar "Mostrar raíces"; tocar "Downloads" || tocar "Descargas"; sleep 2; tocar "Prueba.cbz"; }
+  sleep 8; cap tras-importar
+  tocar "Biblioteca"; sleep 2; tocar "Prueba" && { sleep 3; cap ficha-local; bajar; cap ficha-local-2; arriba
+    tocar "Leer" || tocar "Reanudar"; sleep 6; cap lector-local; adb shell input tap 540 1200; sleep 2; cap lector-local-barras
+    adb shell input tap 1000 1200; sleep 2; adb shell input tap 1000 1200; sleep 2; cap lector-local-pag3; atras; sleep 2; cap tras-lector-local; atras; } ; }
+
+# ── Con algo en la biblioteca
 for k in 1 2 3; do atras; done; abrir 6
 tocar "Biblioteca"; sleep 3; cap biblioteca-llena
 tocar "Inicio"; sleep 3; cap inicio-lleno
