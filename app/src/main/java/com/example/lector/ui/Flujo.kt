@@ -37,27 +37,22 @@ fun Modifier.bordeLuminoso(forma: Shape, fuerza: Float = 1f): Modifier = compose
     this.border(0.8.dp, b, forma)
 }
 
-/** Superficie flotante de vidrio: sombra suave, tinte translúcido según «Intensidad del vidrio» y borde de luz. */
+/** Superficie flotante (barra, mini lector): tinte casi opaco según «Intensidad del vidrio», línea finísima y sombra suave. */
 fun Modifier.vidrioFlotante(forma: Shape, elevacion: Dp = 16.dp): Modifier = composed {
     val a = 0.97f - 0.27f * Aspecto.vidrio
-    this.shadow(elevacion, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.3f), spotColor = Color.Black.copy(alpha = 0.35f))
+    val linea = if (TemaActual.oscuro) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.08f)
+    (if (elevacion > 0.dp) this.shadow(elevacion, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f)) else this)
         .clip(forma)
         .background(LectorColors.Cristal.copy(alpha = a))
-        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (TemaActual.oscuro) 0.05f else 0.25f), Color.Transparent)))
-        .bordeLuminoso(forma)
+        .then(if (Aspecto.luminoso) Modifier.bordeLuminoso(forma) else Modifier.border(0.5.dp, linea, forma))
 }
 
 /**
- * Esfera: un círculo (o cápsula) con volumen. Relleno con un degradado muy suave (más claro arriba), borde de luz y una
- * sombra corta. [activo] la vuelve sólida del color del texto.
+ * Esfera / cápsula minimalista (como Mochy): relleno plano, sin degradado ni sombra. Solo con «Efecto luminoso»
+ * activado lleva además un borde de luz muy fino.
  */
 fun Modifier.esfera(forma: Shape = CircleShape, relleno: Color, sombra: Boolean = true): Modifier = composed {
-    val luz = if (TemaActual.oscuro) Color.White.copy(alpha = 0.09f) else Color.White.copy(alpha = 0.55f)
-    (if (sombra) this.shadow(4.dp, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.22f)) else this)
-        .clip(forma)
-        .background(relleno)
-        .background(Brush.verticalGradient(listOf(luz, Color.Transparent)))
-        .bordeLuminoso(forma, 0.8f)
+    this.clip(forma).background(relleno).then(if (Aspecto.luminoso) Modifier.bordeLuminoso(forma, 0.6f) else Modifier)
 }
 
 /** Respuesta flexible: al pulsar se encoge con un muelle y se ilumina un poco. */
@@ -89,3 +84,6 @@ fun BarraLuminosa(progreso: Float, modifier: Modifier = Modifier, color: Color =
         }
     })
 }
+
+/** Borde solo si «Efecto luminoso» está activado; si no, nada (superficies planas como Mochy). */
+fun Modifier.bordeSuave(forma: Shape): Modifier = composed { if (Aspecto.luminoso) this.bordeLuminoso(forma, 0.5f) else this }

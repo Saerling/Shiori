@@ -236,7 +236,10 @@ fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit) {
                 ChipSel(n, almacen.vista == v) { almacen.elegirVista(v) }
             }
         }
-        FilaSwitch("Mantener pulsado añade o quita", "En Explorar, mantener pulsado una portada la añade o quita de la biblioteca sin abrir el menú.", Aspecto.accionDirecta) { Aspecto.elegirAccionDirecta(it) }
+        FilaSilencio(null, "Mantener pulsada una portada", "Hoja: menú desde abajo · Elevado: la portada se levanta y el fondo se desenfoca · Directo: añade o quita sin menú", null)
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = MargenLateral, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Aspecto.Mantener.entries.forEach { m -> ChipSel(m.nombre, Aspecto.mantener == m) { Aspecto.elegir(m) } }
+        }
         TituloSeccion("Gestos de capítulos")
         val ctx = LocalContext.current
         LaunchedEffect(Unit) { GestosCapitulos.iniciar(ctx) }

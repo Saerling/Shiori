@@ -1,5 +1,8 @@
 package com.example.lector.ui
 
+import com.example.lector.ui.herramientas.heldBackdrop
+import com.example.lector.ui.herramientas.heldPicture
+
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -438,16 +441,18 @@ private fun NovedadesTab(
         else -> {
             // Menú de mantener pulsado  como en el catálogo de una fuente:
             // la portada se levanta y las novedades se desenfocan detrás.
+            val fondoRetenido = remember { com.example.lector.ui.herramientas.HeldBackdrop() }
             var retenido by remember { mutableStateOf<Pair<FuenteUI, MangaFuente>?>(null) }
-            fun soltar() { retenido = null }
+            var fotoRetenida by remember { mutableStateOf<com.example.lector.ui.herramientas.HeldItem?>(null) }
+            fun soltar() { retenido = null; fotoRetenida = null }
             val ctxR = androidx.compose.ui.platform.LocalContext.current
-            val alRetener: (FuenteUI, MangaFuente) -> Unit = { f, m ->
+            val alRetener: (FuenteUI, MangaFuente, com.example.lector.ui.herramientas.HeldItem) -> Unit = { f, m, foto ->
                 // Personalización → Estilo → «Directo»: mantener pulsado añade o quita de la biblioteca, sin menú.
                 if (Aspecto.accionDirecta) alternarEnBiblioteca(ctxR, com.example.lector.Almacen.obtener(ctxR), f, m)
-                else { retenido = f to m }
+                else { fotoRetenida = foto; retenido = f to m }
             }
             Box(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().heldBackdrop(fondoRetenido)) {
             var refrescando by remember { mutableStateOf(false) }
             val gen = NovedadesGuardadas.generacion
             val pendientes = lista.any { NovedadesGuardadas.datos[it.id]?.first != gen && NovedadesGuardadas.fallos[it.id] != gen }
@@ -490,16 +495,16 @@ private fun NovedadesTab(
             val ctxM = androidx.compose.ui.platform.LocalContext.current
             val almM = remember { com.example.lector.Almacen.obtener(ctxM) }
             val enBiblioM = remember(almM.version) { almM.clavesEnLinea() }
-            MenuRetener(item = retenido, onDismiss = ::soltar,
+            MenuMantener(item = retenido, held = fotoRetenida, hazeState = fondoRetenido, onDismiss = ::soltar,
                 onPreviewClick = { (f, m) -> soltar(); onManga(f, m) }, titulo = { it.second.titulo }, subtitulo = { it.first.nombre },
             ) { (f, m) ->
                 val esta = "${f.id}|${m.url}" in enBiblioM
-                AccionRetener(
+                com.example.lector.ui.herramientas.HeldMenuAction(
                     if (esta) Icons.Rounded.Delete else Icons.Rounded.Add, if (esta) "Quitar de la biblioteca" else "Añadir a la biblioteca", destructive = esta,
                 ) { soltar(); alternarEnBiblioteca(ctxM, almM, f, m) }
-                AccionRetener(Icons.Rounded.Info, "Abrir ficha") { soltar(); onManga(f, m) }
-                if (onBuscarTitulo != null) AccionRetener(Icons.Rounded.Search, "Buscar en todas") { soltar(); onBuscarTitulo(m.titulo) }
-                AccionRetener(Icons.Rounded.Share, "Compartir") {
+                com.example.lector.ui.herramientas.HeldMenuAction(Icons.Rounded.Info, "Abrir ficha") { soltar(); onManga(f, m) }
+                if (onBuscarTitulo != null) com.example.lector.ui.herramientas.HeldMenuAction(Icons.Rounded.Search, "Buscar en todas") { soltar(); onBuscarTitulo(m.titulo) }
+                com.example.lector.ui.herramientas.HeldMenuAction(Icons.Rounded.Share, "Compartir") {
                     soltar()
                     compartirTexto(ctxM, runCatching { motor.urlManga(f, m) }.getOrNull()?.let { "${m.titulo}\n$it" } ?: m.titulo)
                 }
@@ -517,7 +522,7 @@ private fun NovedadesFuente(
     guardadas: List<ExtManager.BusquedaGuardada> = emptyList(),
     enBiblioteca: Set<String> = emptySet(),
     /** Mantener pulsada una portada: abre el menú  con su foto. */
-    onRetener: ((FuenteUI, MangaFuente) -> Unit)? = null,
+    onRetener: ((FuenteUI, MangaFuente, com.example.lector.ui.herramientas.HeldItem) -> Unit)? = null,
 ) {
     val gen = NovedadesGuardadas.generacion
     val scopeR = rememberCoroutineScope()
@@ -601,9 +606,10 @@ private fun NovedadesFuente(
             )
             else -> LazyRow(contentPadding = PaddingValues(horizontal = MargenLateral), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(lst, key = { it.url }) { m ->
+                    val foto = com.example.lector.ui.herramientas.rememberHeldPicture()
                     Column(Modifier.width(118.dp).press3D().pressable(onLongClick = onRetener?.let { r ->
-                        { r(f, m) }
-                    }) { onManga(f, m) }) {
+                        { scopeR.launch { r(f, m, foto.capture()) } }
+                    }) { onManga(f, m) }.heldPicture(foto)) {
                         val esta = "${f.id}|${m.url}" in enBiblioteca
                         Box {
                             ImagenRemota(

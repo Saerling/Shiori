@@ -755,16 +755,16 @@ fun FichaMangaScreen(
                 if (caps) {
                 item(key = "cabCaps", contentType = "cabCaps") {
                     Column(Modifier.fillMaxWidth().padding(top = 26.dp, bottom = 4.dp)) {
-                        TituloSeccionS("Capítulos", trailing = {
+                        com.example.lector.ui.mochy.TituloCapitulosMochy("Capítulos", trailing = {
                             Odometro(
                                 if (visibles.size != fi.capitulos.size) "${visibles.size}/${fi.capitulos.size}" else "${fi.capitulos.size}",
                                 EstiloDatos.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold), Modifier, LectorColors.Text.copy(alpha = 0.62f),
                             )
                         })
                         // El «añadidos últimamente ⌄» : el orden actual; tocarlo abre Filtro / Ordenar / Mostrar.
-                        ControlOrden(
+                        com.example.lector.ui.mochy.OrdenCapitulosMochy(
                             nombreOrdenCap(filtroCaps.orden) + (if (filtrosCap > 0) " · $filtrosCap ${if (filtrosCap == 1) "filtro" else "filtros"}" else ""),
-                            filtroCaps.descendente, { hojaCaps = true }, Modifier.padding(start = MargenFicha - 2.dp),
+                            filtroCaps.descendente, { hojaCaps = true }, Modifier.padding(start = 34.dp),
                         )
                     }
                 }
@@ -854,7 +854,7 @@ fun FichaMangaScreen(
                 // El pie de «recibo» : N CAPÍTULOS · FIN · N LEÍDOS.
                 if (visibles.isNotEmpty()) item(key = "finCaps", contentType = "finCaps") {
                     val nLeidos = remember(visibles, leidosAhora) { visibles.count { ext.esLeido(f.id, manga.url, it.value.url) } }
-                    PieLista(
+                    com.example.lector.ui.mochy.PieCapitulosMochy(
                         start = "${visibles.size} ${if (visibles.size == 1) "CAPÍTULO" else "CAPÍTULOS"}",
                         end = "$nLeidos ${if (nLeidos == 1) "LEÍDO" else "LEÍDOS"}",
                     )

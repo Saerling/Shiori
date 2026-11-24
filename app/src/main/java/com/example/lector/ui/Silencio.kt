@@ -57,7 +57,7 @@ private fun FondoVidrio(modifier: Modifier = Modifier) =
  */
 @Composable
 fun BarraSilencio(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: Modifier = Modifier) {
-    val pestanas = remember { listOf(LectorTab.Home, LectorTab.Library, LectorTab.Search, LectorTab.Updates, LectorTab.History) }
+    val pestanas = remember { listOf(LectorTab.Home, LectorTab.Library, LectorTab.Updates, LectorTab.History, LectorTab.More) }
     val indice = pestanas.indexOf(selected)
     val pos by animateFloatAsState(if (indice >= 0) indice.toFloat() else -1f, spring(dampingRatio = 0.72f, stiffness = 420f), label = "indicador")
     val visible by animateFloatAsState(if (indice >= 0) 1f else 0f, spring(stiffness = 600f), label = "indicadorVis")
@@ -87,15 +87,16 @@ fun BarraSilencio(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: 
             }
         }
         Spacer(Modifier.width(10.dp))
-        val activa = selected == LectorTab.More
+        // La búsqueda (Explorar) va aparte, en su propia esfera, como en Apple Music.
+        val activa = selected == LectorTab.Search
         val fuente = remember { MutableInteractionSource() }
         Box(
             Modifier.size(62.dp).respuestaFlexible(fuente, 0.88f).vidrioFlotante(CircleShape)
-                .selectable(selected = activa, interactionSource = fuente, indication = null, role = Role.Tab) { onSelect(LectorTab.More) },
+                .selectable(selected = activa, interactionSource = fuente, indication = null, role = Role.Tab) { Tacto.tic(); onSelect(LectorTab.Search) },
             contentAlignment = Alignment.Center,
         ) {
             if (activa) Box(Modifier.matchParentSize().padding(5.dp).clip(CircleShape).background(LectorColors.Text.copy(alpha = 0.12f)))
-            Icon(Icons.Rounded.Settings, "Más", tint = if (activa) LectorColors.Text else LectorColors.Text.copy(alpha = 0.75f), modifier = Modifier.size(25.dp))
+            Icon(Icons.Rounded.Search, "Explorar", tint = if (activa) LectorColors.Text else LectorColors.Text.copy(alpha = 0.75f), modifier = Modifier.size(25.dp))
         }
     }
 }
@@ -113,7 +114,7 @@ private fun PestanaSilencio(t: LectorTab, activa: Boolean, modifier: Modifier, o
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(if (activa) t.icon else t.iconoApagado, null, tint = tinta, modifier = Modifier.size(22.dp))
+        Icon(if (t == LectorTab.More) Icons.Rounded.Settings else if (activa) t.icon else t.iconoApagado, null, tint = tinta, modifier = Modifier.size(22.dp))
         LText(when (t) { LectorTab.Updates -> "Novedades"; LectorTab.Library -> "Biblioteca"; else -> t.label }, LectorType.Label.copy(fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.2).sp), color = tinta, maxLines = 1)
     }
 }
@@ -195,7 +196,7 @@ val LocalEnGrupo = androidx.compose.runtime.staticCompositionLocalOf { false }
 @Composable
 fun GrupoFilas(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     val forma = SuaveShape(22.dp)
-    Column(modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth().clip(forma).background(LectorColors.Card).bordeLuminoso(forma, 0.5f)) {
+    Column(modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth().clip(forma).background(LectorColors.Card).bordeSuave(forma)) {
         androidx.compose.runtime.CompositionLocalProvider(LocalEnGrupo provides true) { content() }
     }
 }
@@ -216,7 +217,7 @@ fun FilaSilencio(
     Column(if (enGrupo) Modifier else Modifier.padding(horizontal = 12.dp, vertical = 3.dp)) {
         Row(
             Modifier.fillMaxWidth()
-                .then(if (enGrupo) Modifier else Modifier.clip(forma).background(LectorColors.Card).bordeLuminoso(forma, 0.5f))
+                .then(if (enGrupo) Modifier else Modifier.clip(forma).background(LectorColors.Card).bordeSuave(forma))
                 .respuestaFlexible(fuente, if (enGrupo) 1f else 0.97f)
                 .then(
                     if (interruptor != null && onClick != null) Modifier.toggleable(value = interruptor, interactionSource = fuente, indication = null, role = Role.Switch) { onClick() }

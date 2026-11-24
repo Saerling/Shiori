@@ -1,5 +1,8 @@
 package com.example.lector.ui
 
+import com.example.lector.ui.herramientas.heldBackdrop
+import com.example.lector.ui.herramientas.heldPicture
+
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.foundation.verticalScroll
@@ -661,9 +664,11 @@ private fun NavegarFuente(
     }
     val margen = 20.dp
     // Menú de mantener pulsado  (ui/bitchord/HeldContextMenu.kt): la portada se levanta y la página se desenfoca.
+    val fondoRetenido = remember { com.example.lector.ui.herramientas.HeldBackdrop() }
     var mangaRetenido by remember { mutableStateOf<MangaFuente?>(null) }
-    fun soltar() { mangaRetenido = null }
-    Box(Modifier.fillMaxSize()) {
+    var fotoRetenida by remember { mutableStateOf<com.example.lector.ui.herramientas.HeldItem?>(null) }
+    fun soltar() { mangaRetenido = null; fotoRetenida = null }
+    Box(Modifier.fillMaxSize().heldBackdrop(fondoRetenido)) {
     Box(Modifier.fillMaxSize()) {
     PaginaPerfil(
         title = f.nombre, bannerHeight = alturaBanner, scrollProgress = progreso, onBack = onBack,
@@ -776,11 +781,11 @@ private fun NavegarFuente(
             itemsIndexed(visibles, key = { _, m -> m.url }) { i, m ->
                 val esta = "${f.id}|${m.url}" in enBiblioteca
                 // Mantener pulsado = añadir o quitar de la biblioteca (como en Komikku).
-                // Mantener pulsado = el menú  (añadir/quitar, abrir, buscar en todas, compartir).
+                val foto = com.example.lector.ui.herramientas.rememberHeldPicture()
                 val mod = Modifier.entrada(i % 12).origenTransicion().press3D().pressable(onLongClick = {
                     if (Aspecto.accionDirecta) alternarEnBiblioteca(ctx, almacen, f, m)
-                    else mangaRetenido = m
-                }) { onManga(m) }
+                    else scope.launch { fotoRetenida = foto.capture(); mangaRetenido = m }
+                }) { onManga(m) }.heldPicture(foto)
                 if (enLista) Row(
                     mod.fillMaxWidth().padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -852,16 +857,16 @@ private fun NavegarFuente(
     }
     }
     // Personalización → Estilo: hoja , menú elevado  o (Directo) ninguno.
-    MenuRetener(item = mangaRetenido, onDismiss = ::soltar,
+    MenuMantener(item = mangaRetenido, held = fotoRetenida, hazeState = fondoRetenido, onDismiss = ::soltar,
         onPreviewClick = { m -> soltar(); onManga(m) }, titulo = { it.titulo }, subtitulo = { f.nombre },
     ) { m ->
         val esta = "${f.id}|${m.url}" in enBiblioteca
-        AccionRetener(
+        com.example.lector.ui.herramientas.HeldMenuAction(
             if (esta) Icons.Rounded.Delete else Icons.Rounded.Add, if (esta) "Quitar de la biblioteca" else "Añadir a la biblioteca", destructive = esta,
         ) { soltar(); alternarEnBiblioteca(ctx, almacen, f, m) }
-        AccionRetener(Icons.Rounded.Info, "Abrir ficha") { soltar(); onManga(m) }
-        if (onBuscarGlobal != null) AccionRetener(Icons.Rounded.Search, "Buscar en todas") { soltar(); onBuscarGlobal(m.titulo) }
-        AccionRetener(Icons.Rounded.Share, "Compartir") {
+        com.example.lector.ui.herramientas.HeldMenuAction(Icons.Rounded.Info, "Abrir ficha") { soltar(); onManga(m) }
+        if (onBuscarGlobal != null) com.example.lector.ui.herramientas.HeldMenuAction(Icons.Rounded.Search, "Buscar en todas") { soltar(); onBuscarGlobal(m.titulo) }
+        com.example.lector.ui.herramientas.HeldMenuAction(Icons.Rounded.Share, "Compartir") {
             soltar()
             compartirTexto(ctx, runCatching { motor.urlManga(f, m) }.getOrNull()?.let { "${m.titulo}\n$it" } ?: m.titulo)
         }

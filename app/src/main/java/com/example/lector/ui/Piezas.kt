@@ -287,37 +287,14 @@ fun FilaPortada(
     )
 }
 
-/** Fila de capítulo (o pista): número a la izquierda, título; leído = apagado. */
+/** Fila de capítulo: la de Mochy (número en un cuadrado, punto de acento si no se ha leído). */
 @Composable
 fun FilaCapitulo(
     badge: String, title: String, subtitle: String, read: Boolean, accent: Color,
     onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null, leading: (@Composable () -> Unit)? = null,
     progressLabel: String? = null, selected: Boolean = false,
-) {
-    val fondo by animateColorAsState(if (selected) accent.copy(alpha = 0.14f) else LectorColors.Bg.copy(alpha = 0f), label = "selCap")
-    val tinta = if (read) LectorColors.Muted else LectorColors.Text
-    Column(modifier.fillMaxWidth().background(fondo).tocar(onLongClick, onClick)) {
-        Row(Modifier.fillMaxWidth().padding(start = MargenFicha, end = MargenFicha - 6.dp, top = 11.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(40.dp)) {
-                LText(badge, EstiloDatos.copy(fontSize = 12.sp), color = if (read) LectorColors.Muted.copy(alpha = 0.6f) else LectorColors.Muted, maxLines = 1)
-            }
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (!read) { Box(Modifier.size(6.dp).clip(CircleShape).background(accent)); Spacer(Modifier.width(7.dp)) }
-                    leading?.let { it(); Spacer(Modifier.width(5.dp)) }
-                    LText(title, EstiloFilaTitulo.copy(fontWeight = if (read) FontWeight.Normal else FontWeight.SemiBold), color = tinta, maxLines = 1)
-                }
-                if (subtitle.isNotEmpty() || progressLabel != null) Row {
-                    if (progressLabel != null) { LText(progressLabel, EstiloFilaSub, color = accent, maxLines = 1); if (subtitle.isNotEmpty()) LText(" · ", EstiloFilaSub, color = LectorColors.Muted) }
-                    LText(subtitle, EstiloFilaSub, color = LectorColors.Muted, maxLines = 1)
-                }
-            }
-            trailing?.invoke()
-        }
-        Regla(inicio = MargenFicha + 40.dp)
-    }
-}
+) = com.example.lector.ui.mochy.FilaCapituloMochy(badge, title, subtitle, read, accent, onClick, onLongClick, modifier, trailing, leading, progressLabel, selected)
 
 /** Marca de selección redonda. */
 @Composable
@@ -341,62 +318,12 @@ fun ControlOrden(label: String, descending: Boolean, onClick: () -> Unit, modifi
 
 // ───────────── Gestos en filas de capítulo ─────────────
 
-/**
- * Deslizar una fila de capítulo: a la derecha o a la izquierda hace lo elegido en Aspecto → Gestos.
- * Pasado un umbral se nota un toque y, al soltar, se hace la acción; la fila vuelve a su sitio.
- */
+/** Deslizar una fila de capítulo: el de Mochy (la fila se mueve sobre una losa y sale la pastilla de la acción). */
 @Composable
 fun DeslizarCapitulo(
     estado: EstadoGesto, onAction: (AccionGesto) -> Unit, modifier: Modifier = Modifier,
     enabled: Boolean = true, slab: Boolean = true, content: @Composable () -> Unit,
-) {
-    GestosCapitulos.iniciar(androidx.compose.ui.platform.LocalContext.current)
-    val der = GestosCapitulos.derecha
-    val izq = GestosCapitulos.izquierda
-    val umbral = with(LocalDensity.current) { 84.dp.toPx() }
-    var dx by remember { mutableFloatStateOf(0f) }
-    var arrastrando by remember { mutableStateOf(false) }
-    val mostrado by animateFloatAsState(if (arrastrando) dx else 0f, if (arrastrando) spring(stiffness = 10_000f) else spring(dampingRatio = 0.7f, stiffness = 500f), label = "desliz")
-    val accion = if (mostrado > 0) der else if (mostrado < 0) izq else AccionGesto.NADA
-    val pasado = abs(dx) >= umbral
-    LaunchedEffect(pasado) { if (pasado && arrastrando) Tacto.umbral() }
-    Box(modifier.fillMaxWidth()) {
-        if (accion != AccionGesto.NADA && abs(mostrado) > 1f) {
-            Box(Modifier.matchParentSize().background(accion.color.copy(alpha = if (pasado) 0.9f else 0.35f)), contentAlignment = if (mostrado > 0) Alignment.CenterStart else Alignment.CenterEnd) {
-                Row(Modifier.padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(accion.icono, null, tint = Color.White, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(6.dp))
-                    LText(textoGesto(accion, estado), EstiloDatos, color = Color.White, maxLines = 1)
-                }
-            }
-        }
-        Box(
-            Modifier.fillMaxWidth().offset { IntOffset(mostrado.roundToInt(), 0) }.background(LectorColors.Bg)
-                .then(if (!enabled) Modifier else Modifier.pointerInput(der, izq) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { arrastrando = true; dx = 0f },
-                        onDragEnd = {
-                            val a = if (dx > 0) der else izq
-                            if (abs(dx) >= umbral && a != AccionGesto.NADA) onAction(a)
-                            arrastrando = false; dx = 0f
-                        },
-                        onDragCancel = { arrastrando = false; dx = 0f },
-                    ) { ch, d ->
-                        val nuevo = dx + d
-                        val permitido = (nuevo > 0 && der != AccionGesto.NADA) || (nuevo < 0 && izq != AccionGesto.NADA)
-                        if (permitido) { dx = nuevo.coerceIn(-umbral * 1.6f, umbral * 1.6f); ch.consume() }
-                    }
-                }),
-        ) { content() }
-    }
-}
-
-private fun textoGesto(a: AccionGesto, e: EstadoGesto) = when (a) {
-    AccionGesto.LEIDO -> if (e.leido) "No leído" else "Leído"
-    AccionGesto.MARCA -> if (e.marcado) "Quitar marca" else "Marcar"
-    AccionGesto.DESCARGA -> if (e.descargado || e.descargando) "Quitar descarga" else "Descargar"
-    else -> a.corto
-}
+) = com.example.lector.ui.mochy.DeslizarCapituloMochy(estado, onAction, modifier, enabled, slab, content)
 
 // ───────────── Búsqueda ─────────────
 
@@ -410,7 +337,7 @@ fun CampoBuscar(
 ) {
     val fondo by animateColorAsState(if (focused) Tonos.CampoFoco else Tonos.Campo, label = "campo")
     Row(
-        modifier.fillMaxWidth().height(AltoCampo).clip(CircleShape).background(fondo).bordeLuminoso(CircleShape, 0.6f)
+        modifier.fillMaxWidth().height(AltoCampo).clip(CircleShape).background(fondo).bordeSuave(CircleShape)
             .then(if (readOnlyClick != null) Modifier.clickable(onClick = readOnlyClick) else Modifier)
             .padding(start = 14.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -527,7 +454,7 @@ fun TarjetaResultado(
     extra: (@Composable () -> Unit)? = null,
 ) {
     Row(
-        modifier.padding(horizontal = MargenLateral).fillMaxWidth().clip(SuaveShape(22.dp)).background(LectorColors.Card).bordeLuminoso(SuaveShape(22.dp), 0.6f)
+        modifier.padding(horizontal = MargenLateral).fillMaxWidth().clip(SuaveShape(22.dp)).background(LectorColors.Card).bordeSuave(SuaveShape(22.dp))
             .tocar(onLongClick, onClick).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -696,28 +623,55 @@ fun ProgresoLinea(progress: () -> Float, modifier: Modifier = Modifier, color: C
 
 // ───────────── Menú de mantener pulsado ─────────────
 
-/** Menú al mantener pulsado un elemento: hoja con su título arriba y las acciones en filas. */
+/**
+ * Menú al mantener pulsada una portada. Según Aspecto: «Elevado» (la portada se levanta sobre el fondo desenfocado,
+ * HeldContextMenu) u «Hoja» (hoja desde abajo con la portada pequeña, el título y las acciones en cápsulas).
+ */
 @Composable
-fun <T : Any> MenuRetener(
-    item: T?, onDismiss: () -> Unit, onPreviewClick: ((T) -> Unit)?, titulo: (T) -> String, subtitulo: (T) -> String? = { null },
+fun <T : Any> MenuMantener(
+    item: T?, held: com.example.lector.ui.herramientas.HeldItem?, hazeState: com.example.lector.ui.herramientas.HeldBackdrop,
+    onDismiss: () -> Unit, onPreviewClick: ((T) -> Unit)?, titulo: (T) -> String, subtitulo: (T) -> String? = { null },
     actions: @Composable (T) -> Unit,
 ) {
+    if (Aspecto.mantener == Aspecto.Mantener.ELEVADO) {
+        com.example.lector.ui.herramientas.HeldContextMenu(item, held, hazeState, onDismiss, onPreviewClick, actions)
+        return
+    }
     val i = item ?: return
     HojaLector(onDismiss) {
-        Column(Modifier.fillMaxWidth().then(if (onPreviewClick != null) Modifier.clickable { onPreviewClick(i) } else Modifier).padding(horizontal = MargenLateral, vertical = 4.dp)) {
-            LText(titulo(i), EstiloSeccion, maxLines = 2)
-            subtitulo(i)?.let { LText(it.uppercase(), EstiloDatos, color = LectorColors.Muted, maxLines = 1) }
+        Row(
+            Modifier.fillMaxWidth().then(if (onPreviewClick != null) Modifier.clickable { onPreviewClick(i) } else Modifier).padding(horizontal = MargenLateral),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(48.dp, 68.dp).clip(SuaveShape(12.dp)).background(LectorColors.HojaFila)) {
+                val img = held?.image
+                if (img != null) androidx.compose.foundation.Image(img, null, Modifier.matchParentSize(), alignment = Alignment.TopStart, contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                LText(titulo(i), EstiloFilaTitulo.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold, lineHeight = 20.sp), maxLines = 2)
+                subtitulo(i)?.takeIf { it.isNotBlank() }?.let { LText(it, EstiloFilaSub.copy(fontSize = 13.sp), color = LectorColors.Muted, maxLines = 1) }
+            }
         }
-        Spacer(Modifier.height(8.dp))
-        Regla()
-        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) { actions(i) }
+        Spacer(Modifier.height(18.dp))
+        androidx.compose.runtime.CompositionLocalProvider(com.example.lector.ui.herramientas.LocalHeldMenuMochy provides true) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { actions(i) }
+        }
     }
 }
 
+/** Fila de acción en cápsula (dentro de la hoja de mantener pulsado). */
 @Composable
-fun AccionRetener(icono: ImageVector, texto: String, destructive: Boolean = false, onClick: () -> Unit) {
+fun FilaMenuCapsula(icono: ImageVector, texto: String, destructive: Boolean = false, onClick: () -> Unit) {
     val tinta = if (destructive) LectorColors.Error else LectorColors.Text
-    FilaMenu(icon = { Icon(icono, null, tint = tinta, modifier = Modifier.size(20.dp)) }, enabled = true, onClick = onClick) {
-        LText(texto, LectorType.Body.copy(fontSize = 16.sp), color = tinta)
+    val fuente = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Row(
+        Modifier.fillMaxWidth().height(54.dp).respuestaFlexible(fuente, 0.97f).esfera(CircleShape, LectorColors.HojaFila, sombra = false)
+            .clickable(fuente, null, onClick = onClick).padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icono, null, tint = tinta, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(14.dp))
+        LText(texto, LectorType.Body.copy(fontSize = 16.sp, fontWeight = FontWeight.Medium), color = tinta)
     }
 }

@@ -105,7 +105,7 @@ private fun BloqueVisor(titulo: String, valor: String? = null, content: @Composa
     val acento = MaterialTheme.colorScheme.primary
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 6.dp)
-            .clip(FormaBloque).background(LectorColors.Card).bordeLuminoso(FormaBloque, 0.5f).padding(top = 14.dp, bottom = 12.dp),
+            .clip(FormaBloque).background(LectorColors.Card).bordeSuave(FormaBloque).padding(top = 14.dp, bottom = 12.dp),
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             LText(titulo, LectorType.Body.copy(fontSize = 16.sp), Modifier.weight(1f), color = LectorColors.Text)

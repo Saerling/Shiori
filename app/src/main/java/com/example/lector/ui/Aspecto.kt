@@ -30,15 +30,18 @@ object Aspecto {
     var radioPortada by mutableFloatStateOf(14f); private set
     /** Fondo oscuro grafito (como Obsidian) en vez de negro puro. */
     var grafito by mutableStateOf(true); private set
+    /** Qué pasa al mantener pulsada una portada en Explorar. */
+    enum class Mantener(val nombre: String) { HOJA("Hoja"), ELEVADO("Elevado"), DIRECTO("Directo") }
+    var mantener by mutableStateOf(Mantener.HOJA); private set
     /** Mantener pulsado añade o quita de la biblioteca directamente, sin menú. */
-    var accionDirecta by mutableStateOf(false); private set
+    val accionDirecta: Boolean get() = mantener == Mantener.DIRECTO
     /** Portadas apaisadas a lo ancho en Historial y Novedades. */
     var panoramica by mutableStateOf(false); private set
     var verDescargas by mutableStateOf(true); private set
     /** Intensidad del vidrio de lo que flota (barra, mini lector, barras de arriba, hojas): 0 = casi opaco, 1 = muy claro. */
     var vidrio by mutableFloatStateOf(0.5f); private set
     /** Brillo de borde y halos (efecto luminoso de ColorOS 17). */
-    var luminoso by mutableStateOf(true); private set
+    var luminoso by mutableStateOf(false); private set
     var ladoDescargas by mutableStateOf(LadoDescargas.IZQUIERDA); private set
 
     fun iniciar(ctx: Context) {
@@ -47,11 +50,15 @@ object Aspecto {
         grafito = p.getBoolean("grafito", true)
         arranque = runCatching { AnimArranque.valueOf(p.getString("arranque", null)!!) }.getOrDefault(AnimArranque.PUNTOS)
         radioPortada = p.getFloat("radio_portada3", 14f)
-        accionDirecta = p.getString("estilo_menu", null) == "DIRECTO" || p.getBoolean("accion_directa", false)
+        mantener = when (p.getString("estilo_menu", null)) {
+            "ELEVADO" -> Mantener.ELEVADO
+            "DIRECTO" -> Mantener.DIRECTO
+            else -> if (p.getBoolean("accion_directa", false)) Mantener.DIRECTO else Mantener.HOJA
+        }
         panoramica = p.getBoolean("estilo_panoramica", false)
         verDescargas = p.getBoolean("estilo_descargas", true)
         vidrio = p.getFloat("vidrio", 0.5f)
-        luminoso = p.getBoolean("luminoso", true)
+        luminoso = p.getBoolean("luminoso2", false)
         ladoDescargas = runCatching { LadoDescargas.valueOf(p.getString("estilo_descargas_lado", null)!!) }.getOrDefault(LadoDescargas.IZQUIERDA)
     }
 
@@ -59,10 +66,10 @@ object Aspecto {
     fun elegir(a: AnimArranque) { arranque = a; prefs?.edit()?.putString("arranque", a.name)?.apply() }
     fun elegirRadioPortada(v: Float) { radioPortada = v; prefs?.edit()?.putFloat("radio_portada3", v)?.apply() }
     fun elegirGrafito(v: Boolean) { grafito = v; b("grafito", v) }
-    fun elegirAccionDirecta(v: Boolean) { accionDirecta = v; b("accion_directa", v); prefs?.edit()?.remove("estilo_menu")?.apply() }
+    fun elegir(v: Mantener) { mantener = v; prefs?.edit()?.putString("estilo_menu", if (v == Mantener.HOJA) "MOCHY" else v.name)?.remove("accion_directa")?.apply() }
     fun elegirPanoramica(v: Boolean) { panoramica = v; b("estilo_panoramica", v) }
     fun elegirVidrio(v: Float) { vidrio = v.coerceIn(0f, 1f); prefs?.edit()?.putFloat("vidrio", vidrio)?.apply() }
-    fun elegirLuminoso(v: Boolean) { luminoso = v; b("luminoso", v) }
+    fun elegirLuminoso(v: Boolean) { luminoso = v; b("luminoso2", v) }
     fun elegirVerDescargas(v: Boolean) { verDescargas = v; b("estilo_descargas", v) }
     fun elegir(v: LadoDescargas) { ladoDescargas = v; prefs?.edit()?.putString("estilo_descargas_lado", v.name)?.apply() }
 
