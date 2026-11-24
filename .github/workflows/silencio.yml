@@ -8,7 +8,7 @@ on:
 jobs:
   probar:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -16,7 +16,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: 8.9 }
       - name: Compilar APK de prueba
-        run: gradle assembleSilencio
+        run: gradle assembleSilencio -Pprueba
       - name: Activar KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -27,6 +27,7 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
+          profile: pixel_6
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
@@ -40,7 +41,8 @@ jobs:
         with:
           name: silencio
           path: |
-            captura-*.png
+            cap-*.png
+            monkey.txt
             logcat-*.txt
             fallos.txt
             app/build/outputs/apk/silencio/app-silencio.apk
