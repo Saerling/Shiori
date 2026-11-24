@@ -127,7 +127,7 @@ fun FuenteNoDisponible(
                         Spacer(Modifier.height(10.dp))
                         val pr = (instalada?.pkg ?: disponible?.pkg)?.let { ext.progreso[it] }
                         when {
-                            pr != null && pr.fase != Fase.ERROR -> if (com.example.lector.ui.mochy.EstiloApp.orbes) IndicadorCarga(Modifier.size(28.dp), estado = com.example.lector.ui.orbes.EstadoOrbe.CONNECTING) else LinearProgressIndicator(Modifier.fillMaxWidth().clip(SuaveShape(4.dp)))
+                            pr != null && pr.fase != Fase.ERROR -> if (false) IndicadorCarga(Modifier.size(28.dp), estado = null) else LinearProgressIndicator(Modifier.fillMaxWidth().clip(SuaveShape(4.dp)))
                             pr?.fase == Fase.ERROR -> LText(pr.error ?: "No se pudo instalar", LectorType.Label, color = LectorColors.Error, maxLines = 3)
                             instalada != null && !instalada.confiable ->
                                 PillButton("Confiar", Icons.Rounded.Check, { ext.confiar(instalada) })
@@ -167,7 +167,7 @@ fun FuenteNoDisponible(
                     }
                     Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (enviada.isNotBlank() && hechas < fuentes.size) {
-                            IndicadorCarga(Modifier.size(14.dp), strokeWidth = 2.dp, estado = com.example.lector.ui.orbes.EstadoOrbe.SEARCHING)
+                            IndicadorCarga(Modifier.size(14.dp), strokeWidth = 2.dp, estado = null)
                             Spacer(Modifier.width(10.dp))
                         }
                         LText(estado, LectorType.Label, color = LectorColors.Muted)
@@ -203,7 +203,7 @@ fun FuenteNoDisponible(
                     )
                     if (migrando) {
                         Spacer(Modifier.height(12.dp))
-                        IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.dp, estado = com.example.lector.ui.orbes.EstadoOrbe.WEAVING)
+                        IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.dp, estado = null)
                     }
                 }
             },

@@ -38,14 +38,6 @@ import com.example.lector.EntradaHistorial
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
-import com.example.lector.ui.mochy.library.HomeTrackRow
-import com.example.lector.ui.mochy.library.LibraryColors
-import com.example.lector.ui.mochy.library.LibraryEmptyState
-import com.example.lector.ui.mochy.library.LibraryRowCoverCorner
-import com.example.lector.ui.mochy.library.LibraryRowCoverSize
-import com.example.lector.ui.mochy.library.RowSmallAction
-import com.example.lector.ui.mochy.library.SearchHorizontalPadding
-import com.example.lector.ui.mochy.library.TrackSubtitleStyle
 
 // Una fila del historial: un cómic local o un manga leído online.
 private sealed class ItemHistorial {
@@ -109,33 +101,33 @@ fun HistorialScreen(
     }
     var diaFx by remember { mutableStateOf<Int?>(null) }
     val gruposTodos = remember(entradas) { entradas.groupBy { inicioDelDiaH(it.tiempo) } }
-    val grupos = if (com.example.lector.fx.fxOn("weekstrip") && diaFx != null) gruposTodos.filterKeys { it == inicioDelDiaH(System.currentTimeMillis() - (6 - diaFx!!) * 86_400_000L) } else gruposTodos
+    val grupos = gruposTodos
     val formatoHora = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
 
     val acento = MaterialTheme.colorScheme.primary
     Column(modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().padding(start = SearchHorizontalPadding, end = 16.dp, top = 14.dp, bottom = 6.dp),
+            Modifier.fillMaxWidth().padding(start = MargenLateral, end = 16.dp, top = 14.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            LibraryTitleBlock("Historial", null, Modifier.weight(1f)) {
+            BloqueTitulo("Historial", null, Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    val estiloSub = TrackSubtitleStyle.copy(fontSize = 12.sp)
-                    Odometro("${entradas.size}", estiloSub, color = LibraryColors.Secondary)
-                    LText(if (entradas.size == 1) " lectura" else " lecturas", estiloSub, color = LibraryColors.Secondary, maxLines = 1)
+                    val estiloSub = EstiloFilaSub.copy(fontSize = 12.sp)
+                    Odometro("${entradas.size}", estiloSub, color = Tonos.Secundario)
+                    LText(if (entradas.size == 1) " lectura" else " lecturas", estiloSub, color = Tonos.Secundario, maxLines = 1)
                 }
             }
-            LibraryIconButton(if (buscando) Icons.Rounded.Close else Icons.Rounded.Search, "Buscar", buscando) {
+            BotonCabecera(if (buscando) Icons.Rounded.Close else Icons.Rounded.Search, "Buscar", buscando) {
                 buscando = !buscando; if (!buscando) consulta = ""
             }
             if (entradas.isNotEmpty()) {
                 Spacer(Modifier.width(8.dp))
-                LibraryIconButton(Icons.Rounded.Delete, "Borrar el historial", false) { confirmarTodo = true }
+                BotonCabecera(Icons.Rounded.Delete, "Borrar el historial", false) { confirmarTodo = true }
             }
         }
         if (almacen.incognito) {
             Row(
-                Modifier.padding(horizontal = SearchHorizontalPadding, vertical = 6.dp).clip(CircleShape)
+                Modifier.padding(horizontal = MargenLateral, vertical = 6.dp).clip(CircleShape)
                     .background(acento).pressable { almacen.incognito = false }
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -150,30 +142,22 @@ fun HistorialScreen(
             enter = if (Mov.reducido) fadeIn() else expandVertically(Muelles.espacial()) + fadeIn(Muelles.efectos()),
             exit = if (Mov.reducido) fadeOut() else shrinkVertically(Muelles.espacialRapido()) + fadeOut(Muelles.efectos()),
         ) {
-            Box(Modifier.padding(horizontal = SearchHorizontalPadding - 8.dp, vertical = 6.dp)) { CampoBusqueda(consulta, { consulta = it }, "Buscar en el historial") }
+            Box(Modifier.padding(horizontal = MargenLateral - 8.dp, vertical = 6.dp)) { CampoBusqueda(consulta, { consulta = it }, "Buscar en el historial") }
         }
 
         if (entradas.isEmpty()) {
             if (consulta.isBlank()) VacioHistorial("Aún no has leído nada", "Lo que leas aparecerá aquí, ordenado por día, para retomarlo con un toque.")
             else VacioHistorial("Sin resultados", "Nada coincide con «$consulta».")
         } else {
-            val semanaFx = com.example.lector.fx.fxOn("weekstrip")
             LazyColumn(contentPadding = PaddingValues(bottom = 190.dp)) {
-                // Ideas de Threads: racha de lectura y gráfica semanal.
-                item(key = "si_mapa") { if (com.example.lector.fx.fxOn("si_mapa")) MapaLectura(almacen, comics) }
-                item(key = "th_racha") { if (com.example.lector.fx.fxOn("th_racha")) RachaLectura(almacen, comics) }
-                item(key = "th_graficas") { if (com.example.lector.fx.fxOn("th_graficas")) GraficaSemanal(almacen, comics) }
-                // Biblioteca de animaciones: Week Strip Calendar — toca un día para ver solo lo de ese día.
-                if (semanaFx) item(key = "fx_semana") {
-                    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { com.example.lector.fx.TiraSemana(diaFx ?: -1, { diaFx = if (diaFx == it) null else it }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        conteo = { i -> gruposTodos[inicioDelDiaH(System.currentTimeMillis() - (6 - i) * 86_400_000L)]?.size ?: 0 }, color = acento) }
-                }
+                // Mapa de lectura: las últimas semanas, cada día según los capítulos leídos.
+                if (consulta.isBlank()) item(key = "mapa") { MapaLectura(almacen, comics, semanas = 18) }
                 var base = 0
                 grupos.forEach { (dia, lista) ->
                     val inicio = base
                     base += lista.size + 1
                     stickyHeader(key = "dia_$dia", contentType = 0) {
-                        GeneratedGroupHeader(etiquetaDia(dia), Modifier.entrada(escalonHist(inicio)), count = "${lista.size}")
+                        CabeceraGrupo(etiquetaDia(dia), Modifier.entrada(escalonHist(inicio)), count = "${lista.size}")
                     }
                     itemsIndexedAnimados(lista, key = { _, it -> it.clave }, contentType = { _, _ -> 1 }) { i, item ->
                         FilaHistorial(item, almacen, formatoHora.format(Date(item.tiempo)),
@@ -226,20 +210,20 @@ private var abrirMangaHist: (EntradaHistorial) -> Unit = {}
 /** Solo la primera pantalla aparece escalonada; lo que llega luego al hacer scroll aparece sin retraso. */
 private fun escalonHist(i: Int): Int = if (i < 10) i else 0
 
-/** LibraryEmptyState de Mochy. */
+/** Vacio . */
 @Composable
 private fun VacioHistorial(titulo: String, texto: String) {
     Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        LibraryEmptyState(Modifier.entrada(0).padding(top = 24.dp, bottom = 160.dp), texto, titulo)
+        Vacio(Modifier.entrada(0).padding(top = 24.dp, bottom = 160.dp), texto, titulo)
     }
 }
 
-/** PlaylistTrackRow / HomeTrackRow de Mochy: portada de 54dp, dos líneas y la papelera como botón «more». */
+/** FilaCapitulo / FilaPortada : portada de 54dp, dos líneas y la papelera como botón «more». */
 @Composable
 private fun FilaHistorial(item: ItemHistorial, almacen: Almacen, hora: String, alAbrir: () -> Unit, alQuitar: () -> Unit, modifier: Modifier = Modifier) {
     val acento = MaterialTheme.colorScheme.primary
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val formaPortada = SuaveShape(LibraryRowCoverCorner)
+    val formaPortada = SuaveShape(RadioPortadaFila)
     val (principal, progreso) = when (item) {
         is ItemHistorial.Local -> item.comic.etiquetaProgreso() to progresoDe(item.comic)
         is ItemHistorial.EnLinea -> {
@@ -256,15 +240,15 @@ private fun FilaHistorial(item: ItemHistorial, almacen: Almacen, hora: String, a
         val ext = remember { com.example.lector.ext.ExtManager.obtener(ctx) }
         val leido = ext.leidos.let { ext.esLeido(e.fuenteId, e.urlManga, e.capUrl) }
         val descargado = com.example.lector.Descargas.version.value >= 0 && almacen.estaDescargado(e.fuenteId, e.urlManga, e.capUrl)
-        com.example.lector.ui.mochy.ChapterSwipeBox(
-            estado = com.example.lector.ui.mochy.EstadoCapituloSwipe(leido, ext.esMarcado(e.fuenteId, e.urlManga, e.capUrl), descargado),
+        DeslizarCapitulo(
+            estado = EstadoGesto(leido, ext.esMarcado(e.fuenteId, e.urlManga, e.capUrl), descargado),
             onAction = { acc ->
                 when (acc) {
-                    com.example.lector.ui.mochy.ChapterSwipeAction.MARK_READ ->
+                    AccionGesto.LEIDO ->
                         if (leido) ext.desmarcarLeido(e.fuenteId, e.urlManga, e.capUrl) else ext.marcarLeido(e.fuenteId, e.urlManga, e.capUrl)
-                    com.example.lector.ui.mochy.ChapterSwipeAction.MARK_PREVIOUS_READ -> ext.marcarLeido(e.fuenteId, e.urlManga, e.capUrl)
-                    com.example.lector.ui.mochy.ChapterSwipeAction.BOOKMARK -> ext.alternarMarcado(e.fuenteId, e.urlManga, e.capUrl)
-                    com.example.lector.ui.mochy.ChapterSwipeAction.DOWNLOAD -> {
+                    AccionGesto.ANTERIORES -> ext.marcarLeido(e.fuenteId, e.urlManga, e.capUrl)
+                    AccionGesto.MARCA -> ext.alternarMarcado(e.fuenteId, e.urlManga, e.capUrl)
+                    AccionGesto.DESCARGA -> {
                         val f = ext.fuentes.firstOrNull { it.id == e.fuenteId }
                         when {
                             descargado -> { almacen.borrarDescarga(e.fuenteId, e.urlManga, e.capUrl); com.example.lector.Descargas.version.value++ }
@@ -285,18 +269,18 @@ private fun FilaHistorialBase(
     haptic: androidx.compose.ui.hapticfeedback.HapticFeedback, formaPortada: androidx.compose.ui.graphics.Shape,
     alAbrir: () -> Unit, alQuitar: () -> Unit, modifier: Modifier,
 ) {
-    HomeTrackRow(
+    FilaPortada(
         title = item.titulo,
         subtitle = "$principal • $hora",
         onClick = alAbrir,
         onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); alQuitar() },
-        modifier = modifier.fillMaxWidth().padding(horizontal = SearchHorizontalPadding, vertical = 3.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = MargenLateral, vertical = 3.dp),
         cover = {
             val factor = when (item) {
-                is ItemHistorial.Local -> com.example.lector.ui.mochy.EstiloApp.factorAncho("c:" + item.comic.id)
-                is ItemHistorial.EnLinea -> com.example.lector.ui.mochy.EstiloApp.factorAncho(item.comic?.let { "c:" + it.id }, item.comic?.portadaUrl, item.entrada.portadaUrl)
+                is ItemHistorial.Local -> Aspecto.factorAncho("c:" + item.comic.id)
+                is ItemHistorial.EnLinea -> Aspecto.factorAncho(item.comic?.let { "c:" + it.id }, item.comic?.portadaUrl, item.entrada.portadaUrl)
             }
-            Box(Modifier.size(LibraryRowCoverSize * factor, LibraryRowCoverSize).clip(formaPortada).background(LibraryColors.TileHigh)) {
+            Box(Modifier.size(TamPortadaFila * factor, TamPortadaFila).clip(formaPortada).background(Tonos.FilaAlta)) {
                 val portada = Modifier.fillMaxSize()
                 when (item) {
                     is ItemHistorial.Local -> ComicCover(item.comic, almacen, portada, formaPortada)
@@ -314,6 +298,6 @@ private fun FilaHistorialBase(
                 }
             }
         },
-        trailing = { RowSmallAction(Icons.Rounded.Delete, "Quitar del historial", alQuitar) },
+        trailing = { AccionFila(Icons.Rounded.Delete, "Quitar del historial", alQuitar) },
     )
 }

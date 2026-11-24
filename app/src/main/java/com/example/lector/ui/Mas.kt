@@ -38,14 +38,11 @@ enum class Ruta {
     Ficha, LeerOnline,
     // WebView de una web (p. ej. de una extensión antes de instalarla)
     Web,
-    // Personalización → Biblioteca de animaciones y funciones
-    BibliotecaFx,
 }
 
 fun Ruta.padre(): Ruta? = when (this) {
     Ruta.Apariencia, Ruta.AjBiblioteca, Ruta.AjSeguimiento, Ruta.AjVisor, Ruta.AjDescargas, Ruta.AjExplorar,
     Ruta.AjSeguridad, Ruta.AjAvanzado, Ruta.AcercaDe -> Ruta.Ajustes
-    Ruta.BibliotecaFx -> Ruta.Apariencia
     Ruta.Ficha -> Ruta.FuenteDetalle
     Ruta.LeerOnline -> Ruta.Ficha
     else -> null
@@ -60,8 +57,8 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
     Column(
         Modifier.fillMaxSize().background(LectorColors.Bg).verticalScroll(rememberScrollState()).padding(bottom = 110.dp)
     ) {
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 22.dp, end = 16.dp, top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            LText("Más", LectorType.Display.copy(fontSize = 34.sp, fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = MargenLateral, end = 16.dp, top = 18.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            LText("Más", LectorType.Display, modifier = Modifier.weight(1f))
             LogoApp(Modifier.size(40.dp))
         }
         Column(Modifier.anchoLectura()) {
@@ -93,7 +90,6 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
             ) { Interruptor(nsfw, { com.example.lector.ModoContenido.fijar(if (it) com.example.lector.ModoContenido.Modo.NSFW else com.example.lector.ModoContenido.Modo.NORMAL) }) }
         }
 
-        if (com.example.lector.fx.fxOn("th_perfil")) PerfilLector(almacen, Modifier.entrada(i++))
 
         GrupoMas("Añadir", Modifier.entrada(i++))
         BurbujaMas(Icons.Rounded.Add, "Añadir cómic", "Archivo .cbz, .zip o .pdf de tu móvil", Modifier.entrada(i++), onClick = onAdd)
@@ -118,11 +114,6 @@ fun MasScreen(almacen: Almacen, onRuta: (Ruta) -> Unit, onAdd: () -> Unit, onAdd
 
         GrupoMas("App", Modifier.entrada(i++))
         // Biblioteca de animaciones: Command Menu (blocks.so) para saltar a cualquier pantalla escribiendo.
-        if (com.example.lector.fx.fxOn("cmd")) {
-            var comandos by remember { mutableStateOf(false) }
-            BurbujaMas(Icons.Rounded.Search, "Comandos", "Escribe a dónde quieres ir", Modifier.entrada(i++), onClick = { comandos = true })
-            com.example.lector.fx.MenuComandos(comandos, comandosShiori(onRuta), { comandos = false }, "Buscar una pantalla o acción…")
-        }
         BurbujaMas(Icons.Rounded.Settings, "Ajustes", null, Modifier.entrada(i++), onClick = { onRuta(Ruta.Ajustes) })
         BurbujaMas(Icons.Rounded.Face, "Acerca de", null, Modifier.entrada(i), onClick = { onRuta(Ruta.AcercaDe) })
     } }
@@ -169,15 +160,14 @@ fun EstadisticasScreen(comics: List<Comic>, almacen: Almacen, ext: ExtManager, o
         comics.filter { it.enLinea }.groupingBy { it.fuenteId }.eachCount().entries.sortedByDescending { it.value }.take(6)
             .map { (id, n) -> (ext.fuentes.firstOrNull { it.id == id }?.nombre ?: "Fuente $id") to n }
     }
-    // Replay (de BitChord): subpantalla propia, sin ruta nueva.
+    // Replay: subpantalla propia, sin ruta nueva.
     var verReplay by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    if (verReplay) { com.example.lector.ui.bitchord.ReplayScreen(almacen) { verReplay = false }; return }
+    if (verReplay) { com.example.lector.ui.herramientas.ReplayScreen(almacen) { verReplay = false }; return }
 
     PaginaAjustes("Estadísticas", onBack) {
-        com.example.lector.ui.bitchord.ReplayTarjeta(almacen) { verReplay = true }
+        com.example.lector.ui.herramientas.ReplayTarjeta(almacen) { verReplay = true }
         // Biblioteca de animaciones: Daily Activity Calendar / Github Contribution con tu historial real.
-        if (com.example.lector.fx.fxOn("activity")) MapaLecturaShiori(almacen)
-        if (com.example.lector.fx.fxOn("th_graficas")) GraficaSemanal(almacen, comics)
+        MapaLectura(almacen, comics, semanas = 26)
         // Anillo de la biblioteca (terminados / en curso / sin empezar) que se dibuja al entrar.
         AnilloBiblioteca(terminados, enCurso, sinEmpezar, comics.size)
         TituloSeccion("Biblioteca")

@@ -1,5 +1,6 @@
 package com.example.lector.ui
 
+import androidx.compose.foundation.border
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -37,20 +38,6 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.example.lector.Almacen
 import com.example.lector.Comic
-import com.example.lector.ui.mochy.BlurEffectCache
-import com.example.lector.ui.mochy.InterFontFamily
-import com.example.lector.ui.mochy.RevealSeenState
-import com.example.lector.ui.mochy.RoundedHighlight
-import com.example.lector.ui.mochy.home.HeroCarousel
-import com.example.lector.ui.mochy.home.HeroCarouselItem
-import com.example.lector.ui.mochy.home.HeroHeightFraction
-import com.example.lector.ui.mochy.home.HomeContentInset
-import com.example.lector.ui.mochy.home.HomeSectionTitle
-import com.example.lector.ui.mochy.home.HomeTitleStyle
-import com.example.lector.ui.mochy.home.HomeTopGlow
-import com.example.lector.ui.mochy.home.HomeTrackRow
-import com.example.lector.ui.mochy.rememberRevealSeenState
-import com.example.lector.ui.mochy.revealOnAppear
 import com.example.lector.ui.home.CarruselInicio
 import com.example.lector.ui.home.DialogoCategoriasInicio
 import com.example.lector.ui.home.DialogoEditarInicio
@@ -69,27 +56,27 @@ import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.DropdownMenuItem
 
 /*
- * Inicio con el diseño de Mochy Music (github.com/realidkroo/Mochy-Music, GPL-3.0: ui/screens/HomeScreen.kt):
+ * Inicio con el diseño :
  * el héroe a sangre que pasa solo (ui/mochy/home/HeroCarousel.kt), secciones con título «ver todo» y filas de
  * portadas que aparecen en cascada, y la barra de arriba que cambia el logo por «Inicio» al desplazar.
- * Recomendaciones / escuchado hace poco / en bucle de Mochy -> seguir leyendo / recientes / en curso / sin leer.
+ * Recomendaciones / escuchado hace poco / en bucle  -> seguir leyendo / recientes / en curso / sin leer.
  */
 
 /** a Home row that fades and slides up the first time it scrolls into view */
 private fun LazyListScope.homeItem(
     key: String,
-    revealSeen: RevealSeenState,
+    revealSeen: VistosAparicion,
     contentType: String,
     content: @Composable () -> Unit,
 ) {
     item(key = key, contentType = contentType) {
-        Box(modifier = Modifier.revealOnAppear(key, revealSeen, cascade = true)) {
+        Box(modifier = Modifier.aparecer(key, revealSeen, cascade = true)) {
             content()
         }
     }
 }
 
-private val HomeHeaderHighlight = RoundedHighlight(cornerRadius = 100.dp)
+private data class Destacado(val comic: Comic, val reason: String)
 
 @Composable
 fun HomeScreen(
@@ -126,7 +113,7 @@ fun HomeScreen(
         val base = (listOf(featured) + enCursoTodos + recientes).distinctBy { it.id }
         (if (base.size >= 2) base else (base + sinLeer).distinctBy { it.id }).take(6)
             .map { c ->
-                HeroCarouselItem(
+                Destacado(
                     c,
                     when {
                         c.id == featured.id && c.leido > 0 -> "Seguir leyendo"
@@ -138,28 +125,13 @@ fun HomeScreen(
             }
     }
 
-    // «Ver todo»: la sección se despliega en su sitio, en filas (Mochy abre section_detail; Shiori no tiene esa página)
+    // «Ver todo»: la sección se despliega en su sitio, en filas
     var verRecientes by rememberSaveable { mutableStateOf(false) }
     var verEnCurso by rememberSaveable { mutableStateOf(false) }
     var verSinLeer by rememberSaveable { mutableStateOf(false) }
 
     val lazylistState = rememberLazyListState()
-    val revealSeen = rememberRevealSeenState()
-    val heroHeightDp = (LocalConfiguration.current.screenHeightDp * HeroHeightFraction).dp
-    val collapseDistancePx = with(LocalDensity.current) { heroHeightDp.toPx() }
-
-    val firstItemScrollOffset by remember(collapseDistancePx) {
-        derivedStateOf {
-            if (lazylistState.firstVisibleItemIndex == 0) lazylistState.firstVisibleItemScrollOffset.toFloat()
-            else collapseDistancePx
-        }
-    }
-    val heroScrollProgress by remember(collapseDistancePx) {
-        derivedStateOf { (firstItemScrollOffset / collapseDistancePx).coerceIn(0f, 1f) }
-    }
-    val heroScrollProgressProvider = remember { { heroScrollProgress } }
-    val glowIds = remember(recientes, enCurso) { (enCurso + recientes).distinctBy { it.id }.take(2).map { it.id } }
-
+    val revealSeen = rememberVistos()
     // ---- Selección múltiple (Komikku): mantener pulsado selecciona; «⋮» abre el resto de acciones ----
     var seleccion by remember { mutableStateOf(emptySet<String>()) }
     var hojaMas by remember { mutableStateOf(false) }
@@ -187,20 +159,23 @@ fun HomeScreen(
     Box(modifier.fillMaxSize().background(LectorColors.Bg)) {
         LazyColumn(state = lazylistState, contentPadding = PaddingValues(bottom = 190.dp)) {
             item(key = "cabecera", contentType = "cabecera") {
-                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 22.dp, end = 16.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    LText("Inicio", LectorType.Display.copy(fontSize = 34.sp, fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f))
-                    BotonVidrio(Icons.Rounded.Add, "Añadir", onClick = onAdd)
+                val hoy = remember { java.text.SimpleDateFormat("EEEE d MMM", java.util.Locale("es")).format(java.util.Date()).uppercase() }
+                Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = MargenLateral, end = 16.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        LText(hoy, EstiloDatos, color = LectorColors.Muted)
+                        LText("Inicio", LectorType.Display)
+                    }
+                    BotonCabecera(Icons.Rounded.Add, "Añadir") { onAdd() }
                 }
             }
             item(key = "seguir_t", contentType = "title") { TituloSilencio("Seguir leyendo") }
             item(key = "seguir", contentType = "seguir") {
-                LazyRow(contentPadding = PaddingValues(horizontal = 22.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyRow(contentPadding = PaddingValues(horizontal = MargenLateral), horizontalArrangement = Arrangement.spacedBy(HuecoTarjetas)) {
                     items(heroe, key = { "s_" + it.comic.id }) { h ->
                         TarjetaSeguir(h.comic, almacen, h.reason, onOpen = { toque(h.comic) }, onRead = { leerOSel(h.comic) }, onLong = { pulsacionLarga(h.comic) })
                     }
                 }
             }
-            item(key = "th_resumen", contentType = "th_resumen") { if (com.example.lector.fx.fxOn("th_resumen")) ResumenInicio(comics) }
 
             if (recientes.isNotEmpty()) {
                 homeItem("recientes_title", revealSeen, "title") {
@@ -249,7 +224,7 @@ fun HomeScreen(
 
             if (cuantosOcultos > 0) item(key = "ocultos", contentType = "ocultos") {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = HomeContentInset, vertical = 4.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = MargenLateral, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     LText(
@@ -330,7 +305,7 @@ private fun LazyListScope.espacioSeccion(id: String) {
     item(key = "section_spacer_$id", contentType = "spacer") { Spacer(Modifier.height(34.dp)) }
 }
 
-/** Una sección desplegada (o «En curso»): filas de Mochy, una por cómic, como items de la lista (6000+ sin problema). */
+/** Una sección desplegada (o «En curso»): filas , una por cómic, como items de la lista (6000+ sin problema). */
 private fun LazyListScope.seccionEnFilas(
     prefijo: String, lista: List<Comic>, almacen: Almacen,
     onOpen: (Comic) -> Unit, onRead: (Comic) -> Unit,
@@ -340,12 +315,10 @@ private fun LazyListScope.seccionEnFilas(
         val enSel = seleccion.isNotEmpty()
         val sel = c.id in seleccion
         Box(
-            Modifier.fillMaxWidth().padding(horizontal = HomeContentInset - 8.dp, vertical = 2.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else androidx.compose.ui.graphics.Color.Transparent)
-                .padding(horizontal = 8.dp, vertical = 2.dp)
+            Modifier.fillMaxWidth()
+                .background(if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else androidx.compose.ui.graphics.Color.Transparent)
         ) {
-            HomeTrackRow(
+            FilaPortada(
                 comic = c,
                 almacen = almacen,
                 onClick = { onOpen(c) },
@@ -354,139 +327,31 @@ private fun LazyListScope.seccionEnFilas(
                 showProgress = progreso,
                 modifier = Modifier.fillMaxWidth(),
             )
-            if (enSel) MarcaSeleccion(sel, Modifier.align(Alignment.CenterEnd).padding(end = 6.dp))
+            if (enSel) MarcaSeleccion(sel, Modifier.align(Alignment.CenterEnd).padding(end = MargenLateral))
         }
     }
 }
 
-/**
- * La barra de arriba de Mochy (HomeScreen.kt): sobre el héroe solo el logo; al desplazar, el fundido de fondo,
- * el brillo de las portadas (HomeTopGlow) y «Inicio» en negrita en lugar del logo. A la derecha, añadir.
- */
-@Composable
-private fun BoxScope.HomeTopBar(
-    heroScrollProgressProvider: () -> Float,
-    glowIds: List<String>,
-    almacen: Almacen,
-    onAdd: () -> Unit,
-) {
-    val bg = LectorColors.Bg
-    Box(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
-        val showHeroOverlay by remember { derivedStateOf { heroScrollProgressProvider() > 0.01f } }
-        if (showHeroOverlay) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .drawWithCache {
-                        // every stop is the page colour, so the fade is built once and only its alpha follows the scroll
-                        val fade = Brush.verticalGradient(
-                            0f to bg.copy(alpha = 0.9f),
-                            0.3f to bg.copy(alpha = 0.6f),
-                            0.6f to bg.copy(alpha = 0.3f),
-                            1f to bg.copy(alpha = 0f),
-                        )
-                        onDrawBehind { drawRect(brush = fade, alpha = heroScrollProgressProvider().coerceIn(0f, 1f)) }
-                    }
-            )
-            HomeTopGlow(
-                coverIds = glowIds,
-                almacen = almacen,
-                depth = 180.dp,
-                visibility = heroScrollProgressProvider,
-                modifier = Modifier.matchParentSize(),
-            )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(top = 14.dp, bottom = 16.dp, start = HomeContentInset, end = 30.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val isScrolled by remember { derivedStateOf { heroScrollProgressProvider() > 0.5f } }
-            val topBarProgress by animateFloatAsState(
-                targetValue = if (isScrolled) 1f else 0f,
-                animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
-                label = "topBarProgress"
-            )
-
-            // the brand mark over the hero, swapped for a bold "Inicio" once the hero scrolls away
-            Box(contentAlignment = Alignment.CenterStart) {
-                LogoApp(
-                    Modifier
-                        .size(44.dp)
-                        .graphicsLayer {
-                            alpha = 1f - topBarProgress
-                            val scale = 1f - topBarProgress * 0.25f
-                            scaleX = scale
-                            scaleY = scale
-                            transformOrigin = TransformOrigin(0f, 0.5f)
-                            renderEffect = BlurEffectCache.element(topBarProgress * 15f)
-                        }
-                )
-                Text(
-                    text = "Inicio",
-                    style = TextStyle(
-                        fontFamily = InterFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 32.sp,
-                        letterSpacing = (-0.06).em,
-                    ),
-                    color = LectorColors.Text,
-                    maxLines = 1,
-                    modifier = Modifier.graphicsLayer {
-                        alpha = topBarProgress
-                        renderEffect = BlurEffectCache.element((1f - topBarProgress) * 15f)
-                    }
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .graphicsLayer {
-                        val scale = 1f - (topBarProgress * 0.1f)
-                        scaleX = scale
-                        scaleY = scale
-                        transformOrigin = TransformOrigin(1f, 0.5f)
-                    }
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(50))
-                    .clickable(interactionSource = null, indication = HomeHeaderHighlight, onClick = onAdd),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Box(
-                    Modifier.padding(vertical = 4.dp).size(36.dp).clip(CircleShape).background(LectorColors.Card.copy(alpha = 0.72f)),
-                    Alignment.Center,
-                ) { Icon(Icons.Rounded.Add, "Añadir", tint = LectorColors.Text, modifier = Modifier.size(20.dp)) }
-            }
-        }
-    }
-}
-
-/** Estado vacío: el «QuietHero» de Mochy (nada aún) con el botón para añadir. */
+/** Estado vacío: el «QuietHero»  (nada aún) con el botón para añadir. */
 @Composable
 private fun InicioVacio(onAdd: () -> Unit, modifier: Modifier) {
     val acento = MaterialTheme.colorScheme.primary
     Box(
-        modifier.fillMaxSize().background(
-            Brush.verticalGradient(0f to acento.copy(alpha = 0.14f), 0.55f to LectorColors.Bg, 1f to LectorColors.Bg)
-        )
+        modifier.fillMaxSize().background(LectorColors.Bg)
     ) {
         Column(
             Modifier.fillMaxSize().padding(32.dp),
             verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(Modifier.entrada(0).size(132.dp).clip(SuaveShape(48.dp)).background(acento.copy(alpha = 0.18f)), Alignment.Center) {
-                Box(Modifier.size(76.dp).clip(CircleShape).background(acento.copy(alpha = 0.22f)), Alignment.Center) {
-                    Icon(Icons.Rounded.Star, null, tint = acento, modifier = Modifier.size(40.dp))
+            Row(Modifier.entrada(0), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+                listOf(96, 120, 104).forEachIndexed { i, h ->
+                    Box(Modifier.size(64.dp, h.dp).clip(RoundedCornerShape(8.dp)).background(if (i == 1) acento.copy(alpha = 0.35f) else LectorColors.Card).border(0.6.dp, LectorColors.Linea, RoundedCornerShape(8.dp)))
                 }
             }
             Spacer(Modifier.height(28.dp))
             LText(
                 "Tu estantería espera",
-                HomeTitleStyle.copy(fontSize = 30.sp, lineHeight = 34.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                LectorType.Display.copy( textAlign = androidx.compose.ui.text.style.TextAlign.Center),
                 Modifier.entrada(1),
             )
             Spacer(Modifier.height(8.dp))

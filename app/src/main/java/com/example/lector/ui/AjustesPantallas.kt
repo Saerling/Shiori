@@ -1,5 +1,7 @@
 package com.example.lector.ui
 
+import kotlin.math.roundToInt
+
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
@@ -57,156 +59,58 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Ajustes: la raíz de ajustes de Mochy (ui/screens/settings/MochySettingsScreen.kt): cabecera con la marca de la app,
- * una línea fina y cada apartado como una burbuja (CategoryBubble). El buscador es el de las subpáginas de Mochy y,
+ * Ajustes: la raíz de ajustes : cabecera con la marca de la app,
+ * una línea fina y cada apartado como una burbuja (CategoryBubble). El buscador es el de las subpáginas  y,
  * al escribir, los apartados dejan paso a los ajustes que coinciden.
  */
 @Composable
 fun AjustesScreen(almacen: Almacen, onBack: () -> Unit, onRuta: (Ruta) -> Unit) {
     var q by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     val ctx = LocalContext.current
-    val version = remember {
-        runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "?"
-    }
+    val version = remember { runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "?" }
     val texto = q.trim()
     val hallados = remember(texto) {
         if (texto.isEmpty()) emptyList() else {
             val norm = { t: String -> java.text.Normalizer.normalize(t.lowercase(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "") }
             val qn = norm(texto)
             AJUSTES_BUSCABLES.filter { (t, d, r) ->
-                norm(t).contains(qn) || norm(d).contains(qn) ||
-                    APARTADOS_AJUSTES.firstOrNull { it.ruta == r }?.let { norm(it.titulo).contains(qn) } == true
+                norm(t).contains(qn) || norm(d).contains(qn) || APARTADOS_AJUSTES.firstOrNull { it.ruta == r }?.let { norm(it.titulo).contains(qn) } == true
             }
         }
     }
-    // Animated fade for content when search bar is tapped
-    val contentAlpha by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (texto.isNotEmpty()) 0f else 1f,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-        label = "contentAlpha",
-    )
-
     PaginaSilencio("Ajustes", onBack) {
-        Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) { com.example.lector.ui.mochy.SubSettingsSearchBar(q, { q = it }) }
-        Column(Modifier.padding(horizontal = 16.dp)) {
-        // Search results view when user types
-        androidx.compose.animation.AnimatedVisibility(
-            visible = texto.isNotEmpty(),
-            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(160, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(160, easing = androidx.compose.animation.core.FastOutSlowInEasing)) { 20 },
-            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120, easing = androidx.compose.animation.core.FastOutSlowInEasing)),
+        Box(Modifier.padding(horizontal = MargenLateral, vertical = 6.dp)) { CampoBusqueda(q, { q = it }, "Buscar en ajustes") }
+        if (texto.isNotEmpty()) {
+            if (hallados.isEmpty()) LText("Ningún ajuste coincide con «$texto».", EstiloCuerpo, Modifier.padding(MargenLateral, 16.dp), color = LectorColors.Muted)
+            hallados.forEach { (t, _, r) ->
+                val ap = APARTADOS_AJUSTES.firstOrNull { it.ruta == r }
+                FilaSilencio(ap?.icono ?: Icons.Rounded.Settings, t, ap?.titulo, { onRuta(r) })
+            }
+            return@PaginaSilencio
+        }
+        // Tarjeta de la app: logo, nombre y versión.
+        Row(
+            Modifier.padding(horizontal = MargenLateral, vertical = 10.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                .background(LectorColors.Card).borde(16.dp).clickable { onRuta(Ruta.AcercaDe) }.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (hallados.isEmpty()) {
-                    Text(
-                        text = "Ningún ajuste coincide con «$texto».",
-                        fontFamily = com.example.lector.ui.mochy.InterFontFamily,
-                        fontSize = 15.sp,
-                        color = LectorColors.Text.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
-                    )
-                } else {
-                    hallados.forEach { (t, _, r) ->
-                        val apartado = APARTADOS_AJUSTES.firstOrNull { it.ruta == r }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
-                                .background(BubbleColor)
-                                .clickable { onRuta(r) }
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier.size(38.dp).clip(CircleShape).background(IconBgColor),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(apartado?.icono ?: Icons.Rounded.Settings, null, tint = LectorColors.Text, modifier = Modifier.size(18.dp))
-                                }
-                                Spacer(Modifier.width(11.dp))
-                                Column {
-                                    Text(
-                                        text = t,
-                                        fontFamily = com.example.lector.ui.mochy.InterFontFamily,
-                                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                                        fontSize = 16.sp,
-                                        color = LectorColors.Text,
-                                    )
-                                    Text(
-                                        text = apartado?.titulo ?: "",
-                                        fontFamily = com.example.lector.ui.mochy.InterFontFamily,
-                                        fontSize = 12.sp,
-                                        color = LectorColors.Text.copy(alpha = 0.55f),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+            LogoApp(Modifier.size(44.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                LText("Shiori", EstiloFilaTitulo.copy(fontSize = 17.sp))
+                LText("versión $version", EstiloDatos, color = LectorColors.Muted)
             }
+            LText("›", LectorType.Body.copy(fontSize = 20.sp), color = LectorColors.Muted)
         }
-
-        // Normal Settings Content (fades smoothly when searching)
-        if (contentAlpha > 0.001f) {
-            Column(Modifier.fillMaxWidth().graphicsLayer { alpha = contentAlpha }) {
-                // la cabecera de la app, donde Mochy pone su recomendado: marca, nombre y versión
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
-                        .background(BubbleColor)
-                        .clickable { onRuta(Ruta.AcercaDe) }
-                        .padding(18.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        LogoApp(Modifier.size(44.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                text = "Shiori",
-                                fontFamily = com.example.lector.ui.mochy.InterFontFamily,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = LectorColors.Text,
-                            )
-                            Text(
-                                text = "Versión $version",
-                                fontFamily = com.example.lector.ui.mochy.InterFontFamily,
-                                fontSize = 13.sp,
-                                color = LectorColors.Text.copy(alpha = 0.55f),
-                            )
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(18.dp))
-
-                // Divider
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(0.8.dp)
-                        .background(LectorColors.Text.copy(alpha = 0.1f)),
-                )
-
-                Spacer(Modifier.height(18.dp))
-
-                // Separate Bubble Pills for Categories (No outlines, individually bubble-wrapped)
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    APARTADOS_AJUSTES.forEachIndexed { i, a ->
-                        CategoryBubble(a.titulo, a.icono, Modifier.entrada(i)) { onRuta(a.ruta) }
-                    }
-                }
-            }
-        }
-    }
+        TituloSeccion("General")
+        APARTADOS_AJUSTES.forEachIndexed { i, a -> Box(Modifier.entrada(i)) { FilaSilencio(a.icono, a.titulo, a.detalle, { onRuta(a.ruta) }) } }
     }
 }
 
-private class Apartado(val icono: androidx.compose.ui.graphics.vector.ImageVector, val titulo: String, val ruta: Ruta)
+private class Apartado(val icono: androidx.compose.ui.graphics.vector.ImageVector, val titulo: String, val ruta: Ruta, val detalle: String? = null)
 
 private val APARTADOS_AJUSTES = listOf(
-    Apartado(Icons.Rounded.Create, "Personalización", Ruta.Apariencia),
+    Apartado(Icons.Rounded.Create, "Aspecto", Ruta.Apariencia, "Tema, acento, portadas, gestos y animaciones"),
     Apartado(Icons.Rounded.List, "Biblioteca", Ruta.AjBiblioteca),
     Apartado(Icons.Rounded.PlayArrow, "Visor", Ruta.AjVisor),
     Apartado(Iconos.Descargar, "Descargas", Ruta.AjDescargas),
@@ -222,10 +126,10 @@ private val APARTADOS_AJUSTES = listOf(
 private val AJUSTES_BUSCABLES: List<Triple<String, String, Ruta>> = listOf(
     Triple("Tema", "claro oscuro negro puro sistema", Ruta.Apariencia),
     Triple("Color de acento", "color tema portada", Ruta.Apariencia),
-    Triple("Superficies", "cristal liquid glass sólido transparencia", Ruta.Apariencia),
-    Triple("Fondo", "aurora liso color fondo vivo", Ruta.Apariencia),
     Triple("Animación al abrir", "agujero negro arranque inicio", Ruta.Apariencia),
-    Triple("Luz al tocar", "luz táctil toque", Ruta.Apariencia),
+    Triple("Gestos de capítulos", "deslizar leído marcar descargar", Ruta.Apariencia),
+    Triple("Redondeo de portadas", "esquinas portada", Ruta.Apariencia),
+    Triple("Animaciones", "velocidad quitar animaciones movimiento", Ruta.Apariencia),
     Triple("Vista de la biblioteca", "cuadrícula lista columnas portadas", Ruta.AjBiblioteca),
     Triple("Categorías", "categoría ordenar ocultas", Ruta.AjBiblioteca),
     Triple("Actualizar biblioteca", "actualizaciones automáticas novedades capítulos nuevos", Ruta.AjBiblioteca),
@@ -258,177 +162,130 @@ private val AJUSTES_BUSCABLES: List<Triple<String, String, Ruta>> = listOf(
     Triple("Versión y actualizaciones", "versión actualizar app novedades", Ruta.AcercaDe),
 )
 
-private val BubbleColor: Color get() = com.example.lector.ui.mochy.LabColors.Card
-private val IconBgColor: Color get() = if (TemaActual.oscuro) Color(0xFF333338) else LectorColors.CardHigh
 
-/** CategoryBubble de MochySettingsScreen: 64 dp, esquinas de 22 dp, icono en círculo de 40 dp y título de 17 sp. */
-@Composable
-private fun CategoryBubble(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
-            .background(BubbleColor)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(IconBgColor),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, null, tint = LectorColors.Text, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text = title,
-                fontFamily = com.example.lector.ui.mochy.InterFontFamily,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                fontSize = 17.sp,
-                color = LectorColors.Text,
-            )
-        }
-    }
-}
 
 // ───────────────────── Apariencia ─────────────────────
 
 private fun nombreTema(m: ModoTema) = when (m) {
-    ModoTema.SISTEMA -> "Según el sistema"
-    ModoTema.OSCURO_PURO -> "Negro puro"
-    ModoTema.OSCURO -> "Oscuro"
+    ModoTema.SISTEMA -> "Sistema"
+    ModoTema.OSCURO_PURO -> "Negro"
+    ModoTema.OSCURO -> "Grafito"
     ModoTema.CLARO -> "Claro"
 }
 
+/** Aspecto: tema, acento, portadas, biblioteca, gestos y animaciones. Cada elección se ve en su muestra. */
 @Composable
 fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit) {
     val opciones = Paletas.fijas.map { it.nombre to it.color } +
         if (Build.VERSION.SDK_INT >= 31) listOf(Paletas.SISTEMA to colorDePaleta(Paletas.SISTEMA)) else emptyList()
     val acento = androidx.compose.material3.MaterialTheme.colorScheme.primary
-    PaginaAjustes("Apariencia", onBack) {
+    PaginaAjustes("Aspecto", onBack) {
         TituloSeccion("Tema")
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = MargenLateral), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ModoTema.entries.forEach { m ->
                 val (fondo, tarjeta, texto) = when (m) {
-                    ModoTema.CLARO -> Triple(Color(0xFFF6F6F8), Color.White, Color(0xFF111114))
-                    ModoTema.OSCURO -> Triple(Color(0xFF111114), Color(0xFF26262C), Color.White)
-                    ModoTema.OSCURO_PURO -> Triple(Color.Black, Color(0xFF1E1E20), Color.White)
+                    ModoTema.CLARO -> Triple(Color.White, Color(0xFFF4F4F5), Color(0xFF111113))
+                    ModoTema.OSCURO -> Triple(Color(0xFF1E1E1E), Color(0xFF262626), Color(0xFFDCDDDE))
+                    ModoTema.OSCURO_PURO -> Triple(Color.Black, Color(0xFF141414), Color.White)
                     ModoTema.SISTEMA -> Triple(Color(0xFF6B6B73), Color(0xFFB0B0B8), Color.White)
                 }
                 TarjetaTema(nombreTema(m), acento, almacen.modoTema == m, fondo, tarjeta, texto) { almacen.modoTema = m }
             }
         }
-        Divisor()
-        TituloSeccion("Color de acento")
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
+        LText("«Grafito» es el oscuro de Silencio, con líneas finas como Obsidian; «Negro» ahorra batería en pantallas OLED.", LectorType.Label, Modifier.padding(MargenLateral, 10.dp), color = LectorColors.Muted)
+        TituloSeccion("Acento")
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = MargenLateral, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             opciones.forEach { (nombre, color) ->
-                TarjetaTema(nombre, color, almacen.paleta == nombre, LectorColors.Bg, LectorColors.CardHigh, LectorColors.Text) { almacen.elegirPaleta(nombre) }
-            }
-        }
-        if (Build.VERSION.SDK_INT >= 31) {
-            LText("«Sistema» usa los colores de tu fondo de pantalla.", LectorType.Label, Modifier.padding(24.dp, 12.dp), color = LectorColors.Muted)
-        }
-        Divisor()
-        TituloSeccion("Superficies")
-        FilaVistas {
-            Superficie.entries.forEach { s ->
-                TarjetaVista(s.nombre, Aspecto.superficie == s, acento, { Aspecto.elegir(s) }) { VistaSuperficie(s, acento) }
-            }
-        }
-        LText(
-            "Cómo se ven la barra, el mini lector y los avisos. «Liquid glass» deja ver más el fondo y le da brillo de cristal.",
-            LectorType.Label, Modifier.padding(24.dp, 10.dp), color = LectorColors.Muted,
-        )
-        Divisor()
-        TituloSeccion("Fondo")
-        FilaVistas {
-            FondoApp.entries.forEach { f ->
-                TarjetaVista(f.nombre, Aspecto.fondo == f, acento, { Aspecto.elegir(f) }) {
-                    Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
-                        FondoVivo(f, Modifier.fillMaxSize(), fijo = true, acento = acento)
-                        VistaBarra(Aspecto.superficie, Modifier.align(Alignment.BottomCenter))
-                    }
+                val elegido = almacen.paleta == nombre
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(56.dp).pressable { almacen.elegirPaleta(nombre) }) {
+                    Box(
+                        Modifier.size(44.dp).clip(CircleShape).background(color)
+                            .border(if (elegido) 3.dp else 0.6.dp, if (elegido) LectorColors.Text else LectorColors.Linea, CircleShape),
+                        Alignment.Center,
+                    ) { if (elegido) Icon(Icons.Rounded.Check, null, tint = textoSobre(color), modifier = Modifier.size(18.dp)) }
+                    Spacer(Modifier.height(6.dp))
+                    LText(if (nombre == Paletas.MONO) "Mono" else nombre, EstiloMono, color = if (elegido) LectorColors.Text else LectorColors.Muted, maxLines = 1)
                 }
             }
         }
-        Divisor()
-        TituloSeccion("Animación de inicio")
-        FilaVistas {
-            AnimArranque.entries.forEach { a ->
-                TarjetaVista(a.nombre, Aspecto.arranque == a, acento, { Aspecto.elegir(a) }) {
-                    Box(Modifier.fillMaxSize().background(if (a == AnimArranque.NINGUNA) LectorColors.Bg else Color.Black), Alignment.Center) {
-                        when (a) {
-                            AnimArranque.PUNTOS -> LogoApp(Modifier.size(84.dp), conFondo = false)
-                        AnimArranque.AGUJERO -> LogoApp(Modifier.size(70.dp), conFondo = false, agujero = true)
-                            AnimArranque.RAPIDA -> LogoApp(Modifier.size(46.dp).graphicsLayer { alpha = 0.55f }, conFondo = false)
-                            AnimArranque.NINGUNA -> VistaBarra(Aspecto.superficie, Modifier.align(Alignment.BottomCenter))
-                        }
-                    }
-                }
+        FilaSwitch("Color de la portada", "La ficha y el lector toman el color de la portada.", almacen.colorPortada) { almacen.elegirColorPortada(it) }
+        TituloSeccion("Portadas")
+        FilaSilencio(null, "Redondeo", "${Aspecto.radioPortada.toInt()} dp", null, final = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(26.dp, 38.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape((Aspecto.radioPortada / 3f).dp)).background(acento.copy(alpha = 0.5f)))
+            }
+        })
+        Box(Modifier.padding(horizontal = MargenLateral)) {
+            DeslizadorExpresivo(Aspecto.radioPortada, 0f..24f, { Aspecto.elegirRadioPortada(it.roundToInt().toFloat()) })
+        }
+        FilaSwitch("Portadas panorámicas", "En Historial y Novedades, las portadas apaisadas se ven a lo ancho.", Aspecto.panoramica) { Aspecto.elegirPanoramica(it) }
+        TituloSeccion("Biblioteca")
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = MargenLateral, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(Vista.CUADRICULA_COMODA to "Cómoda", Vista.CUADRICULA_COMPACTA to "Compacta", Vista.SOLO_PORTADA to "Portadas", Vista.LISTA to "Lista").forEach { (v, n) ->
+                ChipSel(n, almacen.vista == v) { almacen.elegirVista(v) }
             }
         }
-        Box(Modifier.padding(horizontal = 24.dp, vertical = 10.dp)) {
+        FilaSwitch("Mantener pulsado añade o quita", "En Explorar, mantener pulsado una portada la añade o quita de la biblioteca sin abrir el menú.", Aspecto.accionDirecta) { Aspecto.elegirAccionDirecta(it) }
+        TituloSeccion("Gestos de capítulos")
+        val ctx = LocalContext.current
+        LaunchedEffect(Unit) { GestosCapitulos.iniciar(ctx) }
+        FilaGesto("Deslizar a la derecha", GestosCapitulos.derecha) { GestosCapitulos.elegirDerecha(it) }
+        FilaGesto("Deslizar a la izquierda", GestosCapitulos.izquierda) { GestosCapitulos.elegirIzquierda(it) }
+        TituloSeccion("Movimiento")
+        FilaSwitch("Animaciones", "Apagadas, todo cambia al instante (también ahorra batería).", MovimientoApp.activado) { MovimientoApp.elegirActivado(it) }
+        if (MovimientoApp.activado) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = MargenLateral, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            VelocidadesAnimacion.forEach { v -> ChipSel(textoVelocidad(v), MovimientoApp.velocidad == v) { MovimientoApp.elegirVelocidad(v) } }
+        }
+        TituloSeccion("Al abrir")
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = MargenLateral, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            AnimArranque.entries.forEach { a -> ChipSel(a.nombre, Aspecto.arranque == a) { Aspecto.elegir(a) } }
+        }
+        Box(Modifier.padding(horizontal = MargenLateral, vertical = 10.dp)) {
             PillButton("Ver animación", Icons.Rounded.Refresh, { ArranqueRevelado.repetir++ })
         }
-        Divisor()
-        TituloSeccion("Respuesta")
-        FilaSwitch("Luz al tocar", "Un brillo suave sigue a tu dedo en botones, portadas y la barra (Living Flow).", Aspecto.luzTactil) {
-            Aspecto.elegirLuz(it)
-        }
-        Divisor()
-        TituloSeccion("Información del cómic")
-        FilaSwitch(
-            "Tema según la portada", "La ficha y el lector toman el color de la portada.",
-            almacen.colorPortada,
-        ) { almacen.elegirColorPortada(it) }
     }
 }
 
-/** Mini maqueta de teléfono con el color elegido, como las tarjetas de tema de Komikku. */
+@Composable
+private fun FilaGesto(titulo: String, actual: AccionGesto, alElegir: (AccionGesto) -> Unit) {
+    var abierto by remember { mutableStateOf(false) }
+    Box {
+        FilaSilencio(actual.icono, titulo, actual.titulo, { abierto = true })
+        MenuShiori(expanded = abierto, onDismissRequest = { abierto = false }) {
+            AccionGesto.entries.forEach { a ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(a.titulo) }, leadingIcon = { Icon(a.icono, null, tint = a.color) },
+                    onClick = { abierto = false; alElegir(a) },
+                )
+            }
+        }
+    }
+}
+
+/** Mini maqueta del tema: fondo, una tarjeta con línea fina y el acento. */
 @Composable
 private fun TarjetaTema(
     nombre: String, color: Color, seleccionada: Boolean, fondo: Color, tarjeta: Color, texto: Color, onClick: () -> Unit,
 ) {
-    val forma = SuaveShape(24.dp)
-    Column(Modifier.width(104.dp).pressable(onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+    val forma = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    Column(Modifier.width(92.dp).pressable(onClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.fillMaxWidth().height(150.dp).clip(forma).background(fondo)
-                .border(if (seleccionada) 3.dp else 2.dp, if (seleccionada) color else LectorColors.Linea, forma),
+            Modifier.fillMaxWidth().height(132.dp).clip(forma).background(fondo)
+                .border(if (seleccionada) 2.5.dp else 0.6.dp, if (seleccionada) LectorColors.Text else LectorColors.Linea, forma),
         ) {
-            Box(Modifier.padding(12.dp).size(width = 46.dp, height = 12.dp).clip(CircleShape).background(texto))
-            Box(Modifier.align(Alignment.Center).size(width = 56.dp, height = 62.dp).clip(SuaveShape(10.dp)).background(tarjeta)) {
-                Box(Modifier.padding(6.dp).size(width = 22.dp, height = 12.dp).clip(CircleShape).background(color))
+            Column(Modifier.padding(10.dp)) {
+                Box(Modifier.size(38.dp, 8.dp).clip(CircleShape).background(texto))
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    repeat(2) { Box(Modifier.size(30.dp, 44.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(5.dp)).background(tarjeta)) }
+                }
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.size(48.dp, 6.dp).clip(CircleShape).background(texto.copy(alpha = 0.4f)))
             }
-            Row(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(tarjeta).padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(14.dp).clip(CircleShape).background(color))
-                Spacer(Modifier.width(6.dp))
-                Box(Modifier.weight(1f).height(12.dp).clip(CircleShape).background(texto.copy(alpha = 0.5f)))
-            }
-            if (seleccionada) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(8.dp).size(22.dp).clip(CircleShape).background(color),
-                    Alignment.Center,
-                ) { Icon(Icons.Rounded.Check, null, tint = textoSobre(color), modifier = Modifier.size(14.dp)) }
-            }
+            Box(Modifier.align(Alignment.BottomEnd).padding(8.dp).size(16.dp).clip(CircleShape).background(color))
         }
         Spacer(Modifier.height(8.dp))
-        LText(nombre, LectorType.Label, color = LectorColors.Muted, maxLines = 1)
+        LText(nombre, EstiloMono, color = if (seleccionada) LectorColors.Text else LectorColors.Muted, maxLines = 1)
     }
 }
 
@@ -730,9 +587,9 @@ fun DatosScreen(almacen: Almacen, alRecargar: () -> Unit, onBack: () -> Unit) {
         }
     }
 
-    // Copias en WebDAV (de BitChord): subpantalla propia, sin ruta nueva.
+    // Copias en WebDAV: subpantalla propia, sin ruta nueva.
     var verWebdav by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
-    if (verWebdav) { com.example.lector.ui.bitchord.WebdavScreen { verWebdav = false }; return }
+    if (verWebdav) { com.example.lector.ui.herramientas.WebdavScreen { verWebdav = false }; return }
 
     val tamImagenes = remember(version) { Formatter.formatShortFileSize(contexto, Imagenes.tamanoDisco()) }
     PaginaAjustes("Datos y almacenamiento", onBack) {
@@ -768,8 +625,8 @@ fun DatosScreen(almacen: Almacen, alRecargar: () -> Unit, onBack: () -> Unit) {
         }
         FilaAjuste(
             Icons.Rounded.Refresh, "Copias en WebDAV",
-            com.example.lector.bitchord.WebDavAjustes(contexto).let { w ->
-                if (w.configurado) "${com.example.lector.bitchord.WebDavClient.hostOf(w.url)}${if (w.autoSubir) " · sube las automáticas" else ""}"
+            com.example.lector.herramientas.WebDavAjustes(contexto).let { w ->
+                if (w.configurado) "${com.example.lector.herramientas.WebDavClient.hostOf(w.url)}${if (w.autoSubir) " · sube las automáticas" else ""}"
                 else "Nextcloud, ownCloud, NAS…: subir y restaurar copias"
             },
         ) { verWebdav = true }
@@ -1049,64 +906,6 @@ private fun Dato2(etiqueta: String, valor: String) {
         LText(valor, LectorType.Body, Modifier.weight(1f))
     }
 }
-
-@Composable
-private fun FilaVistas(content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
-    Row(
-        Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp), content = content,
-    )
-}
-
-/** Tarjeta de previsualización (mini pantalla) con su nombre; el borde se ilumina si está elegida. */
-@Composable
-private fun TarjetaVista(nombre: String, elegida: Boolean, acento: Color, onClick: () -> Unit, vista: @Composable () -> Unit) {
-    val forma = SuaveShape(24.dp)
-    val borde by androidx.compose.animation.animateColorAsState(if (elegida) acento else LectorColors.Linea, label = "borde")
-    Column(Modifier.width(112.dp).pressable(onClick), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.fillMaxWidth().height(170.dp).clip(forma).border(if (elegida) 3.dp else 2.dp, borde, forma)) { vista() }
-        Spacer(Modifier.height(8.dp))
-        LText(nombre, LectorType.Label, color = if (elegida) LectorColors.Text else LectorColors.Muted, maxLines = 1)
-    }
-}
-
-/** Mini pantalla con fondo de color y la barra flotante dibujada con ese estilo de superficie. */
-@Composable
-private fun VistaSuperficie(s: Superficie, acento: Color) {
-    Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
-        FondoVivo(FondoApp.COLOR, Modifier.fillMaxSize(), fijo = true, acento = acento)
-        // «Contenido» detrás de la barra: unas portadas.
-        Row(Modifier.align(Alignment.Center).padding(bottom = 30.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            repeat(3) { i -> Box(Modifier.size(26.dp, 38.dp).clip(SuaveShape(6.dp)).background(acento.copy(alpha = 0.35f + i * 0.2f))) }
-        }
-        VistaBarra(s, Modifier.align(Alignment.BottomCenter))
-    }
-}
-
-@Composable
-internal fun VistaBarra(s: Superficie, modifier: Modifier = Modifier) {
-    val forma = CircleShape
-    val oscuro = TemaActual.oscuro
-    Box(
-        modifier.padding(10.dp).fillMaxWidth().height(26.dp).clip(forma)
-            .background(
-                when (s) {
-                    Superficie.SOLIDO -> LectorColors.Cristal
-                    Superficie.CRISTAL -> LectorColors.Cristal.copy(alpha = 0.78f)
-                    Superficie.LIQUIDO -> LectorColors.Cristal.copy(alpha = 0.40f)
-                },
-            )
-            .then(
-                if (s == Superficie.LIQUIDO) Modifier.background(
-                    Brush.verticalGradient(0f to Color.White.copy(alpha = if (oscuro) 0.16f else 0.4f), 0.5f to Color.Transparent),
-                ).border(1.dp, Brush.verticalGradient(0f to Color.White.copy(alpha = 0.45f), 1f to Color.White.copy(alpha = 0.08f)), forma)
-                else Modifier.border(1.dp, LectorColors.Linea, forma),
-            ),
-    ) {
-        Box(Modifier.padding(4.dp).size(28.dp, 18.dp).clip(forma).background(LectorColors.Iluminada))
-    }
-}
-
 
 /** Fila que abre las casillas de categorías y guarda las elegidas como ids separados por coma. */
 @Composable

@@ -96,7 +96,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        com.example.lector.fx.Fx.init(this)
         Fallos.instalar(applicationContext)
         // Si la memoria aprieta mientras trabaja una fuente: se vacían las cachés de imágenes (se recargan solas).
         com.example.lector.ext.FuentesEnUso.alLiberarMemoria = { liberarMemoria() }
@@ -119,7 +118,7 @@ class MainActivity : ComponentActivity() {
             NuevaVersion.alArrancar(applicationContext)
         }
         procesarEnlace(intent)
-        // Como Mochy: un Recomposer propio con nuestra escala de duración, así «Animación» (encendida / velocidad)
+        // Como : un Recomposer propio con nuestra escala de duración, así «Animación» (encendida / velocidad)
         // de Personalización afecta a TODAS las animaciones de Compose de la app.
         com.example.lector.ui.MovimientoApp.iniciar(applicationContext)
         com.example.lector.ui.MovimientoReducido.actualizar()
@@ -262,7 +261,7 @@ fun App(
     SideEffect { TemaActual.oscuro = oscuro; TemaActual.puro = puro }
     LaunchedEffect(oscuro) { alCambiarTema(oscuro) }
     LectorTheme(acento = colorDePaleta(almacen.paleta, oscuro), oscuro = oscuro, puro = puro) {
-      // Sin ripple de Material en toda la app (como Mochy, que pone indication = null): cada componente da su propia
+      // Sin ripple de Material en toda la app: cada componente da su propia
       // respuesta al toque (pressable, resaltable, pressBounce).
       @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
       androidx.compose.runtime.CompositionLocalProvider(
@@ -271,7 +270,7 @@ fun App(
       ) {
         Box(Modifier.fillMaxSize().background(com.example.lector.ui.LectorColors.Bg)) {
             // Mientras hay una hoja inferior abierta, la app se aleja (0,92) y redondea las esquinas (28 dp), como el
-            // PopupSheetHost de Mochy: se lee la presencia de la hoja al dibujar, así sigue al arrastre fotograma a fotograma.
+            // PopupSheetHost : se lee la presencia de la hoja al dibujar, así sigue al arrastre fotograma a fotograma.
             Box(
                 Modifier.fillMaxSize().graphicsLayer {
                     // Al arrancar, la app emerge del agujero: de 1,08 a 1 mientras se revela.
@@ -279,25 +278,11 @@ fun App(
                         val e = 1.08f - 0.08f * com.example.lector.ui.ArranqueRevelado.valor
                         scaleX = e; scaleY = e
                     }
-                    val alejar = com.example.lector.ui.Hojas.presencia
-                    if (alejar > 0f) {
-                        val e = 1f - com.example.lector.ui.mochy.sheet.BackdropRecede * alejar
-                        scaleX = e; scaleY = e
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape((28f * alejar).dp)
-                        clip = true
-                    }
-                    // While the sheet moves, the app behind is drawn once into a layer and the zoom moves that.
-                    compositingStrategy = if (alejar > 0f && alejar < 1f) androidx.compose.ui.graphics.CompositingStrategy.Offscreen
-                        else androidx.compose.ui.graphics.CompositingStrategy.Auto
                 },
             ) { Contenido(almacen, destino, alConsumirDestino) }
-            // Atenuado de las hojas (y la salida de las que se quitan desde fuera).
-            com.example.lector.ui.mochy.sheet.PopupSheetBackdrop()
             if (arranque) ArranqueOverlay { arranque = false }
             if (!bloqueada) com.example.lector.ui.DialogoActualizacion()
             if (bloqueada) PantallaBloqueo(alDesbloquear)
-                    // Biblioteca de animaciones: revelado circular al cambiar el tema y bienvenida (Onboarding).
-            com.example.lector.ui.FxCapasGlobales(oscuro)
         }
       }
     }
@@ -398,13 +383,12 @@ private fun Contenido(almacen: Almacen, destino: String?, alConsumirDestino: () 
     // Aviso mientras se copia o se empaqueta (puede tardar con archivos grandes).
     if (importando) {
         AlertDialog(
-        modifier = com.example.lector.ui.estiloDialogoFxM(),
             onDismissRequest = {},
             confirmButton = {},
             title = { Text("Importando…") },
             text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    com.example.lector.ui.IndicadorCarga(Modifier.size(24.dp), estado = com.example.lector.ui.orbes.EstadoOrbe.SHAPING)
+                    com.example.lector.ui.IndicadorCarga(Modifier.size(24.dp), estado = null)
                     Spacer(Modifier.width(16.dp))
                     Text("Esto puede tardar con archivos o carpetas grandes.")
                 }
@@ -452,7 +436,6 @@ private fun Contenido(almacen: Almacen, destino: String?, alConsumirDestino: () 
 private fun DialogoFallo(texto: String, alCerrar: () -> Unit) {
     val ctx = LocalContext.current
     AlertDialog(
-        modifier = com.example.lector.ui.estiloDialogoFxM(),
         onDismissRequest = alCerrar,
         title = { Text("La app se cerró por un error") },
         text = {

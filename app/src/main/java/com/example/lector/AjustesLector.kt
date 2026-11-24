@@ -83,7 +83,6 @@ private fun TituloSeccion(texto: String) {
 @Composable
 fun DialogoLector(almacen: Almacen, alCerrar: () -> Unit) {
     AlertDialog(
-        modifier = com.example.lector.ui.estiloDialogoFxM(),
         onDismissRequest = alCerrar,
         title = { Text("Lector") },
         text = {
@@ -215,7 +214,6 @@ fun AjustesPantallaImagen(almacen: Almacen) {
 @Composable
 fun DialogoPantallaLector(almacen: Almacen, alCerrar: () -> Unit) {
     AlertDialog(
-        modifier = com.example.lector.ui.estiloDialogoFxM(),
         onDismissRequest = alCerrar,
         title = { Text("Pantalla y color") },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { AjustesPantallaImagen(almacen) } },

@@ -1,5 +1,6 @@
 package com.example.lector.ui.migrar
 
+import com.example.lector.ui.*
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -85,7 +86,7 @@ fun TarjetaExtension(ext: ExtManager, fuenteId: Long, modifier: Modifier = Modif
         Spacer(Modifier.width(8.dp))
         val pr = pkg?.let { ext.progreso[it] }
         when {
-            pr != null && pr.fase != Fase.ERROR -> IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.dp, estado = com.example.lector.ui.orbes.EstadoOrbe.CONNECTING)
+            pr != null && pr.fase != Fase.ERROR -> IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.dp, estado = null)
             inst != null && !inst.confiable -> PillButton("Confiar", Icons.Rounded.Check, { ext.confiar(inst) })
             inst?.errorCarga != null && disp != null -> PillButton("Reinstalar", Icons.Rounded.Refresh, { ext.instalar(disp) })
             inst == null && disp != null -> PillButton("Instalar", Icons.Rounded.Add, { ext.instalar(disp) })

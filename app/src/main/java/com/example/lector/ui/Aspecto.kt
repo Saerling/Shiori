@@ -2,97 +2,145 @@ package com.example.lector.ui
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.compose.foundation.Canvas
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import kotlin.math.cos
-import kotlin.math.sin
 
-/** Cómo se ven las superficies flotantes (barra, mini lector, avisos, cabeceras). */
-enum class Superficie(val nombre: String) { CRISTAL("Cristal"), LIQUIDO("Liquid glass"), SOLIDO("Sólido") }
+/*
+ * Preferencias de aspecto de Silencio (SharedPreferences «aspecto»). Solo lo que cambia cómo se usa la app:
+ * fondo grafito, animaciones, portadas panorámicas, mantener pulsado, gestos de capítulos y descargas.
+ */
+object Aspecto {
+    enum class LadoDescargas(val nombre: String) { IZQUIERDA("Izquierda"), CENTRO("Centro"), DERECHA("Derecha") }
 
-/** Lo que hay detrás de las pestañas principales (y que el cristal desenfoca). */
-enum class FondoApp(val nombre: String) { NEGRO("Liso"), AURORA("Aurora"), COLOR("Aurora de color") }
+    private var prefs: SharedPreferences? = null
+
+    /** Animación al abrir la app. */
+    var arranque by mutableStateOf(AnimArranque.PUNTOS); private set
+    /** Redondeo de las portadas en toda la app, en dp. */
+    var radioPortada by mutableFloatStateOf(10f); private set
+    /** Fondo oscuro grafito (como Obsidian) en vez de negro puro. */
+    var grafito by mutableStateOf(true); private set
+    /** Mantener pulsado añade o quita de la biblioteca directamente, sin menú. */
+    var accionDirecta by mutableStateOf(false); private set
+    /** Portadas apaisadas a lo ancho en Historial y Novedades. */
+    var panoramica by mutableStateOf(false); private set
+    var verDescargas by mutableStateOf(true); private set
+    var ladoDescargas by mutableStateOf(LadoDescargas.IZQUIERDA); private set
+
+    fun iniciar(ctx: Context) {
+        if (prefs != null) return
+        val p = ctx.applicationContext.getSharedPreferences("aspecto", Context.MODE_PRIVATE).also { prefs = it }
+        grafito = p.getBoolean("grafito", true)
+        arranque = runCatching { AnimArranque.valueOf(p.getString("arranque", null)!!) }.getOrDefault(AnimArranque.PUNTOS)
+        radioPortada = p.getFloat("radio_portada2", 10f)
+        accionDirecta = p.getString("estilo_menu", null) == "DIRECTO" || p.getBoolean("accion_directa", false)
+        panoramica = p.getBoolean("estilo_panoramica", false)
+        verDescargas = p.getBoolean("estilo_descargas", true)
+        ladoDescargas = runCatching { LadoDescargas.valueOf(p.getString("estilo_descargas_lado", null)!!) }.getOrDefault(LadoDescargas.IZQUIERDA)
+    }
+
+    private fun b(k: String, v: Boolean) { prefs?.edit()?.putBoolean(k, v)?.apply() }
+    fun elegir(a: AnimArranque) { arranque = a; prefs?.edit()?.putString("arranque", a.name)?.apply() }
+    fun elegirRadioPortada(v: Float) { radioPortada = v; prefs?.edit()?.putFloat("radio_portada2", v)?.apply() }
+    fun elegirGrafito(v: Boolean) { grafito = v; b("grafito", v) }
+    fun elegirAccionDirecta(v: Boolean) { accionDirecta = v; b("accion_directa", v); prefs?.edit()?.remove("estilo_menu")?.apply() }
+    fun elegirPanoramica(v: Boolean) { panoramica = v; b("estilo_panoramica", v) }
+    fun elegirVerDescargas(v: Boolean) { verDescargas = v; b("estilo_descargas", v) }
+    fun elegir(v: LadoDescargas) { ladoDescargas = v; prefs?.edit()?.putString("estilo_descargas_lado", v.name)?.apply() }
+
+    /** Portadas que resultaron apaisadas al cargarse (alto/ancho ≤ 0,75). */
+    private val anchas = mutableStateMapOf<String, Boolean>()
+    fun anotarPortada(clave: String?, ancho: Int, alto: Int) {
+        if (clave.isNullOrBlank() || ancho <= 0) return
+        val ancha = alto.toFloat() / ancho <= 0.75f
+        if (anchas[clave] != ancha && (ancha || clave in anchas)) anchas[clave] = ancha
+    }
+    fun factorAncho(vararg claves: String?): Float = if (panoramica && claves.any { it != null && anchas[it] == true }) 1.6f else 1f
+}
 
 /** Animación al abrir la app. */
 enum class AnimArranque(val nombre: String) { PUNTOS("Puntos"), AGUJERO("Agujero negro"), RAPIDA("Rápida"), NINGUNA("Ninguna") }
 
-/** Todas las opciones de aspecto en las que hemos trabajado, con sus valores guardados. */
-object Aspecto {
-    private var prefs: SharedPreferences? = null
+/** Forma de las portadas según el ajuste de redondeo ([escala] para portadas pequeñas). */
+val FormaPortada: androidx.compose.ui.graphics.Shape get() = androidx.compose.foundation.shape.RoundedCornerShape(Aspecto.radioPortada.dp)
+fun formaPortada(escala: Float): androidx.compose.ui.graphics.Shape = androidx.compose.foundation.shape.RoundedCornerShape((Aspecto.radioPortada * escala).dp)
 
-    var superficie by mutableStateOf(Superficie.CRISTAL); private set
-    var fondo by mutableStateOf(FondoApp.NEGRO); private set
-    var arranque by mutableStateOf(AnimArranque.PUNTOS); private set
-    var luzTactil by mutableStateOf(true); private set
-    /** Redondeo de las portadas en toda la app, en dp (el «Cover rounding» de Mochy). */
-    var radioPortada by mutableFloatStateOf(16f); private set
+/** Velocidad global de las animaciones: se entrega al Recomposer de la ventana. */
+object MovimientoApp {
+    private var prefs: SharedPreferences? = null
+    var activado by mutableStateOf(true); private set
+    var velocidad by mutableFloatStateOf(1f); private set
+    private var escalaSistema by mutableFloatStateOf(1f)
+
+    val escala: androidx.compose.ui.MotionDurationScale = object : androidx.compose.ui.MotionDurationScale {
+        override val scaleFactor: Float get() = if (!activado) 0f else escalaSistema / velocidad.coerceAtLeast(0.1f)
+    }
 
     fun iniciar(ctx: Context) {
         val p = ctx.getSharedPreferences("aspecto", Context.MODE_PRIVATE).also { prefs = it }
-        superficie = runCatching { Superficie.valueOf(p.getString("superficie", null)!!) }.getOrDefault(Superficie.CRISTAL)
-        fondo = runCatching { FondoApp.valueOf(p.getString("fondo", null)!!) }.getOrDefault(FondoApp.NEGRO)
-        arranque = runCatching { AnimArranque.valueOf(p.getString("arranque", null)!!) }.getOrDefault(AnimArranque.PUNTOS)
-        luzTactil = p.getBoolean("luz", true)
-        radioPortada = p.getFloat("radio_portada", 16f)
+        activado = p.getBoolean("animaciones", true)
+        velocidad = p.getFloat("velocidad_anim", 1f)
+        Aspecto.iniciar(ctx)
+        val res = ctx.contentResolver
+        fun leer() = android.provider.Settings.Global.getFloat(res, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        escalaSistema = leer()
+        res.registerContentObserver(
+            android.provider.Settings.Global.getUriFor(android.provider.Settings.Global.ANIMATOR_DURATION_SCALE), false,
+            object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) { escalaSistema = leer(); MovimientoReducido.actualizar() }
+            },
+        )
     }
 
-    fun elegir(s: Superficie) { superficie = s; prefs?.edit()?.putString("superficie", s.name)?.apply() }
-    fun elegir(f: FondoApp) { fondo = f; prefs?.edit()?.putString("fondo", f.name)?.apply() }
-    fun elegir(a: AnimArranque) { arranque = a; prefs?.edit()?.putString("arranque", a.name)?.apply() }
-    fun elegirLuz(v: Boolean) { luzTactil = v; prefs?.edit()?.putBoolean("luz", v)?.apply() }
-    fun elegirRadioPortada(v: Float) { radioPortada = v; prefs?.edit()?.putFloat("radio_portada", v)?.apply() }
+    fun elegirActivado(v: Boolean) { activado = v; prefs?.edit()?.putBoolean("animaciones", v)?.apply(); MovimientoReducido.actualizar() }
+    fun elegirVelocidad(v: Float) { velocidad = v; prefs?.edit()?.putFloat("velocidad_anim", v)?.apply() }
 }
 
-/** Forma de las portadas según el ajuste de redondeo ([escala] para portadas pequeñas). */
-val FormaPortada: androidx.compose.ui.graphics.Shape get() = SuaveShape(Aspecto.radioPortada.dp)
-fun formaPortada(escala: Float): androidx.compose.ui.graphics.Shape = SuaveShape((Aspecto.radioPortada * escala).dp)
+val VelocidadesAnimacion = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+fun textoVelocidad(v: Float): String = (if (v % 1f == 0f) v.toInt().toString() else v.toString().trimEnd('0')) + "×"
 
-/**
- * Fondo vivo (pseudo liquid glass): manchas de luz muy suaves que derivan despacio detrás de las pestañas; el cristal
- * de la barra las desenfoca y refracta. Se mueve a 15 fps (no hace falta más para algo tan lento) y se queda quieto
- * con «Quitar animaciones».
- */
-@Composable
-fun FondoVivo(modo: FondoApp, modifier: Modifier = Modifier, fijo: Boolean = false, acento: Color = Color(0xFF8A6BFF)) {
-    if (modo == FondoApp.NEGRO) return
-    val t = remember { mutableFloatStateOf(0.3f) }
-    LaunchedEffect(fijo) {
-        if (fijo || MovimientoReducido.activo) return@LaunchedEffect
-        // Va con el reloj de fotogramas: con la app en segundo plano o la pantalla apagada se detiene (no gasta batería).
-        while (true) { androidx.compose.runtime.withFrameMillis { }; kotlinx.coroutines.delay(66); t.floatValue += 0.066f / 40f }
-    }
-    val oscuro = TemaActual.oscuro
-    Canvas(modifier) { dibujarAurora(modo, t.floatValue, oscuro, acento) }
+// ───────────── Gestos de capítulos ─────────────
+
+/** Lo que hace deslizar una fila de capítulo, a cada lado (Ajustes → Aspecto → Gestos). */
+enum class AccionGesto(val titulo: String, val icono: ImageVector, val color: Color, val corto: String) {
+    NADA("Nada", Icons.Rounded.Close, Color(0xFF8E8E93), "Nada"),
+    LEIDO("Marcar leído / no leído", Icons.Rounded.Check, Color(0xFF4C8DFF), "Leído"),
+    MARCA("Marcar / desmarcar", Iconos.Marca, Color(0xFFF2C14E), "Marca"),
+    DESCARGA("Descargar / borrar descarga", Iconos.Descargar, Color(0xFF3DDC84), "Descargar"),
+    ANTERIORES("Marcar anteriores como leídos", Icons.Rounded.KeyboardArrowDown, Color(0xFFA88BFA), "Anteriores");
 }
 
-fun DrawScope.dibujarAurora(modo: FondoApp, t: Float, oscuro: Boolean, acento: Color) {
-    val base = if (oscuro) Color.White else Color.Black
-    val colores = when (modo) {
-        FondoApp.COLOR -> listOf(acento, Color(0xFFFF7A45), Color(0xFF3D7BFF))
-        else -> listOf(base, base, base)
+object GestosCapitulos {
+    private var prefs: SharedPreferences? = null
+    /** Deslizar hacia la derecha. */
+    var derecha by mutableStateOf(AccionGesto.LEIDO); private set
+    /** Deslizar hacia la izquierda. */
+    var izquierda by mutableStateOf(AccionGesto.MARCA); private set
+
+    // Claves antiguas (nombres en inglés) → nuevas: se conservan los gestos que ya tenías elegidos.
+    private val viejos = mapOf("NONE" to AccionGesto.NADA, "MARK_READ" to AccionGesto.LEIDO, "BOOKMARK" to AccionGesto.MARCA,
+        "DOWNLOAD" to AccionGesto.DESCARGA, "MARK_PREVIOUS_READ" to AccionGesto.ANTERIORES)
+
+    fun iniciar(ctx: Context) {
+        if (prefs != null) return
+        val p = ctx.applicationContext.getSharedPreferences("gestos", Context.MODE_PRIVATE).also { prefs = it }
+        fun leer(k: String, d: AccionGesto) = p.getString(k, null)?.let { n -> viejos[n] ?: runCatching { AccionGesto.valueOf(n) }.getOrNull() } ?: d
+        derecha = leer("derecha", AccionGesto.LEIDO)
+        izquierda = leer("izquierda", AccionGesto.MARCA)
     }
-    val fuerza = when (modo) { FondoApp.COLOR -> if (oscuro) 0.30f else 0.22f; else -> if (oscuro) 0.09f else 0.06f }
-    val w = size.width; val h = size.height
-    val a = (t * 2f * Math.PI).toFloat()
-    val centros = listOf(
-        Offset(w * (0.25f + 0.15f * sin(a)), h * (0.22f + 0.08f * cos(a * 0.7f))),
-        Offset(w * (0.80f + 0.12f * cos(a * 0.8f)), h * (0.48f + 0.10f * sin(a * 0.9f))),
-        Offset(w * (0.35f + 0.18f * cos(a * 1.1f)), h * (0.85f + 0.06f * sin(a))),
-    )
-    centros.forEachIndexed { i, c ->
-        val r = maxOf(w, h) * (0.55f - i * 0.07f)
-        drawCircle(Brush.radialGradient(listOf(colores[i].copy(alpha = fuerza), Color.Transparent), c, r), r, c)
-    }
+    fun elegirDerecha(a: AccionGesto) { derecha = a; prefs?.edit()?.putString("derecha", a.name)?.apply() }
+    fun elegirIzquierda(a: AccionGesto) { izquierda = a; prefs?.edit()?.putString("izquierda", a.name)?.apply() }
 }
+
+/** Cómo está el capítulo: decide el texto de las acciones que alternan. */
+class EstadoGesto(val leido: Boolean, val marcado: Boolean, val descargado: Boolean, val descargando: Boolean = false)

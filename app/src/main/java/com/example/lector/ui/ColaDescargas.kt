@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -95,7 +94,7 @@ fun ColaDescargasScreen(almacen: Almacen, onBack: () -> Unit) {
                                     error != null -> LText("Error: $error", LectorType.Label, color = LectorColors.Error, maxLines = 2)
                                     fraccion != null -> {
                                         Spacer(Modifier.height(6.dp))
-                                        if (fraccion <= 0f && com.example.lector.ui.mochy.EstiloApp.orbes) IndicadorCarga(Modifier.size(20.dp), estado = com.example.lector.ui.orbes.EstadoOrbe.CONNECTING)
+                                        if (fraccion <= 0f && false) IndicadorCarga(Modifier.size(20.dp), estado = null)
                                         else if (fraccion <= 0f) com.example.lector.ui.ProgresoLinea(Modifier.fillMaxWidth().clip(CircleShape))
                                         else com.example.lector.ui.ProgresoLinea(progress = { fraccion }, modifier = Modifier.fillMaxWidth().clip(CircleShape))
                                     }

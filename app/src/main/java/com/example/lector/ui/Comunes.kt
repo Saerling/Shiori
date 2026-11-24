@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -11,6 +10,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.draw.shadow
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -55,13 +56,13 @@ class AccionBarra(val icono: ImageVector, val texto: String, val alPulsar: () ->
 fun BarraAcciones(visible: Boolean, acciones: List<AccionBarra>, modifier: Modifier = Modifier) {
     AnimatedVisibility(
         visible = visible, modifier = modifier,
-        enter = slideInVertically(com.example.lector.ui.mochy.sheet.popupSpringOffset()) { it } + fadeIn(tween(200)),
-        exit = slideOutVertically(com.example.lector.ui.mochy.sheet.popupSpringOffset()) { it } + fadeOut(tween(150)),
+        enter = slideInVertically(spring(dampingRatio = 0.85f, stiffness = 500f)) { it } + fadeIn(tween(200)),
+        exit = slideOutVertically(tween(200)) { it } + fadeOut(tween(150)),
     ) {
         Row(
             Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp).fillMaxWidth()
-                .clip(SuaveShape(28.dp)).background(LectorColors.Glass)
-                .drawWithContent { drawContent(); lineaCristal(28.dp.toPx()) }
+                .shadow(14.dp, SuaveShape(28.dp), clip = false).clip(SuaveShape(28.dp)).background(LectorColors.Glass)
+                .border(0.6.dp, LectorColors.Linea, SuaveShape(28.dp))
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 6.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -71,7 +72,7 @@ fun BarraAcciones(visible: Boolean, acciones: List<AccionBarra>, modifier: Modif
                     Modifier.widthIn(min = 64.dp).pressable(a.alPulsar).padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Icon(a.icono, a.texto, tint = com.example.lector.ui.mochy.sheet.MenuContent, modifier = Modifier.size(22.dp))
+                    Icon(a.icono, a.texto, tint = LectorColors.Text, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.height(2.dp))
                     LText(a.texto, LectorType.Label.copy(fontSize = 11.sp), maxLines = 1, color = LectorColors.Text)
                 }
@@ -102,7 +103,7 @@ fun CabeceraSeleccion(cantidad: Int, onCerrar: () -> Unit, onTodo: () -> Unit, o
 fun BotonRedondoTema(icono: ImageVector, desc: String, onClick: () -> Unit, modifier: Modifier = Modifier, tam: Dp = 44.dp) {
     Box(
         modifier.size(tam).pressable(onClick).clip(CircleShape)
-            .background(if (TemaActual.oscuro) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.07f)),
+            .background(RellenoPildora),
         Alignment.Center,
     ) {
         Icon(icono, desc, tint = LectorColors.Text, modifier = Modifier.size(22.dp))
@@ -112,12 +113,6 @@ fun BotonRedondoTema(icono: ImageVector, desc: String, onClick: () -> Unit, modi
 /** Mensaje centrado para pantallas o listas vacías, con una acción opcional. */
 @Composable
 fun MensajeVacio(texto: String, accion: String? = null, onAccion: (() -> Unit)? = null, modifier: Modifier = Modifier) {
-    if (fxOn("empty")) {
-        Box(modifier.fillMaxSize().padding(bottom = 100.dp), contentAlignment = Alignment.Center) {
-            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { EstadoVacio("📚", texto.substringBefore('.').take(60), if (texto.contains('.')) texto.substringAfter('.').trim() else "", accion = if (accion != null && onAccion != null) ({ PillButton(accion, Icons.Rounded.KeyboardArrowRight, onAccion) }) else null) }
-        }
-        return
-    }
     Column(
         modifier.fillMaxSize().padding(horizontal = 40.dp).padding(bottom = 120.dp),
         verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
@@ -191,11 +186,11 @@ fun PestanasPildora(titulos: List<String>, elegida: Int, onElegir: (Int) -> Unit
 object Hojas {
     var abiertas by mutableIntStateOf(0)
     /** 0..1: cuánto se ha alejado la app detrás de la hoja más abierta (sigue al arrastre). Leer al dibujar. */
-    val presencia: Float get() = com.example.lector.ui.mochy.sheet.HojasApp.presence
+    val presencia: Float get() = 0f
 }
 
 /**
- * Hoja inferior: el PopupSheet de Mochy (ui/mochy/sheet/PopupSheet.kt). Fondo #0B0B0C con esquinas de 24 dp, asa
+ * Hoja inferior: el HojaFlotante  (ui/mochy/sheet/HojaFlotante.kt). Fondo #0B0B0C con esquinas de 24 dp, asa
  * de 36 × 4 dp, muelle sin rebote (StiffnessLow, umbral 0,0005) en entrada, salida y arrastre; se cierra arrastrando
  * desde el asa o desde el propio contenido. Si hay otra abierta, la de detrás se encoge al 90 % y asoma su asa.
  * La app de detrás se aleja a 0,92 con esquinas de 28 dp. En tablet sale centrada.
@@ -207,7 +202,7 @@ fun HojaLector(onCerrar: () -> Unit, content: @Composable ColumnScope.() -> Unit
         onDispose { Hojas.abiertas-- }
     }
     // Hoja estándar de Material (fiable: misma ventana del sistema para toques, atrás y teclado) con el aspecto de
-    // Mochy: superficie #0B0B0C / clara, esquinas de 24 dp y asa de 36 × 4 dp. La de ventana propia daba fallos.
+    // : superficie #0B0B0C / clara, esquinas de 24 dp y asa de 36 × 4 dp. La de ventana propia daba fallos.
     @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onCerrar,
@@ -220,7 +215,7 @@ fun HojaLector(onCerrar: () -> Unit, content: @Composable ColumnScope.() -> Unit
         dragHandle = { Box(Modifier.padding(vertical = 14.dp).size(36.dp, 4.dp).clip(CircleShape).background(LectorColors.Muted.copy(alpha = 0.5f))) },
     ) {
         CompositionLocalProvider(LocalContentColor provides LectorColors.Text) {
-            Column(Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.85f).dp)) { Column(Modifier.fillMaxWidth().fx("sheet") { noise(.05f) }) { content() } }
+            Column(Modifier.fillMaxWidth().heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.85f).dp)) { content() }
         }
         Spacer(Modifier.navigationBarsPadding())
     }

@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -110,7 +109,7 @@ fun <T : Any> CapaEncima(valor: T?, content: @Composable (T) -> Unit) {
 
 /**
  * Diálogo de Shiori con la firma de AlertDialog de Material (para sustituirlo sin tocar cada llamada). Se pinta con
- * el DefaultDialog de Mochy (ui/mochy/sheet/Dialog.kt): 24 dp de margen y de relleno, título headlineSmall, texto
+ * el DefaultDialog  (ui/mochy/sheet/Dialog.kt): 24 dp de margen y de relleno, título headlineSmall, texto
  * desplazable y los botones alineados a la derecha con el color primario.
  */
 @Composable
@@ -141,12 +140,12 @@ fun DialogoAlerta(
 }
 
 /**
- * Menú de Shiori: en vez de un desplegable de Material sale como hoja de Mochy (PopupSheet), con cada opción en una
- * píldora de su MenuItemRow (ver [com.example.lector.ui.mochy.sheet.FilasMenu]).
+ * Menú de Shiori: en vez de un desplegable de Material sale como hoja  (HojaFlotante), con cada opción en una
+ * píldora de su FilaMenu (ver [FilasMenu]).
  */
 @Composable
 fun MenuShiori(expanded: Boolean, onDismissRequest: () -> Unit, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    // Menú anclado (desplegable) con el aspecto de Mochy: superficie oscura, esquinas de 20 dp, filas de 14 sp
+    // Menú anclado (desplegable) con el aspecto : superficie oscura, esquinas de 20 dp, filas de 14 sp
     // SemiBold. Antes era una hoja propia en otra ventana y daba fallos al tocar/desplazar.
     androidx.compose.material3.MaterialTheme(
         colorScheme = MaterialTheme.colorScheme.copy(onSurface = LectorColors.Text, onSurfaceVariant = LectorColors.Text),
@@ -156,7 +155,7 @@ fun MenuShiori(expanded: Boolean, onDismissRequest: () -> Unit, modifier: Modifi
             expanded = expanded, onDismissRequest = onDismissRequest,
             modifier = modifier.widthIn(min = 200.dp).padding(horizontal = 6.dp),
             shape = SuaveShape(20.dp),
-            containerColor = com.example.lector.ui.mochy.sheet.MenuSurface,
+            containerColor = LectorColors.Hoja,
             tonalElevation = 0.dp, shadowElevation = 12.dp,
             border = androidx.compose.foundation.BorderStroke(1.dp, LectorColors.Linea),
             content = content,
@@ -164,7 +163,7 @@ fun MenuShiori(expanded: Boolean, onDismissRequest: () -> Unit, modifier: Modifi
     }
 }
 
-/** Casilla al estilo Mochy: cuadrado de 22 dp con esquinas de 7 dp que se rellena con el primario y un muelle. */
+/** Casilla al estilo : cuadrado de 22 dp con esquinas de 7 dp que se rellena con el primario y un muelle. */
 @Composable
 fun CasillaShiori(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier, enabled: Boolean = true) {
     // Silencio: casilla nativa de Material 3, blanca con la marca negra.
@@ -179,9 +178,9 @@ fun CasillaShiori(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modif
 }
 
 /**
- * Campo de texto (misma firma que OutlinedTextField). Como los de los diálogos de Mochy es un TextField con los
- * colores de OutlinedTextFieldDefaults; Shiori le pone el fondo de fila de las hojas (MenuRowSurface), las esquinas de
- * 16 dp de MenuItemRow y quita la línea inferior.
+ * Campo de texto (misma firma que OutlinedTextField). Como los de los diálogos  es un TextField con los
+ * colores de OutlinedTextFieldDefaults; Shiori le pone el fondo de fila de las hojas (LectorColors.HojaFila), las esquinas de
+ * 16 dp de FilaMenu y quita la línea inferior.
  */
 @Composable
 fun CampoTextoShiori(
@@ -204,7 +203,7 @@ fun CampoTextoShiori(
     minLines: Int = 1,
 ) {
     val acento = MaterialTheme.colorScheme.primary
-    val fondo = com.example.lector.ui.mochy.sheet.MenuRowSurface
+    val fondo = LectorColors.HojaFila
     TextField(
         value = value, onValueChange = onValueChange, modifier = modifier, enabled = enabled,
         textStyle = textStyle.copy(color = LectorColors.Text), label = label, placeholder = placeholder,

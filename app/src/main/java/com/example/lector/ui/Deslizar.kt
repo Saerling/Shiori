@@ -57,7 +57,7 @@ class AccionDeslizar(
 )
 
 /**
- * Fila deslizable al estilo de la cola de musicfy:
+ * Fila deslizable al estilo de la cola :
  *  - Al arrastrar, la fila se convierte en una píldora de vidrio y por debajo asoma un círculo con el icono.
  *  - Al pasar el umbral el círculo se estira, se tiñe del color de la acción, enseña su texto y vibra.
  *  - Al soltar (pasado el umbral) se ejecuta la acción y la fila vuelve con un rebote.

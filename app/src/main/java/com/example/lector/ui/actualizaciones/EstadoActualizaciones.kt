@@ -1,5 +1,6 @@
 package com.example.lector.ui.actualizaciones
 
+import com.example.lector.ui.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue

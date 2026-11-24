@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
@@ -557,7 +556,7 @@ fun Visor(
     }
 
     Box(
-        Modifier.fillMaxSize().background(fondo).fx("lens") { lupa() }
+        Modifier.fillMaxSize().background(fondo)
             // Saber si hay un dedo en la pantalla (pausa el autodesplazamiento), sin consumir nada.
             .pointerInput(Unit) {
                 awaitPointerEventScope {
@@ -573,11 +572,10 @@ fun Visor(
         when {
             n == null && (paginado || items.isEmpty() || error != null) -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                 if (error == null) Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IndicadorCarga(Modifier.size(48.dp), color = MaterialTheme.colorScheme.primary, estado = com.example.lector.ui.orbes.EstadoOrbe.COMPOSING)
+                    IndicadorCarga(Modifier.size(48.dp), color = MaterialTheme.colorScheme.primary, estado = null)
                     Spacer(Modifier.height(16.dp))
                     Text(cap.nombre, style = LectorType.Section, color = GrisNeutro, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 40.dp))
-                    if (fxOn("textshimmer")) TextoBrillo("Cargando capítulo…", LectorType.Label, base = GrisNeutro.copy(alpha = 0.7f), brillo = if (fondo.luminance() > 0.5f) Color.Black else Color.White)
-                    else Text("Cargando capítulo…", style = LectorType.Label, color = GrisNeutro.copy(alpha = 0.7f))
+                    Text("Cargando capítulo…", style = LectorType.Label, color = GrisNeutro.copy(alpha = 0.7f))
                 }
                 else Column(
                     Modifier.padding(24.dp).widthIn(max = 420.dp).fillMaxWidth().clip(FormaTarjeta).background(LectorColors.Card)
@@ -650,14 +648,6 @@ fun Visor(
             Box(Modifier.fillMaxSize().background(colorTinte(almacen.tinte).copy(alpha = almacen.intensidadTinte)))
         }
 
-        // Biblioteca de animaciones: progreso, hora/batería y confeti al terminar el capítulo.
-        if (n != null && n > 0) {
-            if (fxOn("scrollprogress")) BarraProgresoScroll((paginaReal + 1f) / n, Modifier.align(Alignment.TopCenter).statusBarsPadding(), MaterialTheme.colorScheme.primary)
-            if (fxOn("battery") && !barras) RelojBateria(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp).pildoraCristal(CircleShape, sombra = false).padding(horizontal = 10.dp, vertical = 4.dp), color = TintaBarra)
-            val confeti = rememberConfeti()
-            LaunchedEffect(paginaReal) { if (Fx.on("confetti") && n > 1 && paginaReal == n - 1) confeti.disparar() }
-            Confeti(confeti, Modifier.fillMaxSize())
-        }
 
         // Número de página cuando el menú está oculto.
         AnimatedVisibility(
@@ -665,8 +655,7 @@ fun Visor(
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
             enter = entraPildora(), exit = salePildora(),
         ) {
-            if (fxOn("nf_page")) NumeroFlowGrupo(paginaReal + 1, n ?: 0, EstiloContador, Modifier.pildoraCristal(CircleShape, sombra = false).padding(horizontal = 14.dp, vertical = 5.dp), TintaBarra)
-            else Text(
+            Text(
                 "${paginaReal + 1} / ${n ?: 0}",
                 style = EstiloContador, color = TintaBarra,
                 modifier = Modifier.pildoraCristal(CircleShape, sombra = false).padding(horizontal = 14.dp, vertical = 5.dp),
@@ -886,18 +875,9 @@ private fun claveItem(i: ItemVisor?, pos: Int): Any = when (i) {
     null -> "x$pos"
 }
 
-// Las barras del lector siguen el tema (claro/oscuro) y el estilo de superficie de Apariencia, como el resto de la app.
-private val ColorBarra: Color
-    get() = when (Aspecto.superficie) {
-        Superficie.SOLIDO -> LectorColors.Cristal
-        Superficie.LIQUIDO -> LectorColors.Cristal.copy(alpha = 0.62f)
-        Superficie.CRISTAL -> LectorColors.Cristal.copy(alpha = 0.74f)
-    }
-private val BordeBarra: Color
-    get() = when {
-        Aspecto.superficie == Superficie.LIQUIDO -> Color.White.copy(alpha = if (TemaActual.oscuro) 0.33f else 0.8f)
-        else -> Color.White.copy(alpha = if (TemaActual.oscuro) 0.14f else 0.6f)
-    }
+// Las barras del lector: superficie del tema casi opaca con una línea finísima.
+private val ColorBarra: Color get() = LectorColors.Cristal.copy(alpha = 0.9f)
+private val BordeBarra: Color get() = LectorColors.Linea
 internal val TintaBarra: Color get() = LectorColors.Text
 private val SubBarra: Color get() = LectorColors.Muted
 
@@ -912,10 +892,10 @@ internal val EstiloContador = LectorType.Label.copy(fontWeight = FontWeight.Bold
 /** Píldora de cristal flotante: tinte de la barra, línea finísima y una sombra suave (salvo en «Líquido»). */
 @Composable
 internal fun Modifier.pildoraCristal(forma: Shape, sombra: Boolean = true): Modifier {
-    val conSombra = sombra && Aspecto.superficie != Superficie.LIQUIDO
+    val conSombra = sombra
     return this
         .then(if (conSombra) Modifier.shadow(10.dp, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.28f)) else Modifier)
-        .clip(forma).background(ColorBarra).border(1.dp, BordeBarra, forma)
+        .clip(forma).background(ColorBarra).border(0.6.dp, BordeBarra, forma)
 }
 
 // Barras: entran deslizándose con el muelle espacial (algo de rebote) y salen con uno sin rebote.
@@ -970,7 +950,7 @@ private fun AccionVisor(icono: ImageVector, texto: String, onClick: () -> Unit) 
 private fun EsqueletoPagina(numero: Int, modifier: Modifier) {
     Box(modifier.clip(FormaEsqueleto).background(ColorEsqueleto), Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            IndicadorCarga(Modifier.size(40.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f), estado = com.example.lector.ui.orbes.EstadoOrbe.BREATHING)
+            IndicadorCarga(Modifier.size(40.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f), estado = null)
             Spacer(Modifier.height(14.dp))
             Text(
                 "$numero", style = EstiloContador, color = GrisNeutro,
@@ -1369,7 +1349,7 @@ private fun MenuPagina(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (trabajando) Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), Arrangement.Center, Alignment.CenterVertically) {
-                    IndicadorCarga(Modifier.size(32.dp), estado = com.example.lector.ui.orbes.EstadoOrbe.WORKING)
+                    IndicadorCarga(Modifier.size(32.dp), estado = null)
                     Spacer(Modifier.width(12.dp))
                     Text("Preparando la página…", style = LectorType.Body, color = LectorColors.Muted)
                 }

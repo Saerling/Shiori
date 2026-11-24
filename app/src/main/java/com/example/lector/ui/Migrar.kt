@@ -179,7 +179,7 @@ fun MigrarScreen(
         }
         error?.let { LText(it, LectorType.Label, Modifier.padding(horizontal = 24.dp), color = LectorColors.Error) }
         if (buscando) {
-            Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) { IndicadorCarga(Modifier.size(24.dp), estado = com.example.lector.ui.orbes.EstadoOrbe.SEARCHING) }
+            Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) { IndicadorCarga(Modifier.size(24.dp), estado = null) }
         } else if (resultados.isEmpty() && error == null) {
             LText("Sin resultados. Prueba con otro título.", LectorType.Body, Modifier.padding(24.dp), color = LectorColors.Muted)
         }
@@ -209,11 +209,10 @@ fun MigrarScreen(
                 Column {
                     Text("«${m.titulo}» sustituirá a «${comic.titulo}» en tu biblioteca.")
                     Spacer(Modifier.size(8.dp))
-                    if (com.example.lector.fx.fxOn("th_confirmar")) ResumenMigracion(origen.nombre, f.nombre, comic, capsOrigen?.size)
-                    else Text("Se conservan categorías y portada; los capítulos leídos se emparejan por número. Las descargas de la fuente anterior no se mueven.")
+                    Text("Se conservan categorías y portada; los capítulos leídos se emparejan por número. Las descargas de la fuente anterior no se mueven.")
                     if (migrando) {
                         Spacer(Modifier.size(12.dp))
-                        IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.dp, estado = com.example.lector.ui.orbes.EstadoOrbe.WEAVING)
+                        IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.dp, estado = null)
                     }
                 }
             },

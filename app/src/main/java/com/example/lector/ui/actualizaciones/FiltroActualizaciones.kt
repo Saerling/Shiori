@@ -1,7 +1,7 @@
-// Copiado de Komikku (https://github.com/komikku-app/komikku, Apache-2.0): app/src/main/java/eu/kanade/presentation/updates/UpdatesFilterDialog.kt
 // y app/src/main/java/eu/kanade/tachiyomi/ui/updates/UpdatesScreenModel.kt (applyFilters), adaptado a Shiori.
 package com.example.lector.ui.actualizaciones
 
+import com.example.lector.ui.*
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -104,7 +104,7 @@ object FiltrosActualizaciones {
     }
 }
 
-/** Hoja de filtros (UpdatesFilterDialog de Komikku) con el aspecto de Mochy: secciones con título y tarjetas agrupadas. */
+/** Hoja de filtros (UpdatesFilterDialog de Komikku) con el aspecto : secciones con título y tarjetas agrupadas. */
 @Composable
 fun HojaFiltroActualizaciones(lista: List<ActualizacionCap>, ext: ExtManager, onCerrar: () -> Unit) {
     val f = FiltrosActualizaciones

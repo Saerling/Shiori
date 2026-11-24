@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -88,97 +87,45 @@ fun DetalleScreen(
     }
 
     val scroll = rememberScrollState()
-    // Como la página de un álbum: el fondo entero se tiñe con el color de la portada y se funde al negro.
-    val tinte = remember(deLaPortada) { deLaPortada?.let { androidx.compose.ui.graphics.lerp(it, Color.Black, 0.55f) } }
-    Box(Modifier.fillMaxSize().background(LectorColors.Bg).then(
-        if (tinte != null && TemaActual.oscuro) Modifier.background(Brush.verticalGradient(0f to tinte, 0.55f to LectorColors.Bg)) else Modifier
-    )) {
-        Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 130.dp)) {
-            Box(Modifier.fillMaxWidth().height(400.dp)) {
-                ComicCover(comic, almacen, Modifier.fillMaxSize().graphicsLayer { translationY = scroll.value * 0.5f }.blur(32.dp).alpha(0.6f), SuaveShape(0.dp))
-                Box(Modifier.fillMaxSize().background(acento.copy(alpha = 0.18f)))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to LectorColors.Bg)))
-
-                Row(
-                    Modifier.align(Alignment.BottomStart).padding(24.dp)
-                        .graphicsLayer { alpha = t; translationY = (1f - t) * 60f },
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    if (fxOn("backlight")) Contraluz(Modifier.width(124.dp).aspectRatio(2f / 3f)) { ComicCover(comic, almacen, Modifier.fillMaxSize(), SuaveShape(20.dp)) }
-                    else ComicCover(comic, almacen, Modifier.width(124.dp).aspectRatio(2f / 3f), SuaveShape(20.dp))
-                    Spacer(Modifier.width(18.dp))
-                    Column(Modifier.weight(1f)) {
-                        LText(comic.titulo, LectorType.Hero, maxLines = 3)
-                        Spacer(Modifier.height(6.dp))
-                        LText("${comic.paginas} páginas", LectorType.Body, color = LectorColors.Muted)
-                        LText(estado, LectorType.Body, color = acento)
-                        if (vinculo != null) LText("AniList: ${vinculo.titulo}", LectorType.Label, color = LectorColors.Muted, maxLines = 1)
-                    }
-                }
+    val fondo = remember { mutableStateOf(LectorColors.Bg) }
+    fondo.value = LectorColors.Bg
+    val alto = altoPortadaFicha()
+    val pliegue = { (scroll.value / (alto.value * 2.2f)).coerceIn(0f, 1f) }
+    Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
+        FondoFicha({ m -> ComicCover(comic, almacen, m, RoundedCornerShape(0.dp)) }, alto, pliegue, fondo)
+        Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 130.dp).graphicsLayer { alpha = t }) {
+            CabeceraFichaS(
+                portada = { m -> ComicCover(comic, almacen, m, RoundedCornerShape(12.dp)) },
+                title = comic.titulo, creators = listOfNotNull(comic.autor?.takeIf { it.isNotBlank() }),
+                stats = listOf("${comic.paginas} páginas", estado).joinToString(" · "),
+                playLabel = if (comic.enCurso()) "Reanudar" else "Leer", playEnabled = true, onPlayClick = onRead, acento = acento,
+            ) {
+                AccionRedonda(Icons.Rounded.Menu, "Categorías", { dCategorias = true }, active = propias.isNotEmpty())
+                AccionRedonda(Icons.Rounded.MoreVert, "Más", { dModo = true })
             }
-
-            // Acciones (como "En biblioteca / Seguimiento / WebView" de Komikku)
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                Accion(Icons.Rounded.Menu, if (propias.isEmpty()) "Categorías" else "${propias.size} categ.", propias.isNotEmpty(), acento, Modifier.weight(1f)) { dCategorias = true }
-                Accion(Icons.Rounded.Refresh, if (vinculo != null) "AniList ✓" else "Seguimiento", vinculo != null, acento, Modifier.weight(1f)) { dSeguimiento = true }
-                Accion(Icons.Rounded.Settings, nombreModo(modo), true, acento, Modifier.weight(1f)) { dModo = true }
-                Accion(Icons.Rounded.Delete, "Eliminar", false, acento, Modifier.weight(1f)) { dBorrar = true }
-            }
-
-            Column(Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) {
+            Column(Modifier.padding(horizontal = MargenFicha, vertical = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    LText(comic.textoPagina(), LectorType.Section, Modifier.weight(1f))
-                    Odometro("$porcentaje%", LectorType.Body, color = acento)
+                    LText(comic.textoPagina(), EstiloDatos, Modifier.weight(1f), color = LectorColors.Muted)
+                    Odometro("$porcentaje%", EstiloDatos, color = acento)
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
                 ProgressLine(comic.progresoLectura())
             }
-
-            if (propias.isNotEmpty()) {
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) { propias.forEach { ChipBorde(it.nombre, acento) } }
-            }
+            PropiedadesFicha(
+                listOf(
+                    "Estado" to estado, "Páginas" to "${comic.paginas}", "Modo" to nombreModo(modo),
+                    "Categorías" to propias.joinToString(", ") { it.nombre }.ifEmpty { null },
+                    "AniList" to vinculo?.titulo,
+                ),
+                Modifier.padding(horizontal = MargenFicha, vertical = 6.dp),
+            )
+            Spacer(Modifier.height(10.dp))
+            FilaSilencio(Icons.Rounded.Menu, "Categorías", if (propias.isEmpty()) "Sin categoría" else propias.joinToString(", ") { it.nombre }, { dCategorias = true })
+            FilaSilencio(Icons.Rounded.Refresh, "Seguimiento", vinculo?.let { "AniList: ${it.titulo}" } ?: "Sin vincular", { dSeguimiento = true })
+            FilaSilencio(Icons.Rounded.Settings, "Modo de lectura", nombreModo(modo), { dModo = true })
+            FilaSilencio(Icons.Rounded.Delete, "Eliminar", "Quitar de la biblioteca y borrar la copia", { dBorrar = true })
         }
-
-        BarraSuperior({ scroll.value.toFloat() }, comic.titulo, onBack)
-
-        // Botón "Reanudar" flotante, del color de la portada.
-        // Al bajar se encoge a solo el icono; al subir vuelve a enseñar el texto (como el botón de musicfy).
-        var extendido by remember { mutableStateOf(true) }
-        LaunchedEffect(scroll) {
-            var ancla = 0
-            snapshotFlow { scroll.value }.collect { v ->
-                when {
-                    v < 120 -> { extendido = true; ancla = v }
-                    v > ancla + 24 -> { extendido = false; ancla = v }
-                    v < ancla - 24 -> { extendido = true; ancla = v }
-                }
-            }
-        }
-        val relleno by animateDpAsState(if (extendido) 26.dp else 16.dp, tween(300, easing = EnfasisEasing), label = "rellenoReanudar")
-        Row(
-            Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(24.dp)
-                .pressable(onRead).clip(SuaveShape(22.dp)).background(acento)
-                .padding(horizontal = relleno, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Rounded.PlayArrow, null, tint = textoSobre(acento), modifier = Modifier.size(24.dp))
-            AnimatedVisibility(
-                visible = extendido,
-                enter = expandHorizontally(tween(300, easing = EnfasisEasing)) + fadeIn(tween(240)),
-                exit = shrinkHorizontally(tween(260, easing = EnfasisEasing)) + fadeOut(tween(160)),
-            ) {
-                Row {
-                    Spacer(Modifier.width(10.dp))
-                    LText(
-                        if (comic.enCurso()) "Reanudar" else "Leer", LectorType.Section.copy(fontSize = 18.sp),
-                        color = textoSobre(acento), maxLines = 1,
-                    )
-                }
-            }
-        }
+        BarraFicha({ (scroll.value / (alto.value * 2.5f)).coerceIn(0f, 1f) }, comic.titulo, fondo, onBack, null) {}
     }
 
     if (dCategorias) DialogoCategoriasComic(comic, almacen) { dCategorias = false; version++; onChanged() }
@@ -205,8 +152,7 @@ fun DetalleScreen(
             title = { Text("Eliminar") },
             text = { Text("¿Quitar «${comic.titulo}» de la biblioteca? Se borra la copia guardada en la app.") },
             confirmButton = {
-                if (fxOn("holddelete")) BotonMantener("Mantén para eliminar", color = LectorColors.Error) { dBorrar = false; almacen.eliminar(comic.id); onChanged(); onBack() }
-                else TextButton(onClick = { dBorrar = false; almacen.eliminar(comic.id); onChanged(); onBack() }) { Text("Eliminar") }
+                TextButton(onClick = { dBorrar = false; almacen.eliminar(comic.id); onChanged(); onBack() }) { Text("Eliminar") }
             },
             dismissButton = { TextButton(onClick = { dBorrar = false }) { Text("Cancelar") } },
         )

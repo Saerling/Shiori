@@ -1,7 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
-import com.example.lector.fx.aparecerDifuso
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -27,20 +25,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lector.textoSobre
-import com.example.lector.ui.mochy.revealOnAppear
 import kotlinx.coroutines.delay
 
 /**
- * Entrada escalonada: el revealOnAppear de Mochy (ui/mochy/RevealOnAppear.kt), fundido y subida de 20 dp la
+ * Entrada escalonada: el aparecer  (ui/mochy/RevealOnAppear.kt), fundido y subida de 20 dp la
  * primera vez que aparece; el elemento [indice] espera [pasoMs] por cada uno de delante (hasta 6). Solo ocurre una
  * vez (el estado de «ya visto» se guarda con rememberSaveable); con el movimiento reducido no se anima.
  */
 @Composable
 fun Modifier.entrada(indice: Int, pasoMs: Int = 60): Modifier {
     if (MovimientoReducido.activo) return this
-    if (com.example.lector.fx.fxOn("blurfade")) return this.then(Modifier.aparecerDifuso(indice.coerceIn(0, 8), 40))
-    val visto = com.example.lector.ui.mochy.rememberRevealSeenState()
-    return this.revealOnAppear(
+    val visto = rememberVistos()
+    return this.aparecer(
         key = "entrada",
         seenState = visto,
         delayMillis = indice.coerceIn(0, 6) * pasoMs,
@@ -112,7 +108,7 @@ fun BarraSuperior(
 fun BotonFlotante(texto: String, acento: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier.navigationBarsPadding().padding(24.dp)
-            .fx("pulsating") { pulso(acento, 22.dp) }.pressable(onClick).clip(SuaveShape(22.dp)).background(acento)
+            .pressable(onClick).clip(SuaveShape(22.dp)).background(acento)
             .padding(horizontal = 26.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

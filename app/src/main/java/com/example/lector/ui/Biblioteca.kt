@@ -87,13 +87,6 @@ import com.example.lector.ext.bandera
 import com.example.lector.nombreVista
 import com.example.lector.progresoDe
 import kotlinx.coroutines.launch
-import com.example.lector.ui.mochy.library.HomeCardSpacing
-import com.example.lector.ui.mochy.library.LibraryColors
-import com.example.lector.ui.mochy.library.LibraryEmptyState
-import com.example.lector.ui.mochy.library.LibraryGridTile
-import com.example.lector.ui.mochy.library.LibraryListRow
-import com.example.lector.ui.mochy.library.SearchHorizontalPadding
-import com.example.lector.ui.mochy.library.TrackSubtitleStyle
 
 /** Una pestaña de la biblioteca: una categoría (o una fuente / un estado, según la agrupación). */
 private class GrupoBiblioteca(val clave: String, val nombre: String, val comics: List<Comic>, val categoriaId: String?)
@@ -291,7 +284,6 @@ fun BibliotecaScreen(
     val anchoPantalla = LocalConfiguration.current.screenWidthDp
 
     Box(Modifier.fillMaxSize()) {
-        if (com.example.lector.fx.fxOn("th_ambiente")) AmbienteBiblioteca(com.example.lector.fx.Fx.variante("th_ambiente"), Modifier.matchParentSize())
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             // ---- Cabecera ----
             val acentoCab = MaterialTheme.colorScheme.primary
@@ -303,26 +295,26 @@ fun BibliotecaScreen(
                 )
             } else {
                 Row(
-                    Modifier.fillMaxWidth().padding(start = SearchHorizontalPadding, end = 16.dp, top = 14.dp, bottom = 10.dp),
+                    Modifier.fillMaxWidth().padding(start = MargenLateral, end = 16.dp, top = 14.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    LibraryTitleBlock(
+                    BloqueTitulo(
                         "Biblioteca", null,
                         Modifier.weight(1f).pressable(onLongClick = { mostrarOcultas = !mostrarOcultas }) {},
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            val estiloSub = TrackSubtitleStyle.copy(fontSize = 12.sp)
-                            Odometro("${filtrados.size}", estiloSub, color = LibraryColors.Secondary)
-                            LText(if (filtrados.size == 1) " entrada" else " entradas", estiloSub, color = LibraryColors.Secondary, maxLines = 1)
+                            val estiloSub = EstiloFilaSub.copy(fontSize = 12.sp)
+                            Odometro("${filtrados.size}", estiloSub, color = Tonos.Secundario)
+                            LText(if (filtrados.size == 1) " entrada" else " entradas", estiloSub, color = Tonos.Secundario, maxLines = 1)
                             if (mostrarOcultas) LText(" · ocultas visibles", estiloSub, color = acentoCab, maxLines = 1)
                         }
                     }
-                    LibraryIconButton(if (buscando) Icons.Rounded.Close else Icons.Rounded.Search, "Buscar", buscando) {
+                    BotonCabecera(if (buscando) Icons.Rounded.Close else Icons.Rounded.Search, "Buscar", buscando) {
                         buscando = !buscando; if (!buscando) consulta = ""
                     }
                     Spacer(Modifier.width(8.dp))
                     Box {
-                        LibraryIconButton(Icons.Rounded.List, "Filtrar y ordenar", filtrosActivos > 0) { hoja = true }
+                        BotonCabecera(Icons.Rounded.List, "Filtrar y ordenar", filtrosActivos > 0) { hoja = true }
                         if (filtrosActivos > 0) Box(
                             Modifier.align(Alignment.TopEnd).size(18.dp).clip(CircleShape).background(acentoCab),
                             Alignment.Center,
@@ -330,7 +322,7 @@ fun BibliotecaScreen(
                     }
                     Spacer(Modifier.width(8.dp))
                     Box {
-                        LibraryIconButton(Icons.Rounded.MoreVert, "Más", false) { menu = true }
+                        BotonCabecera(Icons.Rounded.MoreVert, "Más", false) { menu = true }
                         MenuShiori(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text("Buscar capítulos nuevos") }, onClick = { menu = false; Actualizador.iniciar(ctx) })
                             if (grupoActual.categoriaId != null) {
@@ -362,7 +354,7 @@ fun BibliotecaScreen(
                 enter = if (Mov.reducido) fadeIn() else expandVertically(Muelles.espacial()) + fadeIn(Muelles.efectos()),
                 exit = if (Mov.reducido) fadeOut() else shrinkVertically(Muelles.espacialRapido()) + fadeOut(Muelles.efectos()),
             ) {
-                Box(Modifier.padding(horizontal = SearchHorizontalPadding - 8.dp, vertical = 6.dp)) {
+                Box(Modifier.padding(horizontal = MargenLateral - 8.dp, vertical = 6.dp)) {
                     CampoBusqueda(consulta, { consulta = it }, "Título, autor:, genero:, fuente:, -excluir")
                 }
             }
@@ -386,7 +378,7 @@ fun BibliotecaScreen(
             val estadoTirar = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
             PullToRefreshBox(
                 state = estadoTirar,
-                indicator = { IndicadorTirar(estadoTirar, Actualizador.corriendo, Modifier.align(Alignment.TopCenter), com.example.lector.ui.orbes.EstadoOrbe.WORKING) },
+                indicator = { IndicadorTirar(estadoTirar, Actualizador.corriendo, Modifier.align(Alignment.TopCenter), null) },
                 isRefreshing = Actualizador.corriendo,
                 onRefresh = { if (!Actualizador.corriendo) Actualizador.iniciar(ctx, grupoActual.categoriaId) },
                 modifier = Modifier.weight(1f),
@@ -403,7 +395,7 @@ fun BibliotecaScreen(
                         Box(Modifier.fillMaxSize()) {
                         LazyColumn(Modifier.fillMaxSize(), state = estadoLista, contentPadding = PaddingValues(top = 2.dp, bottom = 190.dp)) {
                             itemsAnimados(g.comics, key = { it.id }) { c ->
-                                LibraryListRow(
+                                FilaBiblioteca(
                                     c, almacen, c.id in seleccion, descargasDe(c), if (c.enLinea) idiomaDe[c.fuenteId] else null,
                                     onClick = { if (enSeleccion) alternar(c) else alAbrir(c) },
                                     onLargo = { alternar(c) }, onContinuar = { alLeer(c) },
@@ -420,12 +412,12 @@ fun BibliotecaScreen(
                             state = estadoRejilla,
                             columns = if (columnas == 0) GridCells.Adaptive(if (anchoPantalla > 600) 150.dp else 112.dp) else GridCells.Fixed(columnas),
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(start = SearchHorizontalPadding, end = SearchHorizontalPadding, top = 4.dp, bottom = 190.dp),
-                            horizontalArrangement = Arrangement.spacedBy(HomeCardSpacing),
-                            verticalArrangement = Arrangement.spacedBy(if (almacen.vista == Vista.CUADRICULA_COMODA) 18.dp else HomeCardSpacing),
+                            contentPadding = PaddingValues(start = MargenLateral, end = MargenLateral, top = 4.dp, bottom = 190.dp),
+                            horizontalArrangement = Arrangement.spacedBy(HuecoTarjetas),
+                            verticalArrangement = Arrangement.spacedBy(if (almacen.vista == Vista.CUADRICULA_COMODA) 18.dp else HuecoTarjetas),
                         ) {
                             itemsAnimados(g.comics, key = { it.id }) { c ->
-                                LibraryGridTile(
+                                CeldaBiblioteca(
                                     c, almacen, almacen.vista, c.id in seleccion, descargasDe(c),
                                     if (c.enLinea) idiomaDe[c.fuenteId] else null,
                                     onClick = { if (enSeleccion) alternar(c) else alAbrir(c) },
@@ -543,7 +535,7 @@ fun BibliotecaScreen(
                             }.padding(vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (com.example.lector.fx.fxOn("checkbox")) com.example.lector.fx.CasillaTriCoss(e) else TriStateCheckbox(state = e, onClick = null)
+                            TriStateCheckbox(state = e, onClick = null)
                             Spacer(Modifier.width(8.dp))
                             Text(cat.nombre + if (cat.oculta) " (oculta)" else "")
                         }
@@ -610,10 +602,10 @@ fun BibliotecaScreen(
 
 // ───────────────────── Estado vacío ─────────────────────
 
-/** LibraryEmptyState de Mochy: texto centrado y, si hay, la píldora de acción. */
+/** Vacio : texto centrado y, si hay, la píldora de acción. */
 @Composable
 private fun VacioBiblioteca(titulo: String, texto: String, accion: String? = null, onAccion: (() -> Unit)? = null) {
     Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        LibraryEmptyState(Modifier.entrada(0).padding(top = 24.dp, bottom = 160.dp), texto, titulo, accion, onAccion)
+        Vacio(Modifier.entrada(0).padding(top = 24.dp, bottom = 160.dp), texto, titulo, accion, onAccion)
     }
 }

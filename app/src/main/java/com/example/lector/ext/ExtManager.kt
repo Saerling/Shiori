@@ -1234,7 +1234,6 @@ class ExtManager private constructor(private val app: Context) {
         viejaFuente: Long, viejaUrlManga: String, viejos: List<CapituloFuente>?,
         nuevaFuente: Long, nuevaUrlManga: String, nuevos: List<CapituloFuente>, respaldo: Int,
     ): Int {
-        // Copiado de Komikku (MigrateDialog/copyChapters): el mayor número de capítulo leído en la vieja marca como
         // leídos todos los de la nueva con número <= ese; los marcadores pasan al capítulo del mismo número. Si la
         // fuente no da número, se reconoce del nombre («Capítulo 12.5», «Ch. 7»…), como ChapterRecognition.
         val viejosNum = viejos.orEmpty().map { it to numeroReconocido(it) }.filter { it.second >= 0f }

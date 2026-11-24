@@ -1,5 +1,7 @@
 package com.example.lector.ui
 
+import androidx.compose.foundation.border
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -83,7 +85,7 @@ fun IslaCopia(modifier: Modifier = Modifier) {
                         // El «líquido»: rellena la píldora según el avance (solo mientras trabaja).
                         if (estado != null) drawRect(liquido, size = Size(size.width * fraccion, size.height))
                     }
-                    .drawWithContent { drawContent(); lineaCristal(22.dp.toPx()) }
+                    .border(0.6.dp, LectorColors.Linea, androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
                     .pressableCon(0.96f) {
                         if (estado != null) abierta = !abierta
                         else { TareaCopia.informeVisto = true; TareaCopia.verInforme = true }
@@ -130,8 +132,8 @@ fun IslaCopia(modifier: Modifier = Modifier) {
 @Composable
 private fun Anillo(fraccion: Float) {
     // Con los thinking orbs, el orbe «solving» (el avance ya lo enseña el líquido de la píldora).
-    if (com.example.lector.ui.mochy.EstiloApp.orbes) {
-        IndicadorCarga(Modifier.size(22.dp), LectorColors.Text, estado = com.example.lector.ui.orbes.EstadoOrbe.SOLVING)
+    if (false) {
+        IndicadorCarga(Modifier.size(22.dp), LectorColors.Text, estado = null)
         return
     }
     val pista = LectorColors.Text.copy(alpha = 0.15f)

@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Brush
@@ -81,8 +80,8 @@ fun LText(
 @Composable
 fun ComicCover(comic: Comic, almacen: Almacen, modifier: Modifier = Modifier, shape: Shape = FormaPortada) {
     val portada = rememberPortada(almacen, comic.id)
-    if (portada != null) androidx.compose.runtime.SideEffect { com.example.lector.ui.mochy.EstiloApp.anotarPortada("c:" + comic.id, portada.width, portada.height) }
-    Box(modifier.efectosPortadaFx().clip(shape).background(LectorColors.CardHigh), contentAlignment = Alignment.Center) {
+    if (portada != null) androidx.compose.runtime.SideEffect { Aspecto.anotarPortada("c:" + comic.id, portada.width, portada.height) }
+    Box(modifier.clip(shape).background(LectorColors.CardHigh), contentAlignment = Alignment.Center) {
         when {
             portada != null ->
                 Image(bitmap = portada, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -107,55 +106,31 @@ fun rememberCabeceras(fuenteId: Long): Map<String, String> {
     return cab
 }
 
+/** Progreso fino (3 dp): pista gris y avance del color del texto. */
 @Composable
 fun ProgressLine(progress: Float, modifier: Modifier = Modifier) {
-    if (fxOn("progress")) { BarraProgresoScroll(progress, modifier.clip(CircleShape).background(LectorColors.PillFill), colores = listOf(androidx.compose.material3.MaterialTheme.colorScheme.primary, LectorColors.Text)); return }
     Box(modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(LectorColors.PillFill)) {
-        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(LectorColors.Text))
+        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(androidx.compose.material3.MaterialTheme.colorScheme.primary))
     }
 }
 
 @Composable
-fun PillButton(text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    // Botón tonal Expressive: píldora que cuadra sus esquinas al pulsar.
-    BotonExpresivo(text, icon, onClick, modifier, EstiloBoton.TONAL, alto = 46.dp)
-}
+fun PillButton(text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) =
+    BotonExpresivo(text, icon, onClick, modifier, EstiloBoton.TONAL, alto = 44.dp)
 
 @Composable
 fun SectionHeader(title: String, modifier: Modifier = Modifier) {
-    Row(modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (fxOn("comictext")) TextoComic(title, Modifier.weight(1f, fill = false), tam = 22.sp, color = androidx.compose.ui.graphics.Color(0xFFFFD60A)) else LText(title, LectorType.Section)
+    Row(modifier.padding(horizontal = MargenLateral), verticalAlignment = Alignment.CenterVertically) {
+        LText(title, EstiloSeccion)
         Icon(Icons.Rounded.KeyboardArrowRight, null, tint = LectorColors.Muted, modifier = Modifier.size(18.dp))
     }
 }
 
-/**
- * Fila de portadas de Inicio: la HomeCardRow de Mochy Music (ui/mochy/home/HomeCards.kt) con sus HomeCoverCard,
- * que entran en cascada la primera vez y se iluminan con el recuadro redondeado de Mochy al pulsar.
- */
+/** Fila horizontal de portadas (Inicio). */
 @Composable
 fun CoverCarousel(items: List<Comic>, almacen: Almacen, onClick: (Comic) -> Unit, modifier: Modifier = Modifier) {
-    // Biblioteca de animaciones: Marquee (Magic UI) y Carousel (Motion Primitives) con las portadas reales.
-    if (fxOn("marquee") && items.isNotEmpty()) {
-        Marquesina(modifier.padding(horizontal = 20.dp), velocidad = 30) { items.forEach { c -> Column(Modifier.width(118.dp).pressable { onClick(c) }) { ComicCover(c, almacen, Modifier.fillMaxWidth().aspectRatio(2f / 3f)); Spacer(Modifier.height(6.dp)); LText(c.titulo, LectorType.Body, maxLines = 1) } } }
-        return
-    }
-    if (fxOn("carousel") && items.isNotEmpty()) {
-        CarruselEscala(items.size, modifier.height(250.dp)) { i -> val c = items[i]; Column(Modifier.pressable { onClick(c) }) { ComicCover(c, almacen, Modifier.fillMaxWidth().aspectRatio(2f / 3f)); Spacer(Modifier.height(6.dp)); LText(c.titulo, LectorType.Body, maxLines = 1) } }
-        return
-    }
-    val visto = com.example.lector.ui.mochy.rememberRevealSeenState()
-    com.example.lector.ui.mochy.home.HomeCardRow(
-        rowKey = "portadas", items = items, revealSeen = visto, key = { it.id }, modifier = modifier,
-    ) { c ->
-        com.example.lector.ui.mochy.home.HomeCoverCard(
-            c, almacen,
-            Modifier.clickable(
-                interactionSource = null,
-                indication = com.example.lector.ui.mochy.home.HomeCardHighlight,
-                onClick = { onClick(c) },
-            ),
-        )
+    FilaTarjetas("portadas", items, key = { it.id }, modifier = modifier) { c ->
+        TarjetaPortada(c, almacen, Modifier.pressable { onClick(c) })
     }
 }
 
@@ -168,139 +143,29 @@ enum class LectorTab(val label: String, val icon: ImageVector, val iconoApagado:
     More("Más", Icons.Rounded.MoreVert, Icons.Outlined.MoreVert)
 }
 
-/** Alto de la barra y del mini lector: un «estadio» de 64 dp, como en musicfy. */
-private val AltoCromo = 64.dp
-/** Sombra suave bajo el cromo flotante (no se nota como halo sobre negro). */
-private fun Modifier.sombraCromo(forma: Shape): Modifier =
-    shadow(10.dp, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f))
-
-/**
- * Barra flotante de cristal: la AppNavigationBar de Mochy Music (ui/mochy/AppNavigation.kt), solo iconos, con las
- * pestañas de Shiori. Inicio y Explorar llevan el icono a 22 dp y el resto a 24, como Home y Search en Mochy.
- */
 @Composable
 fun FloatingNavBar(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: Modifier = Modifier) =
     BarraSilencio(selected, onSelect, modifier)
 
-/**
- * Se aplasta bajo el dedo y vuelve con un pequeño rebote. Un toque rápido dentro de una lista avisa de
- * pulsar y soltar a la vez: entonces al soltar primero se ve el aplastado.
- */
+/** Se aplasta un poco bajo el dedo y vuelve con un rebote corto. */
 @Composable
-fun Modifier.rebote(fuente: MutableInteractionSource, escala: Float = 0.88f): Modifier {
-    val e = remember { Animatable(1f) }
-    LaunchedEffect(fuente, escala) {
-        var pulsado = 0
-        fuente.interactions.collect { i ->
-            when (i) {
-                is PressInteraction.Press -> {
-                    pulsado++
-                    launch { e.animateTo(escala, spring(dampingRatio = 1f, stiffness = 1600f)) }
-                }
-                is PressInteraction.Release, is PressInteraction.Cancel -> {
-                    pulsado = (pulsado - 1).coerceAtLeast(0)
-                    if (pulsado == 0) launch {
-                        if (e.value > escala + 0.03f) e.animateTo(escala, tween(70))
-                        e.animateTo(1f, spring(dampingRatio = 0.38f, stiffness = 520f))
-                    }
-                }
-            }
-        }
-    }
-    return graphicsLayer { scaleX = e.value; scaleY = e.value }
+fun Modifier.rebote(fuente: MutableInteractionSource, escala: Float = 0.92f): Modifier {
+    val pulsado by fuente.collectIsPressedAsState()
+    val e by androidx.compose.animation.core.animateFloatAsState(if (pulsado) escala else 1f, spring(dampingRatio = 0.6f, stiffness = 900f), label = "rebote")
+    return graphicsLayer { scaleX = e; scaleY = e }
 }
 
-/** "Continuar leyendo": el último cómic que abriste. */
+/** «Seguir leyendo»: el último cómic que abriste. */
 @Composable
 fun MiniReader(comic: Comic, almacen: Almacen, onClick: () -> Unit, modifier: Modifier = Modifier) =
     MiniReaderGenerico(
         comic.titulo, comic.textoPagina(), onClick, modifier,
         progreso = if (comic.paginas > 0) ((comic.ultimaPagina + if (comic.enLinea) 0 else 1).toFloat() / comic.paginas).coerceIn(0f, 1f) else null,
-    ) { m -> ComicCover(comic, almacen, m, com.example.lector.ui.mochy.SmoothCornerShape(12.dp)) }
+    ) { m -> ComicCover(comic, almacen, m, RoundedCornerShape(10.dp)) }
 
-/**
- * Mini lector: el mini reproductor de Mochy Music (player/MorphingCover.kt + BottomSheet.kt) sin el morph:
- * píldora de cristal de 64 dp con esquinas suaves de 20 dp que se inclina bajo el dedo, portada a la izquierda,
- * título y capítulo, y el botón de Mochy (rebote + resalte redondo) para seguir leyendo. El progreso es una
- * línea finísima en el borde de abajo.
- */
 @Composable
 fun MiniReaderGenerico(
     titulo: String, subtitulo: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     progreso: Float? = null,
     portada: @Composable (Modifier) -> Unit,
 ) = MiniSilencio(titulo, subtitulo, onClick, modifier, progreso, portada)
-
-/** Esquinas del mini lector (las de la píldora del mini reproductor de Mochy). */
-private val MiniEsquina = 20.dp
-
-/**
- * The round highlight behind a pressed mini player button: the nav bar's highlight colour, 4dp
- * past the 36dp button. (Copiado de Mochy Music, GPL-3.0: ui/player/MorphingCover.kt, MiniButtonHighlight)
- */
-private val MiniButtonHighlight = com.example.lector.ui.mochy.RoundedHighlight(
-    cornerRadius = 22.dp,
-    spillX = 4.dp,
-    spillY = 4.dp,
-    color = com.example.lector.ui.mochy.ChromeHighlightColor,
-)
-
-/**
- * One of the mini player's buttons. A round highlight comes up under the finger and the button
- * squishes with it. (Copiado de Mochy Music, GPL-3.0: ui/player/MorphingCover.kt, MiniPlayerButton)
- */
-@Composable
-private fun BotonMini(onClick: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .rebote(interactionSource)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = MiniButtonHighlight,
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(Icons.Rounded.PlayArrow, "Continuar", tint = LectorColors.Text, modifier = Modifier.size(20.dp))
-    }
-}
-
-/**
- * Luz que sigue al dedo sobre una superficie de cristal (como la barra de progreso de Fluid Cloud en ColorOS 17):
- * nace al tocar, se desliza con el dedo y se apaga despacio. Solo mira el dedo, no consume el toque.
- */
-@Composable
-fun Modifier.luzTactil(): Modifier {
-    val onda = this.fx("ripple") { ondaAlTocar(LectorColors.Text) }
-    val luz = remember { Animatable(0f) }
-    var punto by remember { mutableStateOf(Offset.Zero) }
-    val scope = rememberCoroutineScope()
-    return onda
-        .pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                    val c = ev.changes.firstOrNull() ?: continue
-                    punto = c.position
-                    if (c.pressed && !c.previousPressed) scope.launch { luz.animateTo(1f, tween(140, easing = EnfasisEasing)) }
-                    if (!c.pressed && c.previousPressed) scope.launch { luz.animateTo(0f, tween(600, easing = EnfasisEasing)) }
-                }
-            }
-        }
-        .drawWithContent {
-            drawContent()
-            val l = if (Aspecto.luzTactil) luz.value else 0f
-            if (l > 0f) drawCircle(
-                Brush.radialGradient(
-                    0f to Color.White.copy(alpha = 0.22f * l), 0.5f to Color.White.copy(alpha = 0.06f * l), 1f to Color.Transparent,
-                    center = punto, radius = size.height * 1.4f,
-                ),
-                radius = size.height * 1.4f, center = punto,
-            )
-        }
-}
-
-/** Efectos de portada de la biblioteca de animaciones (Tilt, Glow, Magic Card, Glare): los usan todas las portadas. */
-fun Modifier.efectosPortadaFx(): Modifier = this.fx("tilt") { inclinar() }.fx("glow") { halo() }.fx("magiccard") { foco() }.fx("glare") { destello() }

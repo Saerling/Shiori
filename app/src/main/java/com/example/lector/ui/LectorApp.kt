@@ -92,8 +92,8 @@ fun Inicio(
     var detalleId by rememberSaveable { mutableStateOf<String?>(null) }
     // Explorar / extensiones: gestor único + qué extensión o fuente se está viendo.
     val contexto = LocalContext.current
-    // Replay (de BitChord): anota en el teléfono cada capítulo que se abre.
-    LaunchedEffect(Unit) { com.example.lector.bitchord.ReplayRegistro.iniciar(contexto, almacen) }
+    // Replay: anota en el teléfono cada capítulo que se abre.
+    LaunchedEffect(Unit) { com.example.lector.herramientas.ReplayRegistro.iniciar(contexto, almacen) }
     val ext = remember { ExtManager.obtener(contexto) }
     var extPkg by rememberSaveable { mutableStateOf<String?>(null) }
     var fuenteId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -363,19 +363,19 @@ fun Inicio(
         else -> ""
     }
 
-    // Como en musicfy: al abrir una ficha (o un cómic) la página de debajo retrocede (se encoge y se apaga) con
+    // Como en : al abrir una ficha (o un cómic) la página de debajo retrocede (se encoge y se apaga) con
     // el muelle con el que se abre; al volver, avanza con una curva suave de 560 ms.
     val abiertaEncima = detalleId != null || pila.isNotEmpty()
     val retroceso = remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(abiertaEncima) {
-        // HomeRecedeSpring / HomeReturnEase de Mochy (NavigationBuilder): escala 0,92 y alfa 0,45 (ver graphicsLayer).
+        // HomeRecedeSpring / HomeReturnEase  (NavigationBuilder): escala 0,92 y alfa 0,45 (ver graphicsLayer).
         if (abiertaEncima) retroceso.animateTo(1f, spring(dampingRatio = 0.88f, stiffness = 150f, visibilityThreshold = 0.001f))
         else retroceso.animateTo(0f, tween(ContenedorCierreMs, easing = CierreEasing))
     }
 
     Box(
         Modifier.fillMaxSize().background(LectorColors.Bg)
-            // Dónde se tocó por última vez (sin consumir el toque): la ficha crece desde ahí, como en Mochy.
+            // Dónde se tocó por última vez (sin consumir el toque): la ficha crece desde ahí, .
             .onSizeChanged { OrigenToque.tam = it }
             .pointerInput(Unit) {
                 awaitPointerEventScope {
@@ -388,9 +388,7 @@ fun Inicio(
     ) {
       // Todo lo que queda bajo la barra flotante: se graba para el cristal esmerilado de la barra y el mini lector.
       val estadoPestanas = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
-      Box(Modifier.fillMaxSize().raizCristal(CristalApp)) {
-        // Fondo vivo (Apariencia → Fondo): detrás de las pestañas, y el cristal de la barra lo desenfoca.
-        FondoVivo(Aspecto.fondo, Modifier.fillMaxSize(), acento = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+      Box(Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = tab, label = "tabs",
             modifier = Modifier.graphicsLayer {
@@ -401,7 +399,7 @@ fun Inicio(
                     alpha = 1f - 0.55f * r
                 }
             },
-            // Como el NavHost de Mochy (MainActivity): un octavo de pantalla hacia el lado de la pestaña nueva con el
+            // Como el NavHost  (MainActivity): un octavo de pantalla hacia el lado de la pestaña nueva con el
             // muelle por defecto de slideIn, y un fundido de 200 ms.
             transitionSpec = {
                 val derecha = targetState.ordinal >= initialState.ordinal
@@ -478,7 +476,7 @@ fun Inicio(
         // Páginas que se deslizan encima (detalle de cómic, Más → Categorías, Ajustes, etc.).
         AnimatedContent(
             targetState = capa, label = "capa",
-            // Como Mochy (NavigationBuilder): el detalle de un cómic es una ruta «de portada» (entra con fadeIn 300 y al
+            // Como  (NavigationBuilder): el detalle de un cómic es una ruta «de portada» (entra con fadeIn 300 y al
             // volver se encoge hacia arriba: scaleOut 260 a 0,82 desde (0,5, 0,22) + fadeOut 180); las demás páginas
             // usan la transición por defecto del NavHost (un octavo de pantalla + fundido de 200).
             transitionSpec = {
@@ -523,8 +521,7 @@ fun Inicio(
                     Ruta.Estadisticas -> EstadisticasScreen(visibles, almacen, ext) { ruta = null }
                     Ruta.Datos -> DatosScreen(almacen, alRecargar) { ruta = null }
                     Ruta.Ajustes -> AjustesScreen(almacen, { ruta = null }) { ruta = it }
-                    Ruta.Apariencia -> PersonalizacionScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = Ruta.BibliotecaFx }
-                    Ruta.BibliotecaFx -> com.example.lector.fx.BibliotecaFxPantalla(remember(visibles) { catalogoShiori(almacen, visibles) { ruta = it } }, { ruta = Ruta.Apariencia })
+                    Ruta.Apariencia -> AparienciaScreen(almacen) { ruta = Ruta.Ajustes }
                     Ruta.AjBiblioteca -> AjBibliotecaScreen(almacen, { ruta = Ruta.Ajustes }) { ruta = it }
                     Ruta.AjSeguimiento -> AjSeguimientoScreen(almacen) { ruta = Ruta.Ajustes }
                     Ruta.AjVisor -> AjustesVisorScreen(almacen) { ruta = Ruta.Ajustes }
@@ -584,8 +581,8 @@ fun Inicio(
                     visible = visibleR,
                     // La página «crece» al abrirse (muelle suave, interrumpible) y se encoge al cerrarse.
                     // Si se abrió tocando una portada (ficha), la página crece DESDE esa portada (container transform de
-                    // Mochy); si no, crece desde el punto tocado.
-                    // Sin portada de origen, como Mochy: la lista de la fuente es una página normal (un octavo de pantalla +
+                    // ); si no, crece desde el punto tocado.
+                    // Sin portada de origen, : la lista de la fuente es una página normal (un octavo de pantalla +
                     // fundido de 200) y la ficha y el lector son rutas «de portada» (fadeIn 300; al cerrar, scaleOut 260 a
                     // 0,82 desde (0,5, 0,22) + fadeOut 180).
                     enter = if (Mov.reducido) fadeIn(tween(120)) else if (conContenedor) fadeIn(tween(90))
@@ -697,9 +694,9 @@ fun Inicio(
                         Spacer(Modifier.height(8.dp))
                     }
                 } }
-                // Indicador de descargas de BitChord (ui/bitchord/DownloadManagerSheet.kt): píldora a la izquierda, encima de
+                // Indicador de descargas  (ui/bitchord/DownloadManagerSheet.kt): píldora a la izquierda, encima de
                 // la barra; solo mientras hay capítulos bajando o en cola. Se esconde con la barra (lector, fichas, pantallas encima).
-                com.example.lector.ui.bitchord.NavBarDownloadPill({ hojaDescargas = true })
+                com.example.lector.ui.herramientas.NavBarDownloadPill({ hojaDescargas = true })
                 FloatingNavBar(tab, onSelect = onTab)
             }
         }
@@ -715,7 +712,7 @@ fun Inicio(
         }
         IslaCopia(Modifier.align(Alignment.TopCenter))
         // Hoja del indicador de descargas (la píldora va acoplada encima de la barra flotante).
-        if (hojaDescargas) com.example.lector.ui.bitchord.DownloadManagerSheet({ hojaDescargas = false }) { ruta = Ruta.Descargas }
+        if (hojaDescargas) com.example.lector.ui.herramientas.DownloadManagerSheet({ hojaDescargas = false }) { ruta = Ruta.Descargas }
         InformeCopia()
 
         // Avisos (en lugar de Toast): píldora que cae desde arriba. Si hay una copia en marcha, debajo de su píldora.
@@ -759,7 +756,7 @@ fun Modifier.origenTransicion(): Modifier = composed {
 }
 
 /**
- * Container transform (Mochy): con [p] = 0 la página ocupa exactamente la portada de origen (mismo ancho, recortada a
+ * Container transform: con [p] = 0 la página ocupa exactamente la portada de origen (mismo ancho, recortada a
  * su alto y con sus esquinas); con [p] = 1, la pantalla entera. Se escala por el ancho desde arriba.
  */
 fun Modifier.contenedor(rect: androidx.compose.ui.geometry.Rect?, p: () -> Float): Modifier =

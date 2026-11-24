@@ -58,7 +58,7 @@ fun Modifier.vidrio(forma: Shape): Modifier = this
  */
 @Composable
 private fun FondoVidrioFlotante(modifier: Modifier = Modifier) =
-    FondoCristal(CristalApp, modifier, tinte = LectorColors.Cristal.copy(alpha = if (hayDesenfoque) 0.36f else 0.9f))
+    Box(modifier.background(LectorColors.Cristal.copy(alpha = 0.94f)))
 
 /** Vidrio para botones y barras dentro de las pantallas: translúcido, sin copiar el fondo. */
 @Composable
@@ -201,27 +201,30 @@ fun FilaSilencio(
     onClick: (() -> Unit)?, final: (@Composable () -> Unit)? = null,
     interruptor: Boolean? = null,
 ) {
+    Column {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 1.dp).clip(RoundedCornerShape(16.dp)).background(LectorColors.Card)
+        Modifier.fillMaxWidth()
             .then(
                 if (interruptor != null && onClick != null) Modifier.toggleable(value = interruptor, role = Role.Switch) { onClick() }
                 else if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
             )
-            .heightIn(min = 54.dp).padding(horizontal = 16.dp, vertical = 10.dp),
+            .heightIn(min = 52.dp).padding(horizontal = MargenLateral, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Box(Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(LectorColors.Text.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = LectorColors.Text, modifier = Modifier.size(18.dp))
+            Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(LectorColors.Card).border(0.6.dp, LectorColors.Linea, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = LectorColors.Text, modifier = Modifier.size(17.dp))
             }
             Spacer(Modifier.width(14.dp))
         }
         Column(Modifier.weight(1f)) {
             LText(titulo, LectorType.Body.copy(fontSize = 16.sp))
-            if (!detalle.isNullOrBlank()) LText(detalle, LectorType.Label.copy(fontSize = 13.sp), color = LectorColors.Muted, maxLines = 3)
+            if (!detalle.isNullOrBlank()) LText(detalle, LectorType.Label.copy(fontSize = 13.sp, fontWeight = FontWeight.Normal), color = LectorColors.Muted, maxLines = 3)
         }
         if (final != null) { Spacer(Modifier.width(12.dp)); final() }
         else if (onClick != null) { Spacer(Modifier.width(8.dp)); LText("›", LectorType.Body.copy(fontSize = 20.sp), color = LectorColors.Muted) }
+    }
+    Regla(inicio = MargenLateral + if (icon != null) 44.dp else 0.dp)
     }
 }
 
@@ -295,27 +298,7 @@ fun TituloSilencioSec(title: String, label: String? = null, expanded: Boolean = 
 
 // ───────────── Biblioteca (Silencio) ─────────────
 
-@Composable
-fun LibraryTitleBlock(title: String, subtitle: String?, modifier: Modifier = Modifier, subtitleContent: (@Composable () -> Unit)? = null) {
-    Column(modifier, verticalArrangement = Arrangement.Center) {
-        LText(title, LectorType.Display.copy(fontSize = 34.sp, fontWeight = FontWeight.Bold), maxLines = 1)
-        if (subtitleContent != null) subtitleContent()
-        else if (subtitle != null) LText(subtitle, LectorType.Label.copy(fontSize = 13.sp), color = LectorColors.Muted, maxLines = 1)
-    }
-}
 
-/** Botón de la cabecera: círculo de vidrio; activo (búsqueda abierta, filtros puestos) se pone blanco. */
-@Composable
-fun LibraryIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, contentDescription: String, active: Boolean = false, onClick: () -> Unit) {
-    Box(
-        Modifier.size(40.dp).vidrio(CircleShape).clickable(role = Role.Button, onClickLabel = contentDescription) { Tacto.tic(); onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        FondoVidrio(Modifier.matchParentSize())
-        if (active) Box(Modifier.matchParentSize().background(LectorColors.Text))
-        Icon(icon, contentDescription, tint = if (active) LectorColors.Bg else LectorColors.Text, modifier = Modifier.size(20.dp))
-    }
-}
 
 /** Categorías: FilterChip nativos de Material 3 en una fila; la elegida en blanco. Se desplaza para dejarla a la vista. */
 @Composable
@@ -350,22 +333,14 @@ fun ChipNativo(texto: String, seleccionado: Boolean, modifier: Modifier = Modifi
     )
 }
 
-/** Encabezado de grupo (Hoy, Ayer, una fecha): negrita de 17 sp y la cuenta en gris. */
-@Composable
-fun GeneratedGroupHeader(text: String, modifier: Modifier = Modifier, count: String? = null) {
-    Row(modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 20.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        LText(text, LectorType.Body.copy(fontSize = 17.sp, fontWeight = FontWeight.Bold), modifier = Modifier.weight(1f), maxLines = 1)
-        if (count != null) LText(count, LectorType.Label.copy(fontSize = 13.sp), color = LectorColors.Muted)
-    }
-}
 
 // ───────────── Ficha (Silencio): como la página de un álbum ─────────────
 
 /** Cabecera de la ficha: título y autores centrados, datos, «Leer» en blanco y las acciones en círculos de vidrio. */
 @Composable
-fun PlaylistHeader(
+fun CabeceraFicha(
     title: String,
-    creators: List<com.example.lector.ui.mochy.detail.CreatorUi>,
+    creators: List<String>,
     stats: String,
     playLabel: String,
     playEnabled: Boolean,
@@ -378,14 +353,14 @@ fun PlaylistHeader(
     onTitleLongClick: () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    val alto = com.example.lector.ui.mochy.detail.playlistCoverHeight()
+    val alto = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.55f).dp
     Box(modifier.fillMaxWidth().heightIn(min = alto * 0.975f), contentAlignment = Alignment.BottomCenter) {
         Box(Modifier.matchParentSize().clickable(interactionSource = null, indication = null, onClick = onCoverClick))
         Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(bottom = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.combinedClickableSilencio(onTitleClick, onTitleLongClick)) {
                 LText(title, LectorType.Display.copy(fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center), maxLines = 2)
             }
-            if (creators.isNotEmpty()) LText(creators.joinToString(", ") { it.name }, LectorType.Body.copy(fontSize = 17.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center), color = LectorColors.Text.copy(alpha = 0.78f), maxLines = 1)
+            if (creators.isNotEmpty()) LText(creators.joinToString(", "), LectorType.Body.copy(fontSize = 17.sp, fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center), color = LectorColors.Text.copy(alpha = 0.78f), maxLines = 1)
             if (stats.isNotEmpty()) LText(stats, LectorType.Label.copy(fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center), color = LectorColors.Text.copy(alpha = 0.6f), maxLines = 1)
             Spacer(Modifier.height(14.dp))
             Box(
@@ -413,15 +388,9 @@ fun PlaylistHeader(
 
 /** Acción redonda de vidrio de la ficha (biblioteca, categorías, web, descargar). */
 @Composable
-fun CircleAction(
+fun AccionRedonda(
     icon: androidx.compose.ui.graphics.vector.ImageVector, contentDescription: String, onClick: () -> Unit,
-    spinOnClick: Boolean = false, tint: Color? = null,
+    spinOnClick: Boolean = false, tint: Color? = null, active: Boolean = false,
 ) {
-    Box(
-        Modifier.padding(horizontal = 4.dp).size(48.dp).vidrio(CircleShape).clickable(role = Role.Button, onClickLabel = contentDescription) { Tacto.tic(); onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        FondoVidrio(Modifier.matchParentSize())
-        Icon(icon, contentDescription, tint = tint ?: LectorColors.Text, modifier = Modifier.size(22.dp))
-    }
+    BotonCirculo(icon, contentDescription, onClick, Modifier.padding(start = 6.dp), tam = 48.dp, tinte = tint, activo = active)
 }

@@ -1,13 +1,14 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.*
 import androidx.compose.ui.composed
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.runtime.remember
-import com.example.lector.ui.mochy.RoundedHighlight
-import com.example.lector.ui.mochy.TopToaster
-import com.example.lector.ui.mochy.pressBounce
-import com.example.lector.ui.mochy.press3D as mochyPress3D
 
 import androidx.compose.animation.core.keyframes
 import androidx.compose.foundation.layout.defaultMinSize
@@ -123,7 +124,7 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 /*
- * Kit de diseño inspirado en la app musicfy: pulsación con rebote, inclinación 3D, resalte suave de filas,
+ * Kit de diseño inspirado en la app : pulsación con rebote, inclinación 3D, resalte suave de filas,
  * esquinas continuas, esqueletos con ola, avisos que caen desde arriba y números que ruedan.
  * Todo está escrito para Lector (Compose 1.7), sin depender de nada más que de Compose.
  */
@@ -131,211 +132,62 @@ import kotlin.math.sin
 /** Curva "enfática": arranca rápido y se asienta despacio. La usan las entradas y los cambios de pantalla. */
 val EnfasisEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
-// ───────────────────────── Esquinas continuas ─────────────────────────
+// ───────────────────────── Formas ─────────────────────────
 
-/**
- * Rectángulo cuyas esquinas son un cuarto de superelipse en vez de un cuarto de círculo (el "squircle" de los
- * iconos de las apps): la curva entra en el borde sin cambio brusco y se lee como una sola forma suave.
- */
+/** Rectángulo redondeado de Silencio (se mantiene el nombre por las pantallas). */
 @Immutable
-data class SuaveShape(
-    val radio: Dp,
-    val exponente: Float = 4f,
-    /** Personalización → Estilo → Esquinas. Forma parte de la igualdad, así que cambiarla rehace los recortes. */
-    val estilo: com.example.lector.ui.mochy.EstiloApp.Esquinas = com.example.lector.ui.mochy.EstiloApp.esquinas,
-) : Shape {
-    // Mochy: la superelipse de SmoothCornerShape (ui/mochy/SmoothCornerShape.kt), la de siempre.
-    // Continuas: ContinuousCornerShape de BitChord (ui/bitchord/ContinuousCornerShape.kt), la esquina de Apple/Figma
-    // (cúbica + arco; las cápsulas conservan su extremo semicircular). [exponente] se traduce en el suavizado.
-    private val forma: Shape = when (estilo) {
-        com.example.lector.ui.mochy.EstiloApp.Esquinas.MOCHY -> com.example.lector.ui.mochy.SmoothCornerShape(radio, exponente)
-        com.example.lector.ui.mochy.EstiloApp.Esquinas.CONTINUAS -> com.example.lector.ui.bitchord.ContinuousCornerShape(
-            androidx.compose.foundation.shape.CornerSize(radio), androidx.compose.foundation.shape.CornerSize(radio),
-            androidx.compose.foundation.shape.CornerSize(radio), androidx.compose.foundation.shape.CornerSize(radio),
-            smoothing = ((exponente - 2f) / 2f * com.example.lector.ui.bitchord.GLASS_CORNER_SMOOTHING).coerceIn(0f, 1f),
-        )
-    }
+data class SuaveShape(val radio: Dp, val exponente: Float = 4f) : Shape {
+    private val forma = androidx.compose.foundation.shape.RoundedCornerShape(radio)
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
         forma.createOutline(size, layoutDirection, density)
 }
 
 // ───────────────────────── Pulsación ─────────────────────────
-//
-// Las tres pulsaciones (rebote, inclinación 3D y resalte de fila) son un único Modifier.Node: antes eran
-// funciones @Composable / composed {} con remember + LaunchedEffect POR TARJETA, lo que en cuadrículas de cientos de
-// portadas suponía mucho trabajo en cada recomposición. Ahora no crean estado de composición.
 
-private enum class TipoPulsacion { REBOTE, INCLINAR, RESALTE }
-
-private data class PulsacionElement(
-    val tipo: TipoPulsacion,
-    val escala: Float,
-    val inclinacion: Float,
-    val radio: Dp,
-    val margen: Dp,
-) : ModifierNodeElement<PulsacionNode>() {
-    override fun create() = PulsacionNode(tipo, escala, inclinacion, radio, margen)
-    override fun update(node: PulsacionNode) {
-        node.tipo = tipo; node.escala = escala; node.inclinacion = inclinacion; node.radio = radio; node.margen = margen
-        node.invalidateDraw()
-    }
-}
-
-private class PulsacionNode(
-    var tipo: TipoPulsacion,
-    var escala: Float,
-    var inclinacion: Float,
-    var radio: Dp,
-    var margen: Dp,
-) : DelegatingNode(), DrawModifierNode {
-    private val t = Animatable(0f)
-    // Living Flow (ColorOS 17): «la luz como respuesta». Un brillo suave nace bajo el dedo, lo sigue mientras se
-    // mantiene y se apaga despacio al soltar.
-    private val luz = Animatable(0f)
-    private var punto by androidx.compose.runtime.mutableStateOf(Offset.Zero)
-    private var normal = Offset.Zero
-    private var ancho = 0
-
-    init {
-        delegate(SuspendingPointerInputModifierNode { detectar() })
-    }
-
-    // Observa el dedo sin consumir nada (así se combina con clickable y con el scroll de las listas).
-    private suspend fun PointerInputScope.detectar() {
-        awaitPointerEventScope {
-            while (true) {
-                val abajo = awaitPointerEvent(PointerEventPass.Initial).changes
-                    .firstOrNull { it.pressed && !it.previousPressed } ?: continue
-                val caja = size
-                if (caja.width > 0 && caja.height > 0) {
-                    val p = abajo.position
-                    normal = Offset(
-                        ((p.x / caja.width) * 2f - 1f).coerceIn(-1f, 1f),
-                        ((p.y / caja.height) * 2f - 1f).coerceIn(-1f, 1f),
-                    )
-                    ancho = caja.width
-                }
-                val holgura = viewConfiguration.touchSlop * 1.5f
-                punto = abajo.position
-                pulsar(true)
-                while (true) {
-                    val ev = awaitPointerEvent(PointerEventPass.Initial)
-                    val c = ev.changes.firstOrNull { it.id == abajo.id } ?: break
-                    if (c.pressed) punto = c.position
-                    // Si el dedo se arrastra (scroll), se suelta la pulsación.
-                    if (!c.pressed || (c.position - abajo.position).getDistance() > holgura) break
-                }
-                pulsar(false)
-                while (true) {
-                    val ev = awaitPointerEvent(PointerEventPass.Initial)
-                    if (ev.changes.none { it.pressed }) break
-                }
-            }
-        }
-    }
-
-    private fun pulsar(abajo: Boolean) {
-        coroutineScope.launch {
-            if (abajo) luz.animateTo(1f, tween(120, easing = EnfasisEasing))
-            else luz.animateTo(0f, tween(520, easing = EnfasisEasing))
-        }
-    }
-
-    override fun ContentDrawScope.draw() {
-        drawContent()
-        val l = if (Aspecto.luzTactil) luz.value else 0f
-        if (l > 0f) {
-            // Luz radial recortada a la forma del elemento (píldora, portada o fila), sin salirse a los vecinos.
-            val menor = minOf(size.width, size.height)
-            val r = (maxOf(size.width, size.height) * 0.6f).coerceIn(40.dp.toPx(), 170.dp.toPx())
-            val esquina = when (tipo) {
-                TipoPulsacion.REBOTE -> menor / 2f
-                TipoPulsacion.INCLINAR -> 14.dp.toPx()
-                TipoPulsacion.RESALTE -> radio.toPx()
-            }
-            val mx = if (tipo == TipoPulsacion.RESALTE) margen.toPx() else 0f
-            drawRoundRect(
-                Brush.radialGradient(
-                    0f to LectorColors.Text.copy(alpha = 0.20f * l),
-                    0.45f to LectorColors.Text.copy(alpha = 0.07f * l),
-                    1f to Color.Transparent,
-                    center = punto, radius = r,
-                ),
-                topLeft = Offset(mx, 0f), size = Size(size.width - mx * 2f, size.height), cornerRadius = CornerRadius(esquina),
-            )
-        }
-    }
-}
-
-/*
- * Las pulsaciones delegan en el código de Mochy (ui/mochy/TouchFeedback.kt y Press3D.kt): pressBounce para el
- * rebote, RoundedHighlight como indicación (caja redondeada en vez de la onda cuadrada) y press3D para la
- * inclinación. El nodo de arriba solo añade la «luz táctil» de Shiori cuando está activada en Aspecto.
- */
-private fun Modifier.luzTactil(tipo: TipoPulsacion, radio: Dp, margen: Dp): Modifier =
-    (if (Aspecto.luzTactil) this.then(PulsacionElement(tipo, 1f, 0f, radio, margen)) else this).fx("ripple") { ondaAlTocar(LectorColors.Text) }
-
-/** Botón / tarjeta tocable con rebote (sin ondas cuadradas). Con [onLongClick], también mantener pulsado. */
-fun Modifier.pressable(onClick: () -> Unit): Modifier = pressableCon(0.95f, null, onClick)
-
-fun Modifier.pressable(onLongClick: (() -> Unit)?, onClick: () -> Unit): Modifier = pressableCon(0.95f, onLongClick, onClick)
-
+/** Botón o tarjeta tocable: se encoge un poco bajo el dedo (sin ondas). Con [onLongClick], también mantener. */
+fun Modifier.pressable(onClick: () -> Unit): Modifier = pressableCon(0.96f, null, onClick)
+fun Modifier.pressable(onLongClick: (() -> Unit)?, onClick: () -> Unit): Modifier = pressableCon(0.96f, onLongClick, onClick)
 fun Modifier.pressableCon(escalaPulsada: Float, onClick: () -> Unit): Modifier = pressableCon(escalaPulsada, null, onClick)
 
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.pressableCon(escalaPulsada: Float, onLongClick: (() -> Unit)?, onClick: () -> Unit): Modifier = composed {
     val fuente = remember { MutableInteractionSource() }
-    val base = this.pressBounce(fuente, escalaPulsada).luzTactil(TipoPulsacion.REBOTE, 0.dp, 0.dp)
+    val base = this.rebote(fuente, escalaPulsada)
     if (onLongClick == null) base.clickable(interactionSource = fuente, indication = null, onClick = onClick)
     else base.combinedClickable(interactionSource = fuente, indication = null, onLongClick = onLongClick, onClick = onClick)
 }
 
-/**
- * Fila tocable: al pulsar aparece detrás una caja redondeada suave (en lugar de la onda cuadrada) que se desvanece
- * al soltar. Se dibuja por debajo del contenido y queda [margenX] hacia dentro, así no se corta en los bordes.
- */
+/** Fila tocable: al pulsar se ve un velo suave detrás (sin onda). */
 @OptIn(ExperimentalFoundationApi::class)
-fun Modifier.resaltable(radio: Dp = 22.dp, margenX: Dp = 12.dp, onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
+fun Modifier.resaltable(radio: Dp = 0.dp, margenX: Dp = 0.dp, onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
     val fuente = remember { MutableInteractionSource() }
-    // RoundedHighlight de Mochy: un margen negativo la deja dentro de la fila.
-    val resalte = RoundedHighlight(cornerRadius = radio, spillX = -margenX, color = LectorColors.Text.copy(alpha = 0.12f))
-    val base = this.luzTactil(TipoPulsacion.RESALTE, radio, margenX)
-    if (onLongClick == null) base.clickable(interactionSource = fuente, indication = resalte, onClick = onClick)
-    else base.combinedClickable(interactionSource = fuente, indication = resalte, onLongClick = onLongClick, onClick = onClick)
+    val pulsado by fuente.collectIsPressedAsState()
+    val velo = LectorColors.Resalte
+    val base = this.drawBehind { if (pulsado) drawRect(velo) }
+    if (onLongClick == null) base.clickable(interactionSource = fuente, indication = null, onClick = onClick)
+    else base.combinedClickable(interactionSource = fuente, indication = null, onLongClick = onLongClick, onClick = onClick)
 }
 
-/**
- * Inclina el elemento hacia donde se pulsa (como una tarjeta física) y lo encoge un poco. No consume el toque,
- * así que se puede combinar con clickable. Con el movimiento reducido solo encoge, sin inclinarse.
- */
-fun Modifier.press3D(inclinacionMax: Float = 7f, escalaPulsada: Float = 0.97f): Modifier = composed {
-    this.mochyPress3D(
-        maxTilt = if (MovimientoReducido.activo) 0f else inclinacionMax,
-        pressedScale = escalaPulsada,
-    ).luzTactil(TipoPulsacion.INCLINAR, 0.dp, 0.dp)
-}
+/** Portadas: se encogen un poco al pulsar (no consume el toque). */
+fun Modifier.press3D(inclinacionMax: Float = 0f, escalaPulsada: Float = 0.97f): Modifier = this
 
 // ───────────────────────── Esqueletos de carga ─────────────────────────
 
-private val ColorHueso = Color(0xFFD9D9D9).copy(alpha = 0.22f)
+private val ColorHueso: Color get() = LectorColors.CardHigh
 
-/** Contenedor de esqueletos: el BonesHost de Mochy (ola de opacidad); sin animaciones, quietos. */
+/** Contenedor de esqueletos: late despacio (quieto con «quitar animaciones»). */
 @Composable
 fun BonesHost(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    // Con los thinking orbs, un orbe flota sobre el esqueleto mientras carga.
-    if (com.example.lector.ui.mochy.EstiloApp.orbes) androidx.compose.foundation.layout.Box(modifier) {
-        if (MovimientoReducido.activo) Column(Modifier.fillMaxWidth(), content = content)
-        else com.example.lector.ui.mochy.BonesHost(Modifier.fillMaxWidth(), content)
-        IndicadorCarga(Modifier.align(Alignment.Center).size(48.dp))
+    val a = if (MovimientoReducido.activo) 0.7f else {
+        val t = rememberInfiniteTransition(label = "huesos")
+        t.animateFloat(0.45f, 0.9f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "a").value
     }
-    else if (MovimientoReducido.activo) Column(modifier, content = content)
-    else com.example.lector.ui.mochy.BonesHost(modifier, content)
+    Column(modifier.graphicsLayer { alpha = a }, content = content)
 }
 
 @Composable
-fun Bone(ancho: Dp, alto: Dp, modifier: Modifier = Modifier, forma: Shape = SuaveShape(20.dp)) {
-    if (fxOn("skeleton")) { Box(modifier.size(ancho, alto).clip(forma).esqueleto(0.dp, LectorColors.CardHigh)); return }
-    com.example.lector.ui.mochy.Bone(ancho, alto, modifier, forma)
+fun Bone(ancho: Dp, alto: Dp, modifier: Modifier = Modifier, forma: Shape = SuaveShape(8.dp)) {
+    Box(modifier.size(ancho, alto).clip(forma).background(ColorHueso))
 }
 
 /** Esqueleto de la lista de capítulos (mismas medidas que las filas reales). */
@@ -395,67 +247,72 @@ fun BonesRejilla(filas: Int = 3, columnas: Int = 3) {
 @Immutable
 data class Aviso(val id: Long, val texto: String, val accion: String? = null, val alAccion: (() -> Unit)? = null)
 
-/**
- * Avisos como una píldora oscura que cae desde arriba. Se pueden lanzar desde cualquier sitio (también desde hilos
- * de fondo); uno nuevo sustituye al que se ve, y deslizar hacia arriba lo quita antes de tiempo.
- */
+/** Avisos: una píldora que cae desde arriba. Se pueden lanzar desde cualquier hilo; uno nuevo sustituye al anterior. */
 object Avisos {
     private val _actual = MutableStateFlow<Aviso?>(null)
     val actual: StateFlow<Aviso?> = _actual.asStateFlow()
     private val contador = AtomicLong(0)
 
-    // Se dibujan con TopToaster / TopToastHost de Mochy (ui/mochy/TopToast.kt).
     fun mostrar(texto: String) {
-        if (esError(texto)) {
-            TopToaster.error(texto)
-            Tacto.rechazar()
-        } else {
-            TopToaster.show(texto, iconRes = Icons.Rounded.Info)
-        }
-        _actual.value = Aviso(TopToaster.current.value?.id ?: contador.incrementAndGet(), texto)
+        if (esError(texto)) Tacto.rechazar()
+        _actual.value = Aviso(contador.incrementAndGet(), texto)
     }
 
     /** Aviso con un botón (p. ej. «Buscar en todas»): tocarlo lo ejecuta y cierra el aviso. */
     fun mostrar(texto: String, accion: String, alAccion: () -> Unit) {
-        TopToaster.show(texto, iconRes = Icons.Rounded.Info, actionLabel = accion, onAction = alAccion)
-        _actual.value = Aviso(TopToaster.current.value?.id ?: contador.incrementAndGet(), texto, accion, alAccion)
+        _actual.value = Aviso(contador.incrementAndGet(), texto, accion, alAccion)
     }
 
-    fun ocultar(id: Long) {
-        TopToaster.dismiss(id)
-        _actual.update { if (it?.id == id) null else it }
-    }
+    fun ocultar(id: Long) { _actual.update { if (it?.id == id) null else it } }
 }
 
-/** Curva de los avisos (salida rápida, llegada suave). */
-private val AvisoEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-
-/** Un aviso «de error» (para pintar la cruz roja en vez del icono). */
+/** Un aviso «de error» (lleva un punto rojo). */
 private fun esError(t: String): Boolean {
     val x = t.lowercase()
     return x.startsWith("no se pudo") || x.startsWith("error") || x.contains("falló") || x.startsWith("no hay")
 }
 
-/** Avisos: el TopToastHost de Mochy, una sola vez encima de toda la app. */
+/** Avisos encima de toda la app. */
 @Composable
 fun AvisosHost(modifier: Modifier = Modifier) {
-    com.example.lector.ui.mochy.TopToastHost(modifier)
+    val aviso by Avisos.actual.collectAsState()
+    LaunchedEffect(aviso?.id) { val a = aviso ?: return@LaunchedEffect; kotlinx.coroutines.delay(if (a.accion != null) 5000 else 2600); Avisos.ocultar(a.id) }
+    Box(modifier.fillMaxWidth().statusBarsPadding().padding(top = 8.dp), contentAlignment = Alignment.TopCenter) {
+        androidx.compose.animation.AnimatedContent(
+            aviso, label = "aviso",
+            transitionSpec = {
+                (androidx.compose.animation.slideInVertically(tween(300, easing = EnfasisEasing)) { -it } + androidx.compose.animation.fadeIn(tween(200))) togetherWith
+                    (androidx.compose.animation.slideOutVertically(tween(220)) { -it } + androidx.compose.animation.fadeOut(tween(160)))
+            },
+        ) { a ->
+            if (a == null) { Spacer(Modifier.height(1.dp)); return@AnimatedContent }
+            Row(
+                Modifier.padding(horizontal = 24.dp).widthIn(max = 520.dp)
+                    .shadow(12.dp, CircleShape, clip = false).clip(CircleShape).background(LectorColors.Aviso)
+                    .clickable { Avisos.ocultar(a.id) }.padding(start = 16.dp, end = if (a.accion != null) 6.dp else 18.dp, top = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (esError(a.texto)) { Box(Modifier.size(7.dp).clip(CircleShape).background(LectorColors.Error)); Spacer(Modifier.width(10.dp)) }
+                LText(a.texto, LectorType.Body.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium), Modifier.weight(1f, fill = false), color = Color.White, maxLines = 2)
+                if (a.accion != null) {
+                    Spacer(Modifier.width(10.dp))
+                    LText(a.accion, LectorType.Label.copy(fontWeight = FontWeight.Bold), Modifier.clip(CircleShape).background(Color.White).clickable { a.alAccion?.invoke(); Avisos.ocultar(a.id) }.padding(horizontal = 12.dp, vertical = 7.dp), color = Color.Black)
+                }
+            }
+        }
+    }
 }
 
 // ───────────────────────── Números que ruedan ─────────────────────────
 
-/** Texto numérico cuyos dígitos ruedan al cambiar: el OdometerNumber de Mochy (ui/mochy/OdometerText.kt). */
+/** Texto (normalmente un número) que se desliza al cambiar. */
 @Composable
 fun Odometro(texto: String, estilo: TextStyle, modifier: Modifier = Modifier, color: Color = LectorColors.Text) {
-    if (fxOn("slidingnumber") && texto.isNotEmpty() && texto.all { it.isDigit() } && texto.length < 15) { NumeroFlow(texto.toLong(), estilo.copy(fontWeight = estilo.fontWeight ?: FontWeight.Bold), modifier, color); return }
-    val tam = if (estilo.fontSize.isSpecified) estilo.fontSize else LectorType.Body.fontSize
-    com.example.lector.ui.mochy.OdometerNumber(
-        value = texto,
-        fontSize = tam,
-        fontWeight = estilo.fontWeight ?: FontWeight.Bold,
-        fontFamily = estilo.fontFamily ?: LectorFont,
-        color = color,
-        letterSpacing = if (estilo.letterSpacing.isSpecified) estilo.letterSpacing else 0.sp,
-        modifier = modifier,
-    )
+    androidx.compose.animation.AnimatedContent(
+        texto, modifier, label = "odometro",
+        transitionSpec = {
+            (androidx.compose.animation.slideInVertically(tween(260)) { it / 2 } + androidx.compose.animation.fadeIn(tween(200))) togetherWith
+                (androidx.compose.animation.slideOutVertically(tween(200)) { -it / 2 } + androidx.compose.animation.fadeOut(tween(150)))
+        },
+    ) { t -> Text(t, style = estilo.copy(fontWeight = estilo.fontWeight ?: FontWeight.Bold), color = color, maxLines = 1) }
 }

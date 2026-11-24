@@ -2,12 +2,6 @@ package com.example.lector.ui
 
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import com.example.lector.ui.mochy.library.HomeTrackRow
-import com.example.lector.ui.mochy.library.LibraryColors
-import com.example.lector.ui.mochy.library.LibraryEmptyState
-import com.example.lector.ui.mochy.library.LibraryRowCoverCorner
-import com.example.lector.ui.mochy.library.LibraryRowCoverSize
-import com.example.lector.ui.mochy.library.SearchHorizontalPadding
 import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.snap
@@ -169,11 +163,11 @@ fun ActualizacionesScreen(
                 )
             } else {
                 Row(
-                    Modifier.fillMaxWidth().padding(start = SearchHorizontalPadding, end = 16.dp, top = 14.dp, bottom = 6.dp),
+                    Modifier.fillMaxWidth().padding(start = MargenLateral, end = 16.dp, top = 14.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    LibraryTitleBlock(
-                        "Actualizaciones",
+                    BloqueTitulo(
+                        "Novedades",
                         if (Actualizador.corriendo) {
                             if (Actualizador.total > 0) "Revisando ${Actualizador.hechas} de ${Actualizador.total}…" else "Preparando la revisión…"
                         } else "Última revisión: ${hace(almacen.ultimaActualizacion)}",
@@ -184,16 +178,16 @@ fun ActualizacionesScreen(
                             .clickable { if (Actualizador.corriendo) Actualizador.cancelar(ctx) else Actualizador.iniciar(ctx) },
                         Alignment.Center,
                     ) {
-                        if (Actualizador.corriendo) IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.5.dp, estado = com.example.lector.ui.orbes.EstadoOrbe.WORKING)
+                        if (Actualizador.corriendo) IndicadorCarga(Modifier.size(22.dp), strokeWidth = 2.5.dp, estado = null)
                         else Icon(Icons.Rounded.Refresh, "Buscar capítulos nuevos", tint = acento, modifier = Modifier.size(21.dp))
                     }
                     Spacer(Modifier.width(8.dp))
-                    LibraryIconButton(Icons.Rounded.DateRange, "Próximos", false) { estadoAct.abrirProximos() }
+                    BotonCabecera(Icons.Rounded.DateRange, "Próximos", false) { estadoAct.abrirProximos() }
                     Spacer(Modifier.width(8.dp))
-                    LibraryIconButton(com.example.lector.ui.actualizaciones.IconoFiltrar, "Filtrar", filtros.hayFiltros) { verFiltros = true }
+                    BotonCabecera(com.example.lector.ui.actualizaciones.IconoFiltrar, "Filtrar", filtros.hayFiltros) { verFiltros = true }
                     Spacer(Modifier.width(8.dp))
                     Box {
-                        LibraryIconButton(Icons.Rounded.MoreVert, "Más", false) { menu = true }
+                        BotonCabecera(Icons.Rounded.MoreVert, "Más", false) { menu = true }
                         MenuShiori(expanded = menu, onDismissRequest = { menu = false }) {
                             if (almacen.erroresActualizacion.isNotEmpty()) {
                                 DropdownMenuItem(
@@ -217,7 +211,7 @@ fun ActualizacionesScreen(
                 }
                 if (almacen.erroresActualizacion.isNotEmpty() && !Actualizador.corriendo) {
                     Row(
-                        Modifier.padding(horizontal = SearchHorizontalPadding, vertical = 6.dp).clip(CircleShape)
+                        Modifier.padding(horizontal = MargenLateral, vertical = 6.dp).clip(CircleShape)
                             .background(LectorColors.Error.copy(alpha = 0.16f)).pressable { verErrores = true }
                             .padding(horizontal = 14.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -232,7 +226,7 @@ fun ActualizacionesScreen(
             val estadoTirar = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
             PullToRefreshBox(
                 state = estadoTirar,
-                indicator = { IndicadorTirar(estadoTirar, Actualizador.corriendo, Modifier.align(Alignment.TopCenter), com.example.lector.ui.orbes.EstadoOrbe.WORKING) },
+                indicator = { IndicadorTirar(estadoTirar, Actualizador.corriendo, Modifier.align(Alignment.TopCenter), null) },
                 isRefreshing = Actualizador.corriendo,
                 onRefresh = { if (!Actualizador.corriendo) Actualizador.iniciar(ctx) },
                 modifier = Modifier.weight(1f),
@@ -259,7 +253,7 @@ fun ActualizacionesScreen(
                             base += 1
                             stickyHeader(key = "d_$dia", contentType = 0) {
                                 mangas.sumOf { it.size }.let { n ->
-                                    GeneratedGroupHeader(etiquetaDia(dia), Modifier.entrada(escalonAct(inicioDia)), count = if (n == 1) "1 nuevo" else "$n nuevos")
+                                    CabeceraGrupo(etiquetaDia(dia), Modifier.entrada(escalonAct(inicioDia)), count = if (n == 1) "1 nuevo" else "$n nuevos")
                                 }
                             }
                             mangas.forEach { filas ->
@@ -418,8 +412,8 @@ private fun escalonAct(i: Int): Int = if (i < 10) i else 0
 @Composable
 private fun VacioActualizaciones(titulo: String, texto: String, enMarcha: Boolean, accion: String = "Buscar ahora", onRevisar: () -> Unit) {
     Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        if (enMarcha) Box(Modifier.fillMaxWidth().padding(top = 8.dp), Alignment.TopCenter) { IndicadorCarga(Modifier.size(44.dp), estado = com.example.lector.ui.orbes.EstadoOrbe.WORKING) }
-        LibraryEmptyState(
+        if (enMarcha) Box(Modifier.fillMaxWidth().padding(top = 8.dp), Alignment.TopCenter) { IndicadorCarga(Modifier.size(44.dp), estado = null) }
+        Vacio(
             Modifier.entrada(0).padding(top = 24.dp, bottom = 160.dp), texto, titulo,
             if (enMarcha) "Revisando…" else accion, onRevisar.takeIf { !enMarcha } ?: {},
         )
@@ -429,15 +423,15 @@ private fun VacioActualizaciones(titulo: String, texto: String, enMarcha: Boolea
 @Composable
 private fun PortadaActualizacion(a: ActualizacionCap, comic: Comic?, almacen: Almacen) {
     // Tocar la portada abre el manga (su ficha), no el capítulo.
-    val forma = SuaveShape(LibraryRowCoverCorner)
-    val factor = com.example.lector.ui.mochy.EstiloApp.factorAncho(comic?.let { "c:" + it.id }, comic?.portadaUrl, a.portadaUrl)
-    Box(Modifier.size(LibraryRowCoverSize * factor, LibraryRowCoverSize).clip(forma).background(LibraryColors.TileHigh).clickable { abrirMangaAct(a) }) {
+    val forma = SuaveShape(RadioPortadaFila)
+    val factor = Aspecto.factorAncho(comic?.let { "c:" + it.id }, comic?.portadaUrl, a.portadaUrl)
+    Box(Modifier.size(TamPortadaFila * factor, TamPortadaFila).clip(forma).background(Tonos.FilaAlta).clickable { abrirMangaAct(a) }) {
         if (comic != null) ComicCover(comic, almacen, Modifier.fillMaxSize(), forma)
         else ImagenRemota(a.portadaUrl, Modifier.fillMaxSize(), rememberCabeceras(a.fuenteId), fuenteId = a.fuenteId)
     }
 }
 
-/** Selección con muelle: la fila se tiñe como la luz de pulsación de Mochy, pero fija. */
+/** Selección con muelle: la fila se tiñe como la luz de pulsación , pero fija. */
 @Composable
 private fun seleccionAct(seleccionado: Boolean): Float {
     val s by animateFloatAsState(if (seleccionado) 1f else 0f, if (Mov.reducido) snap() else Muelles.espacial(), label = "selAct")
@@ -453,7 +447,7 @@ private fun CabeceraGrupo(
     val haptic = LocalHapticFeedback.current
     val giro by animateFloatAsState(if (abierto) 90f else 0f, if (Mov.reducido) snap() else Muelles.espacial(), label = "giroGrupo")
     val todoLeido = leidos == cuantos
-    HomeTrackRow(
+    FilaPortada(
         title = comic?.titulo ?: a.titulo,
         subtitle = "$cuantos capítulos" + if (leidos > 0) " • $leidos leídos" else "",
         subtitleColor = if (todoLeido) null else acento,
@@ -461,17 +455,17 @@ private fun CabeceraGrupo(
         onClick = onClick,
         onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLargo() },
         selected = seleccionAct(seleccionado),
-        modifier = modifier.fillMaxWidth().padding(horizontal = SearchHorizontalPadding, vertical = 3.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = MargenLateral, vertical = 3.dp),
         cover = { PortadaActualizacion(a, comic, almacen) },
         trailing = {
             Box(Modifier.size(38.dp), Alignment.Center) {
                 Box(
-                    Modifier.size(28.dp).background(if (abierto) acento.copy(alpha = 0.22f) else LibraryColors.Primary.copy(alpha = 0.14f), CircleShape),
+                    Modifier.size(28.dp).background(if (abierto) acento.copy(alpha = 0.22f) else Tonos.Primario.copy(alpha = 0.14f), CircleShape),
                     Alignment.Center,
                 ) {
                     Icon(
                         Icons.Rounded.KeyboardArrowRight, if (abierto) "Plegar" else "Desplegar",
-                        tint = if (abierto) acento else LibraryColors.Primary.copy(alpha = 0.85f),
+                        tint = if (abierto) acento else Tonos.Primario.copy(alpha = 0.85f),
                         modifier = Modifier.size(19.dp).graphicsLayer { rotationZ = giro },
                     )
                 }
@@ -512,25 +506,25 @@ private fun FilaActualizacion(
             else -> Descargas.encolar(ctx, f, a.urlManga, a.titulo, listOf(com.example.lector.CacheFichas.conMemo(a.fuenteId, a.urlManga, CapituloFuente(a.capUrl, a.capNombre, a.capFecha, a.scanlator, a.capNumero))))
         }
     }
-    com.example.lector.ui.mochy.ChapterSwipeBox(
-        estado = com.example.lector.ui.mochy.EstadoCapituloSwipe(
+    DeslizarCapitulo(
+        estado = EstadoGesto(
             leido = leido, marcado = ext.esMarcado(a.fuenteId, a.urlManga, a.capUrl),
             descargado = estado is EstadoDescarga.Listo, descargando = estado is EstadoDescarga.Descargando,
         ),
         enabled = !enSeleccion,
         onAction = { acc ->
             when (acc) {
-                com.example.lector.ui.mochy.ChapterSwipeAction.MARK_READ -> {
+                AccionGesto.LEIDO -> {
                     if (leido) ext.desmarcarLeido(a.fuenteId, a.urlManga, a.capUrl) else ext.marcarLeido(a.fuenteId, a.urlManga, a.capUrl); alCambiarLeido()
                 }
-                com.example.lector.ui.mochy.ChapterSwipeAction.MARK_PREVIOUS_READ -> { ext.marcarLeido(a.fuenteId, a.urlManga, a.capUrl); alCambiarLeido() }
-                com.example.lector.ui.mochy.ChapterSwipeAction.BOOKMARK -> ext.alternarMarcado(a.fuenteId, a.urlManga, a.capUrl)
-                com.example.lector.ui.mochy.ChapterSwipeAction.DOWNLOAD -> descargar()
+                AccionGesto.ANTERIORES -> { ext.marcarLeido(a.fuenteId, a.urlManga, a.capUrl); alCambiarLeido() }
+                AccionGesto.MARCA -> ext.alternarMarcado(a.fuenteId, a.urlManga, a.capUrl)
+                AccionGesto.DESCARGA -> descargar()
                 else -> Unit
             }
         },
     ) {
-    HomeTrackRow(
+    FilaPortada(
         title = if (sangria) nombre else comic?.titulo ?: a.titulo,
         subtitle = if (sangria) hora else "$nombre • $hora",
         subtitleColor = if (!sangria && !leido) acento else null,
@@ -539,7 +533,7 @@ private fun FilaActualizacion(
         onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLargo() },
         selected = seleccionAct(seleccionado),
         modifier = modifier.fillMaxWidth()
-            .padding(start = if (sangria) SearchHorizontalPadding + 30.dp else SearchHorizontalPadding, end = SearchHorizontalPadding, top = 3.dp, bottom = 3.dp),
+            .padding(start = if (sangria) MargenLateral + 30.dp else MargenLateral, end = MargenLateral, top = 3.dp, bottom = 3.dp),
         cover = {
             if (!sangria) PortadaActualizacion(a, comic, almacen)
             else Box(Modifier.padding(start = 4.dp).size(8.dp).clip(CircleShape).background(if (leido) LectorColors.PillFill else acento))

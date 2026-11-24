@@ -40,18 +40,13 @@ import com.example.lector.ext.ExtManager
 import com.example.lector.ext.MangaFuente
 import com.example.lector.ext.Motor
 import com.example.lector.ui.*
-import com.example.lector.ui.mochy.RevealSeenState
-import com.example.lector.ui.mochy.home.HomeCardHighlight
-import com.example.lector.ui.mochy.home.HomeCardRow
-import com.example.lector.ui.mochy.home.HomeCoverCard
-import com.example.lector.ui.mochy.sheet.MenuItemRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /*
- * Acciones de Inicio: el menú contextual al mantener pulsado (la hoja de Mochy Music: cabecera con la portada y
+ * Acciones de Inicio: el menú contextual al mantener pulsado (la hoja : cabecera con la portada y
  * filas-píldora de ui/component/Menu.kt, como YouTubeSongMenu/YouTubeAlbumMenu de HomeScreen.kt) y la selección
  * múltiple con barra de acciones de Komikku (ui/library y ui/updates: marcar leído / no leído, descargar,
  * categorías, borrar). «Quitar de Inicio» es como el «Remove from history» de Komikku pero sin tocar el progreso.
@@ -186,27 +181,23 @@ fun CarruselInicio(
     rowKey: String,
     items: List<Comic>,
     almacen: Almacen,
-    revealSeen: RevealSeenState,
+    revealSeen: VistosAparicion,
     seleccion: Set<String>,
     onClick: (Comic) -> Unit,
     onLongClick: (Comic) -> Unit,
 ) {
     val enSeleccion = seleccion.isNotEmpty()
-    if (!enSeleccion && items.isNotEmpty() && (com.example.lector.fx.fxOn("marquee") || com.example.lector.fx.fxOn("carousel"))) {
-        com.example.lector.ui.CarruselFx(items, { c -> Box(Modifier.combinedClickable(interactionSource = null, indication = HomeCardHighlight, onClick = { onClick(c) }, onLongClick = { onLongClick(c) })) { HomeCoverCard(c, almacen) } })
-        return
-    }
-    HomeCardRow(rowKey = rowKey, items = items, revealSeen = revealSeen, key = { it.id }) { c ->
+    FilaTarjetas(rowKey = rowKey, items = items, key = { it.id }) { c ->
         val sel = c.id in seleccion
         val escala by animateFloatAsState(if (sel) 0.92f else 1f, label = "selPortada")
         Box(
             Modifier.graphicsLayer { scaleX = escala; scaleY = escala }
                 .combinedClickable(
-                    interactionSource = null, indication = HomeCardHighlight,
+                    interactionSource = null, indication = null,
                     onClick = { onClick(c) }, onLongClick = { onLongClick(c) },
                 )
         ) {
-            HomeCoverCard(c, almacen)
+            TarjetaPortada(c, almacen)
             if (enSeleccion) MarcaSeleccion(sel, Modifier.align(Alignment.TopEnd).padding(7.dp))
         }
     }
@@ -251,7 +242,7 @@ fun HojaMasInicio(lista: List<Comic>, almacen: Almacen, puedeEliminar: Boolean, 
         ) {
             @Composable
             fun op(icono: ImageVector, texto: String, o: OpcionInicio) =
-                MenuItemRow(icon = { Icon(icono, null) }, enabled = true, onClick = { onElegir(o) }) { Text(texto) }
+                FilaMenu(icon = { Icon(icono, null) }, enabled = true, onClick = { onElegir(o) }) { Text(texto) }
 
             if (lista.any { it.progresoLectura() > 0f }) op(Icons.Rounded.Clear, "Marcar como no leído", OpcionInicio.NO_LEIDO)
             if (lista.any { it.leido > 0 }) op(Icons.Rounded.Refresh, "Quitar del historial", OpcionInicio.QUITAR_HISTORIAL)
@@ -295,7 +286,7 @@ fun DialogoCategoriasInicio(ids: List<String>, almacen: Almacen, onCerrar: () ->
                         }.padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (com.example.lector.fx.fxOn("checkbox")) com.example.lector.fx.CasillaTriCoss(e) else TriStateCheckbox(state = e, onClick = null)
+                        TriStateCheckbox(state = e, onClick = null)
                         Spacer(Modifier.width(8.dp))
                         Text(cat.nombre + if (cat.oculta) " (oculta)" else "")
                     }

@@ -1,8 +1,8 @@
-// Adaptado de Komikku (https://github.com/komikku-app/komikku, Apache-2.0/GPL-3.0):
 // app/src/main/java/eu/kanade/presentation/manga/components/MangaInfoHeader.kt (MangaInfoBox, MangaContentInfo,
 // ExpandableMangaDescription) y ChapterHeader/MangaChapterListItem: cómo se ve un manga cuya fuente es un «stub».
 package com.example.lector.ui.migrar
 
+import com.example.lector.ui.*
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -162,7 +162,7 @@ fun InfoGuardada(
             item(key = "caps_cab") {
                 // ChapterHeader de Komikku: «N capítulos» y, aparte, cuántos llevas leídos.
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (!cargada) { com.example.lector.ui.IndicadorCarga(Modifier.size(20.dp), estado = com.example.lector.ui.orbes.EstadoOrbe.BREATHING); androidx.compose.foundation.layout.Spacer(Modifier.size(10.dp)) }
+                    if (!cargada) { com.example.lector.ui.IndicadorCarga(Modifier.size(20.dp), estado = null); androidx.compose.foundation.layout.Spacer(Modifier.size(10.dp)) }
                     LText(
                         when {
                             !cargada -> "Cargando lo guardado…"

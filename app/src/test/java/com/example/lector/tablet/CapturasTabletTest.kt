@@ -23,7 +23,6 @@ import com.example.lector.Comic
 import com.example.lector.LectorTheme
 import com.example.lector.Portadas
 import com.example.lector.ext.ExtManager
-import com.example.lector.fx.Fx
 import com.example.lector.ui.AjBibliotecaScreen
 import com.example.lector.ui.AjustesScreen
 import com.example.lector.ui.AjustesVisorScreen
@@ -33,7 +32,7 @@ import com.example.lector.ui.EstadisticasScreen
 import com.example.lector.ui.Inicio
 import com.example.lector.ui.LectorColors
 import com.example.lector.ui.LectorTab
-import com.example.lector.ui.PersonalizacionScreen
+import com.example.lector.ui.AparienciaScreen
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
 import org.junit.Test
@@ -53,9 +52,7 @@ abstract class CapturasBase(private val id: String, private val carpeta: String)
 
     @Test fun captura() {
         val app = RuntimeEnvironment.getApplication()
-        Fx.init(app)
         // El desenfoque progresivo usa AGSL, que el Skia de Robolectric no compila («cannot swizzle»): fuera en las capturas.
-        com.example.lector.ui.mochy.MochyPreferences.enableProgressiveBlur = false
         val almacen = Almacen.obtener(app)
         val ext = ExtManager.obtener(app)
         val comics = bibliotecaDeEjemplo()
@@ -67,7 +64,7 @@ abstract class CapturasBase(private val id: String, private val carpeta: String)
                         "ajustes" -> AjustesScreen(almacen, {}) {}
                         "aj_biblioteca" -> AjBibliotecaScreen(almacen, {}) {}
                         "aj_visor" -> AjustesVisorScreen(almacen) {}
-                        "personalizacion" -> PersonalizacionScreen(almacen, {})
+                        "personalizacion" -> AparienciaScreen(almacen) {}
                         "estadisticas" -> EstadisticasScreen(comics, almacen, ext) {}
                         "descargas" -> ColaDescargasScreen(almacen) {}
                         "detalle" -> DetalleScreen(comics[0], almacen, {}, {}, {})

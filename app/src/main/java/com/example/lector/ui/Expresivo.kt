@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.animateColorAsState
@@ -73,7 +72,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
- * Base de diseño nueva: movimiento de Mochy + componentes de Material 3 Expressive (formas que cambian al pulsar,
+ * Base de diseño nueva: movimiento  + componentes de Material 3 Expressive (formas que cambian al pulsar,
  * grupos de botones conectados, indicador de carga que se transforma, slider grueso con asa).
  * Los muelles son los del «MotionScheme.expressive» de Material: espacial (posición, tamaño, forma) con algo de
  * rebote y efectos (color, opacidad) sin rebote.
@@ -89,7 +88,7 @@ object Muelles {
 enum class EstiloBoton { RELLENO, TONAL, CONTORNO, TEXTO }
 
 /**
- * Botón con el aspecto de los controles de Mochy (ui/component/ButtonStyles.kt): píldora redonda del todo; el
+ * Botón con el aspecto de los controles  (ui/component/ButtonStyles.kt): píldora redonda del todo; el
  * relleno usa el acento (como la píldora de reproducir) y el tonal el blanco al 15 % de sus botones redondos. Al
  * pulsarlo se encoge con el muelle de esa píldora (amortiguación 0,6, rigidez 700) y vuelve con un rebote suave.
  */
@@ -107,15 +106,14 @@ fun BotonExpresivo(
     val pulsado by fuente.collectIsPressedAsState()
     val escala by animateFloatAsState(if (pulsado) 0.92f else 1f, spring(dampingRatio = 0.6f, stiffness = 700f), label = "boton")
     val acento = MaterialTheme.colorScheme.primary
-    val contenedor = if (TemaActual.oscuro) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.07f)
+    val contenedor = RellenoPildora
     val (fondo, tinta) = when (estilo) {
         EstiloBoton.RELLENO -> acento to MaterialTheme.colorScheme.onPrimary
         EstiloBoton.TONAL -> contenedor to LectorColors.Text
         EstiloBoton.CONTORNO, EstiloBoton.TEXTO -> Color.Transparent to (if (estilo == EstiloBoton.TEXTO) acento else LectorColors.Text)
     }
     val forma = RoundedCornerShape(50)
-    // Idea de Threads «th_optico»: interlineado recortado y el ícono compensado para centrar a la vista.
-    val optico = fxOn("th_optico")
+    val optico = true
     val estiloTexto = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold).let {
         if (optico) it.copy(lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center, androidx.compose.ui.text.style.LineHeightStyle.Trim.Both)) else it
     }
@@ -134,8 +132,7 @@ fun BotonExpresivo(
     ) {
         if (icono != null) Icon(icono, null, tint = tinta, modifier = Modifier.size(22.dp))
         if (icono != null && texto != null) Spacer(Modifier.width(8.dp))
-        if (texto != null && fxOn("textmorph")) TextoMorph(texto, estiloTexto, color = tinta)
-        else if (texto != null) LText(
+        if (texto != null) LText(
             texto, estiloTexto,
             color = tinta, maxLines = 1,
         )
@@ -143,19 +140,18 @@ fun BotonExpresivo(
 }
 
 /**
- * Control segmentado (como el de iOS, con los grises de las hojas de Mochy): una pista redonda con una píldora clara
+ * Control segmentado: una pista redonda con una píldora clara
  * que se desliza con un muelle hasta la opción elegida. La posición se lee al dibujar (no recompone al moverse).
  */
 @Composable
 fun GrupoBotones(opciones: List<String>, elegida: Int, onElegir: (Int) -> Unit, modifier: Modifier = Modifier) {
     if (opciones.isEmpty()) return
-    if (fxOn("segmented")) { Box(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), contentAlignment = Alignment.Center) { androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides LectorColors.Text) { SegmentadoDeslizante(opciones, elegida, onElegir, color = MaterialTheme.colorScheme.primary) } }; return }
     val pos = remember { Animatable(elegida.toFloat()) }
     androidx.compose.runtime.LaunchedEffect(elegida) {
         if (Mov.reducido) pos.snapTo(elegida.toFloat())
         else pos.animateTo(elegida.toFloat(), spring(dampingRatio = 0.82f, stiffness = 520f))
     }
-    val pista = com.example.lector.ui.mochy.sheet.MenuRowSurface
+    val pista = LectorColors.HojaFila
     val pildora = if (TemaActual.oscuro) Color.White.copy(alpha = 0.16f) else Color.White
     val n = opciones.size
     Box(
@@ -201,19 +197,9 @@ fun GrupoBotones(opciones: List<String>, elegida: Int, onElegir: (Int) -> Unit, 
 @Composable
 fun IndicadorTirar(
     estado: androidx.compose.material3.pulltorefresh.PullToRefreshState, recargando: Boolean, modifier: Modifier = Modifier,
-    tarea: com.example.lector.ui.orbes.EstadoOrbe = com.example.lector.ui.orbes.EstadoOrbe.CONNECTING,
+    @Suppress("UNUSED_PARAMETER") tarea: Any? = null,
 ) {
-    if (!com.example.lector.ui.mochy.EstiloApp.orbes) {
         androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(state = estado, isRefreshing = recargando, modifier = modifier)
-        return
-    }
-    val f = if (recargando) 1f else estado.distanceFraction.coerceIn(0f, 1f)
-    if (f <= 0f) return
-    Box(
-        modifier.padding(top = 14.dp).graphicsLayer { alpha = f; scaleX = 0.6f + 0.4f * f; scaleY = 0.6f + 0.4f * f; translationY = (f - 1f) * 40f }
-            .size(48.dp).clip(CircleShape).background(LectorColors.Card),
-        Alignment.Center,
-    ) { IndicadorCarga(Modifier.size(38.dp), estado = tarea) }
 }
 
 /**
@@ -223,30 +209,8 @@ fun IndicadorTirar(
 @Composable
 fun IndicadorCarga(
     modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary, @Suppress("UNUSED_PARAMETER") strokeWidth: Dp = 0.dp,
-    // Qué está haciendo la app: elige la animación del thinking orb (Personalización → Estilo).
-    estado: com.example.lector.ui.orbes.EstadoOrbe = com.example.lector.ui.orbes.EstadoOrbe.BREATHING,
+    @Suppress("UNUSED_PARAMETER") estado: Any? = null,
 ) {
-    if (fxOn("spinner")) { Box(modifier.size(28.dp), contentAlignment = Alignment.Center) { Girador(Modifier.fillMaxSize(.8f), color) }; return }
-    if (com.example.lector.ui.mochy.EstiloApp.orbes) {
-        val estados = com.example.lector.ui.orbes.EstadoOrbe.entries
-        val variar = com.example.lector.ui.mochy.EstiloApp.variarOrbes
-        // Cada indicador empieza en un tipo distinto; «Ir cambiando» pasa al siguiente cada 3,2 s con un fundido.
-        var indice by remember { mutableIntStateOf(estados.indices.random()) }
-        if (variar == com.example.lector.ui.mochy.EstiloApp.VariarOrbes.CAMBIANDO && !Mov.reducido) {
-            LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(3200); indice = (indice + 1) % estados.size } }
-        }
-        val elegido = if (variar == com.example.lector.ui.mochy.EstiloApp.VariarOrbes.TAREA) estado else estados[indice]
-        androidx.compose.animation.Crossfade(elegido, modifier.size(28.dp), androidx.compose.animation.core.tween(420), label = "orbe") { st ->
-            com.example.lector.ui.orbes.OrbePensante(
-                st, Modifier.fillMaxSize(),
-                // Sobre una capa oscura (color blanco) o con el tema oscuro, la tinta se invierte: los puntos cercanos brillan.
-                oscuro = color == Color.White || TemaActual.oscuro,
-                tinte = if (com.example.lector.ui.mochy.EstiloApp.orbesAcento) color else null,
-                quieto = Mov.reducido,
-            )
-        }
-        return
-    }
     val t = rememberInfiniteTransition(label = "carga")
     val giro by t.animateFloat(0f, 12f, infiniteRepeatable(tween(1000, easing = LinearEasing)), label = "giro")
     val quieto = Mov.reducido
@@ -271,7 +235,7 @@ fun IndicadorCarga(
 }
 
 /**
- * Deslizador: el LineSlider de Mochy (ui/player/menu/LineSlider.kt, pista de 6 dp redonda del todo, toque en 28 dp
+ * Deslizador: el LineSlider  (ui/player/menu/LineSlider.kt, pista de 6 dp redonda del todo, toque en 28 dp
  * de alto) con el gesto de iOS: mientras se arrastra la pista engorda a 10 dp con un muelle. [pasos] = 0 para continuo.
  */
 @Composable

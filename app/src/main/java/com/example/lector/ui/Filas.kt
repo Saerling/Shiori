@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -11,11 +10,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import com.example.lector.ui.mochy.AppSwitch
-import com.example.lector.ui.mochy.AppTypography
-import com.example.lector.ui.mochy.SettingsGroup
-import com.example.lector.ui.mochy.SettingsGroupStyle
-import com.example.lector.ui.mochy.SettingsItem
 import kotlinx.coroutines.withTimeoutOrNull
 
 import androidx.compose.foundation.background
@@ -71,7 +65,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// ───────────── Cabecera que se pliega (las páginas de ajustes de musicfy) ─────────────
+// ───────────── Cabecera que se pliega (las páginas de ajustes ) ─────────────
 
 private val MargenPagina = 20.dp
 private val TamAtras = 40.dp
@@ -109,14 +103,14 @@ fun rememberPliegue(scroll: ScrollState, entra: Dp = 24.dp, sale: Dp = 6.dp): St
     return animateFloatAsState(if (plegado) 1f else 0f, if (Mov.reducido) tween(120) else tween(1000, easing = PliegueEasing), label = "pliegue")
 }
 
-/** Botón atrás redondo gris de 40 dp: el de las subpáginas de ajustes de Mochy (ui/mochy/SubSettingsScaffold.kt). */
+/** Botón atrás redondo gris de 40 dp: el de las subpáginas de ajustes  (ui/mochy/SubSettingsScaffold.kt). */
 @Composable
 fun BotonAtras(onBack: () -> Unit, modifier: Modifier = Modifier) {
     BotonVidrio(androidx.compose.material.icons.Icons.Rounded.ArrowBack, "Atrás", modifier, onClick = onBack)
 }
 
 /**
- * Página de ajustes a pantalla completa: el SubSettingsScaffold de Mochy (título enorme que, al desplazar, se encoge
+ * Página de ajustes a pantalla completa: el SubSettingsScaffold  (título enorme que, al desplazar, se encoge
  * y se desliza junto al botón atrás con un desenfoque de paso, sobre una cabecera de cristal progresivo).
  * Las filas de las páginas de Shiori ponen su propio margen lateral, así que el contenido va sin él.
  */
@@ -133,16 +127,6 @@ fun PaginaAjustes(titulo: String, onBack: () -> Unit, content: @Composable Colum
     PaginaSilencio(titulo, onBack, content = content)
 }
 
-/*
- * Filas de ajustes: el SettingsGroup de Mochy (ui/mochy/SettingsGroup.kt), estilo «Classic» (tarjeta de 20 dp de
- * radio y 8 dp entre filas), una fila por grupo. El margen lateral de 16 dp es el que ya daban estas filas.
- */
-@Composable
-private fun TarjetaFila(item: SettingsItem) {
-    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        SettingsGroup(items = listOf(item), style = SettingsGroupStyle.Classic)
-    }
-}
 
 /** Fila de ajustes: tarjeta con icono en círculo, título y detalle. */
 @Composable
@@ -178,17 +162,17 @@ fun Marca(marcada: Boolean) {
     ) { if (marcada) Box(Modifier.size(8.dp).clip(CircleShape).background(LectorColors.Bg)) }
 }
 
-/** Interruptor: el AppSwitch de Mochy (ui/mochy/AppSwitch.kt), con el toque háptico de Shiori. */
+/** Interruptor: el AppSwitch  (ui/mochy/AppSwitch.kt), con el toque háptico de Shiori. */
 @Composable
 fun Interruptor(activado: Boolean, onChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
     InterruptorSilencio(activado, onChange?.let { c -> { v: Boolean -> Tacto.alternar(v); c(v) } }, modifier)
 }
 
-/** Título de un grupo de ajustes, como el de SettingsGroup de Mochy (labelLarge en el color de acento). */
+/** Título de un grupo de ajustes, como el de SettingsGroup  (labelLarge en el color de acento). */
 @Composable
 fun TituloSeccion(texto: String) {
-    LText(texto.uppercase(), LectorType.Label.copy(fontSize = 13.sp, letterSpacing = 0.5.sp), color = LectorColors.Muted,
-        modifier = Modifier.padding(start = 28.dp, end = 28.dp, top = 22.dp, bottom = 7.dp))
+    LText(texto.uppercase(), EstiloDatos.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = LectorColors.Muted,
+        modifier = Modifier.padding(start = MargenLateral, end = MargenLateral, top = 26.dp, bottom = 6.dp))
 }
 
 @Composable
@@ -197,7 +181,7 @@ fun Divisor() {
 }
 
 /**
- * Chip de selección: el FilterChip de ChipsRow de Mochy (ui/mochy/ChipsRow.kt), esquina de 8 dp que se redondea a
+ * Chip de selección: el FilterChip de ChipsRow  (ui/mochy/ChipsRow.kt), esquina de 8 dp que se redondea a
  * 20 dp con un rebote al elegirlo y un visto delante. Mantener pulsado llama a [onLongClick].
  */
 @Composable
@@ -237,20 +221,12 @@ fun ChipBorde(texto: String, color: Color) {
     ) { LText(texto, LectorType.Body, color = color) }
 }
 
+/** Dato grande con su etiqueta (Estadísticas): número en negrita y etiqueta monoespaciada, con borde fino. */
 @Composable
 fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
-    val estilo = if (fxOn("stats")) Fx.variante("stats") else -1
-    val acento = MaterialTheme.colorScheme.primary
-    Column(modifier.clip(SuaveShape(24.dp)).background(LectorColors.Card).then(when (estilo % 5) { 1 -> Modifier.bordeBrillante(24.dp); 2 -> Modifier.foco(LectorColors.Text); 3 -> Modifier.hazBorde(24.dp, acento); 4 -> Modifier.noise(.06f); else -> Modifier }).padding(20.dp)) {
-        if (estilo >= 0 && estilo % 3 == 1) Box(Modifier.padding(bottom = 6.dp).size(26.dp, 4.dp).clip(CircleShape).background(acento))
-        val tam = LectorType.Display.copy(fontSize = if (value.length > 6) 22.sp else 36.sp)
-        val num = value.toLongOrNull()
-        when {
-            fxOn("nf_stats") && num != null -> NumeroFlow(num, tam.copy(fontWeight = tam.fontWeight ?: androidx.compose.ui.text.font.FontWeight.Bold), color = if (estilo >= 0 && estilo % 3 == 2) acento else LectorColors.Text)
-            fxOn("numberticker") -> LText(textoContando(value), tam, maxLines = 1, color = if (estilo >= 0 && estilo % 3 == 2) acento else LectorColors.Text)
-            else -> LText(value, tam, maxLines = 1, color = if (estilo >= 0 && estilo % 3 == 2) acento else LectorColors.Text)
-        }
+    Column(modifier.clip(RoundedCornerShape(16.dp)).background(LectorColors.Card).borde(16.dp).padding(18.dp)) {
+        Odometro(value, LectorType.Display.copy(fontSize = if (value.length > 6) 22.sp else 32.sp))
         Spacer(Modifier.height(4.dp))
-        LText(label, LectorType.Label, color = LectorColors.Muted, maxLines = 2)
+        LText(label.uppercase(), EstiloDatos, color = LectorColors.Muted, maxLines = 2)
     }
 }

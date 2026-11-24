@@ -21,16 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import java.io.File
 import android.graphics.Color as ColorAndroid
 
-/** Atkinson Hyperlegible (idea de Threads «th_fuente»). */
-val FuenteLegible = FontFamily(
-    Font(R.font.atkinson_regular, FontWeight.Normal),
-    Font(R.font.atkinson_regular, FontWeight.Medium),
-    Font(R.font.atkinson_bold, FontWeight.SemiBold),
-    Font(R.font.atkinson_bold, FontWeight.Bold),
-)
-
-// Se decide una vez al arrancar (Fx.init va antes en MainActivity): cambiarla pide reiniciar Shiori.
-val Inter = if (com.example.lector.fx.Fx.on("th_fuente")) FuenteLegible else FontFamily(
+val Inter = FontFamily(
     Font(R.font.inter_regular, FontWeight.Normal),
     Font(R.font.inter_medium, FontWeight.Medium),
     Font(R.font.inter_semibold, FontWeight.SemiBold),
@@ -38,7 +29,7 @@ val Inter = if (com.example.lector.fx.Fx.on("th_fuente")) FuenteLegible else Fon
 )
 
 // Una paleta es, en el fondo, un color de acento. El fondo sigue siendo negro puro.
-// La primera, «Musicfy», es monocroma (gris claro sobre negro), como musicfy: es la de por defecto.
+// La primera, «Musicfy», es monocroma (gris claro sobre negro), : es la de por defecto.
 data class Paleta(val nombre: String, val color: Color)
 
 object Paletas {
@@ -70,8 +61,6 @@ fun colorDePaleta(nombre: String, oscuro: Boolean = true): Color {
         val ctx = LocalContext.current
         return if (oscuro) dynamicDarkColorScheme(ctx).primary else androidx.compose.material3.dynamicLightColorScheme(ctx).primary
     }
-    // Con el tema Obsidiana, la paleta monocroma pasa al violeta de Obsidian.
-    if (nombre == Paletas.MONO && com.example.lector.fx.Fx.on("si_obsidiana")) return if (oscuro) Color(0xFFA88BFA) else Color(0xFF7C5CE6)
     // El gris claro de «Musicfy» no se vería sobre fondo claro: ahí es casi negro.
     if ((nombre == Paletas.MONO || Paletas.fijas.none { it.nombre == nombre }) && !oscuro) return Color(0xFF1C1C1E)
     return (Paletas.fijas.firstOrNull { it.nombre == nombre } ?: Paletas.porDefecto).color
@@ -131,7 +120,7 @@ object ColorPortada {
     }
 }
 
-// Paleta de Mochy (ui/theme/Theme.kt de Mochy Music): monocroma, sin color dinámico de Material You. Mochy deja
+// Paleta : monocroma, sin color dinámico de Material You.  deja
 // sin fijar los surfaceContainer*, outline, tertiary… y ahí Material pone sus grises violáceos; aquí van neutros.
 private val EsquemaPuro = darkColorScheme(
     primary = Color(0xFFE0E0E0),
@@ -170,7 +159,7 @@ private val EsquemaPuro = darkColorScheme(
     scrim = Color.Black,
 )
 
-// Oscuro "normal": la misma paleta de Mochy con grises en vez de negro puro.
+// Oscuro "normal": la misma paleta  con grises en vez de negro puro.
 private val EsquemaOscuro = EsquemaPuro.copy(
     background = Color(0xFF0E0E10),
     surface = Color(0xFF0E0E10),
@@ -183,7 +172,7 @@ private val EsquemaOscuro = EsquemaPuro.copy(
     surfaceVariant = Color(0xFF1E1E21),
 )
 
-// Claro de Mochy (negro sobre blanco), con los grises de Shiori.
+// Claro  (negro sobre blanco), con los grises de Shiori.
 private val EsquemaClaro = lightColorScheme(
     primary = Color.Black,
     onPrimary = Color.White,
@@ -214,7 +203,7 @@ private val EsquemaClaro = lightColorScheme(
     error = Color(0xFFD32F2F),
 )
 
-// Como musicfy: Inter SemiBold en todo y el interletrado un poco cerrado (-0.05 em).
+// Como : Inter SemiBold en todo y el interletrado un poco cerrado (-0.05 em).
 private fun TextStyle.mf(f: FontFamily) = copy(fontFamily = f, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.05).em)
 
 private fun Typography.conFuente(f: FontFamily) = copy(
@@ -244,11 +233,10 @@ fun LectorTheme(
     puro: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val obsidiana = com.example.lector.fx.Fx.on("si_obsidiana")
     val base0 = if (!oscuro) EsquemaClaro else if (puro) EsquemaPuro else EsquemaOscuro
-    // Obsidiana: las superficies de Material siguen al grafito de LectorColors.
-    val base = remember(base0, obsidiana, oscuro) {
-        if (!obsidiana) base0 else base0.copy(
+    // Las superficies de Material siguen a LectorColors (grafito en oscuro, negro en negro puro).
+    val base = remember(base0, oscuro, puro) {
+        base0.copy(
             background = com.example.lector.ui.LectorColors.Bg, surface = com.example.lector.ui.LectorColors.Bg,
             surfaceContainer = com.example.lector.ui.LectorColors.Card, surfaceContainerLow = com.example.lector.ui.LectorColors.Card,
             surfaceContainerHigh = com.example.lector.ui.LectorColors.CardHigh, surfaceContainerHighest = com.example.lector.ui.LectorColors.CardHigh,
@@ -256,7 +244,7 @@ fun LectorTheme(
             outlineVariant = com.example.lector.ui.LectorColors.Linea,
         )
     }
-    // El acento elegido (por defecto el gris claro monocromo de Mochy) sustituye al primario; el resto no cambia.
+    // El acento elegido sustituye al primario; el resto no cambia.
     val esquema = remember(base, acento) { base.copy(primary = acento, onPrimary = textoSobre(acento)) }
     MaterialTheme(
         colorScheme = esquema,

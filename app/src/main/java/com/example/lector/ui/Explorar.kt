@@ -1,6 +1,5 @@
 package com.example.lector.ui
 
-import com.example.lector.fx.*
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -11,10 +10,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import com.example.lector.ui.mochy.AppTypography
-import com.example.lector.ui.mochy.GlassState
-import com.example.lector.ui.mochy.glassRoot
-import com.example.lector.ui.mochy.search.*
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.LruCache
@@ -88,8 +83,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import com.example.lector.ui.bitchord.heldBackdrop
-import com.example.lector.ui.bitchord.heldPicture
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -126,22 +119,19 @@ fun ExplorarScreen(
     var porConfiar by remember { mutableStateOf<ExtInstalada?>(null) }
     val acento = MaterialTheme.colorScheme.primary
 
-    // Como la pestaña Buscar de Mochy: título grande que se pliega con desenfoque, campo de búsqueda en píldora y
+    // Como la pestaña Buscar : título grande que se pliega con desenfoque, campo de búsqueda en píldora y
     // cristal progresivo cuando el contenido pasa por debajo. Las sub-pestañas son las píldoras de categorías.
-    val glassState = remember { GlassState() }
-    val (plegado, collapse) = rememberNestedCollapseProgress(sub)
+    val (plegado, collapse) = rememberPlegadoAnidado(sub)
     val progressProvider = remember(collapse) { { collapse.value } }
     val focusManager = LocalFocusManager.current
     val filtra = sub == 0 || sub == 2
     var campo by remember { mutableStateOf(TextFieldValue(consulta, TextRange(consulta.length))) }
     LaunchedEffect(consulta) { if (campo.text != consulta) campo = TextFieldValue(consulta, TextRange(consulta.length)) }
-    val alto = searchTopBarHeight(withTitle = true, extra = 50.dp, titleBlockHeight = LibraryTitleBlockHeight)
+    val alto = altoCabeceraBusqueda(withTitle = true, extra = 50.dp, titleBlockHeight = AltoBloqueTitulo)
 
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.fillMaxSize()
-                // recorded while scrolling too, so the bar's blur never drops out mid-scroll
-                .glassRoot(glassState, isActive = { progressProvider() > 0.01f })
                 .nestedScroll(plegado)
         ) {
             CompositionLocalProvider(LocalArriba provides alto) {
@@ -176,19 +166,17 @@ fun ExplorarScreen(
         val resumen = remember(nFuentes, nExt, pendientes) {
             "$nFuentes fuentes · $nExt extensiones" + if (pendientes > 0) " · $pendientes por actualizar" else ""
         }
-        SearchGlassTopBar(
-            glassState = glassState,
+        CabeceraBusqueda(
             progressProvider = progressProvider,
-            pureBlack = TemaActual.puro,
             title = "Explorar",
             subtitle = resumen,
-            titleBlockHeight = LibraryTitleBlockHeight,
+            titleBlockHeight = AltoBloqueTitulo,
             trailing = if (sub == 3) null else {
                 {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (sub == 1) {
                             if (reordenar) {
-                                BotonCabecera(Icons.Rounded.Check, "Terminar", activo = true) { reordenar = false }
+                                BotonCabecera(Icons.Rounded.Check, "Terminar", active = true) { reordenar = false }
                             } else {
                                 BotonCabecera(Icons.Rounded.Add, "Añadir fuente") { dialogoNovedades = true }
                                 BotonCabecera(Icons.Rounded.Menu, "Ordenar") { reordenar = true }
@@ -197,10 +185,10 @@ fun ExplorarScreen(
                         if (sub == 0) BotonCabecera(Icons.Rounded.Search, "Búsqueda global") { onBuscarGlobal() }
                         if (sub == 0 || sub == 2) {
                             val on = ext.mostrarNsfw
-                            val fondo by animateColorAsState(if (on) SearchColors.Primary else SearchColors.TileHigh, Muelles.efectos(), label = "nsfw")
-                            val color by animateColorAsState(if (on) SearchColors.page(false) else SearchColors.Secondary, Muelles.efectos(), label = "nsfwTinta")
+                            val fondo by animateColorAsState(if (on) Tonos.Primario else Tonos.FilaAlta, Muelles.efectos(), label = "nsfw")
+                            val color by animateColorAsState(if (on) LectorColors.Bg else Tonos.Secundario, Muelles.efectos(), label = "nsfwTinta")
                             Box(
-                                Modifier.height(AvatarSize).pressable { Tacto.tic(); ext.alternarNsfw() }.clip(CircleShape)
+                                Modifier.height(TamAvatar).pressable { Tacto.tic(); ext.alternarNsfw() }.clip(CircleShape)
                                     .background(fondo).padding(horizontal = 10.dp),
                                 Alignment.Center
                             ) { LText("18+", LectorType.Body.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp), color = color) }
@@ -220,16 +208,16 @@ fun ExplorarScreen(
             below = { PestanasExplorar(sub) { i -> sub = i; consulta = ""; buscando = false; reordenar = false } },
         ) {
             // En Fuentes y Extensiones el campo filtra la lista; en Novedades y Migrar abre la búsqueda global.
-            SearchField(
+            CampoBuscar(
                 value = if (filtra) campo else TextFieldValue(""),
                 onValueChange = { campo = it; consulta = it.text; buscando = it.text.isNotEmpty() },
                 onSearch = { focusManager.clearFocus() },
                 placeholder = when (sub) { 0 -> "Buscar fuentes"; 2 -> "Buscar extensiones"; else -> "Buscar en todas las fuentes" },
                 enabled = filtra,
                 readOnlyClick = if (filtra) null else onBuscarGlobal,
-                leading = { SearchFieldGlyph(Icons.Rounded.Search, null) },
+                leading = { GlifoCampo(Icons.Rounded.Search, null) },
                 trailing = if (filtra && campo.text.isNotEmpty()) {
-                    { SearchFieldGlyph(Icons.Rounded.Close, "Borrar") { campo = TextFieldValue(""); consulta = ""; buscando = false } }
+                    { GlifoCampo(Icons.Rounded.Close, "Borrar") { campo = TextFieldValue(""); consulta = ""; buscando = false } }
                 } else {
                     null
                 },
@@ -277,11 +265,11 @@ fun ExplorarScreen(
     }
 }
 
-/** Sub-pestañas como las categorías de la búsqueda de Mochy: píldoras, la elegida en blanco. */
+/** Sub-pestañas como las categorías de la búsqueda : píldoras, la elegida en blanco. */
 @Composable
 private fun PestanasExplorar(elegida: Int, onElegir: (Int) -> Unit) {
     val titulos = remember { listOf("Fuentes", "Novedades", "Extensiones", "Migrar") }
-    SearchCategoryRow(titulos, elegida, { i -> if (i != elegida) { Tacto.tic(); onElegir(i) } })
+    FilaCategorias(titulos, elegida, { i -> if (i != elegida) { Tacto.tic(); onElegir(i) } })
 }
 
 /** Alto de la barra de cristal de Explorar: el contenido de cada sub-pestaña empieza debajo y pasa por detrás. */
@@ -327,7 +315,7 @@ private fun FuentesTab(
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = LocalArriba.current, bottom = abajo + 190.dp)) {
                 if (usadas.isNotEmpty()) {
-                    item(key = "t_rec", contentType = "titulo") { SearchSectionHeader("Seguir explorando", ruleAbove = false) }
+                    item(key = "t_rec", contentType = "titulo") { CabeceraResultados("Seguir explorando", ruleAbove = false) }
                     items(usadas, key = { "r${it.id}" }, contentType = { "reciente" }) { f ->
                         TarjetaReciente(f, f.id.toString() in fijadas, { ext.alternarFijada(f.id) }) { onFuente(f) }
                     }
@@ -335,7 +323,7 @@ private fun FuentesTab(
                 // a row's own rule already closes the previous section
                 if (ancladas.isNotEmpty()) {
                     item(key = "t_anc", contentType = "titulo") {
-                        SearchSectionHeader("Ancladas", ruleAbove = usadas.isNotEmpty(), trailing = { SearchCount(ancladas.size) })
+                        CabeceraResultados("Ancladas", ruleAbove = usadas.isNotEmpty(), trailing = { Cuenta(ancladas.size) })
                     }
                     items(ancladas, key = { "a${it.id}" }, contentType = { "fuente" }) { FilaFuente(it, true, ext, onFuente) }
                 }
@@ -344,10 +332,10 @@ private fun FuentesTab(
                     val regla = !primera
                     primera = false
                     item(key = "t_$lang", contentType = "titulo") {
-                        SearchSectionHeader(
+                        CabeceraResultados(
                             nombreIdioma(lang), ruleAbove = false,
                             modifier = Modifier.padding(top = if (regla) 22.dp else 0.dp),
-                            trailing = { SearchCount(lista.size) },
+                            trailing = { Cuenta(lista.size) },
                         )
                     }
                     items(lista, key = { "f${it.id}" }, contentType = { "fuente" }) { FilaFuente(it, false, ext, onFuente) }
@@ -357,13 +345,13 @@ private fun FuentesTab(
     }
 }
 
-/** La última fuente usada: la tarjeta de «Top Results» de Mochy, con su icono grande y el botón blanco para entrar. */
+/** La última fuente usada: la tarjeta de «Top Results» , con su icono grande y el botón blanco para entrar. */
 @Composable
 private fun TarjetaReciente(f: FuenteUI, fijada: Boolean, onFijar: () -> Unit, onAbrir: () -> Unit) {
     val detalle = remember(f.lang, f.nsfw) {
         listOfNotNull("Usada hace poco", "${bandera(f.lang)} ${nombreIdioma(f.lang)}", "+18".takeIf { f.nsfw }).joinToString("  •  ")
     }
-    TopResultCard(
+    TarjetaResultado(
         artwork = { IconoExt(f.pkg, null, Modifier.size(72.dp)) },
         title = f.nombre,
         detail = detalle,
@@ -380,7 +368,7 @@ private fun FilaFuente(f: FuenteUI, fijada: Boolean, ext: ExtManager, onFuente: 
     val subtitulo = remember(f.lang, f.nsfw) {
         listOfNotNull("${bandera(f.lang)} ${nombreIdioma(f.lang)}", "+18".takeIf { f.nsfw }).joinToString("  •  ")
     }
-    ResultRow(
+    FilaResultado(
         artwork = { IconoExt(f.pkg, null, Modifier.size(46.dp)) },
         title = f.nombre,
         subtitle = subtitulo,
@@ -389,15 +377,15 @@ private fun FilaFuente(f: FuenteUI, fijada: Boolean, ext: ExtManager, onFuente: 
     )
 }
 
-/** Anclar: el glifo redondo de 32 dp de las filas de Mochy; la estrella se enciende (con un pequeño salto) al anclar. */
+/** Anclar: el glifo redondo de 32 dp de las filas ; la estrella se enciende (con un pequeño salto) al anclar. */
 @Composable
 private fun BotonEstrella(fijada: Boolean, onClick: () -> Unit) {
     val acento = MaterialTheme.colorScheme.primary
-    val tinta by animateColorAsState(if (fijada) acento else SearchColors.Secondary.copy(alpha = 0.55f), Muelles.efectos(), label = "estrellaTinta")
+    val tinta by animateColorAsState(if (fijada) acento else Tonos.Secundario.copy(alpha = 0.55f), Muelles.efectos(), label = "estrellaTinta")
     val escala by animateFloatAsState(
         if (fijada) 1f else 0.86f, if (Mov.reducido) tween(100) else spring(0.45f, 600f), label = "estrellaEscala"
     )
-    SearchRowGlyph(
+    GlifoCampo(
         Icons.Rounded.Star, if (fijada) "Desanclar" else "Anclar", { Tacto.tic(); onClick() },
         Modifier.graphicsLayer { scaleX = escala; scaleY = escala }, tint = tinta,
     )
@@ -448,20 +436,18 @@ private fun NovedadesTab(
         motor == null -> Vacio("El motor de fuentes no está disponible.", icono = Icons.Rounded.Warning)
         reordenar -> OrdenarNovedades(ext)
         else -> {
-            // Menú de mantener pulsado de BitChord (ui/bitchord/HeldContextMenu.kt), como en el catálogo de una fuente:
+            // Menú de mantener pulsado  como en el catálogo de una fuente:
             // la portada se levanta y las novedades se desenfocan detrás.
-            val fondoRetenido = remember { com.example.lector.ui.bitchord.HeldBackdrop() }
             var retenido by remember { mutableStateOf<Pair<FuenteUI, MangaFuente>?>(null) }
-            var fotoRetenida by remember { mutableStateOf<com.example.lector.ui.bitchord.HeldItem?>(null) }
-            fun soltar() { retenido = null; fotoRetenida = null }
+            fun soltar() { retenido = null }
             val ctxR = androidx.compose.ui.platform.LocalContext.current
-            val alRetener: (FuenteUI, MangaFuente, com.example.lector.ui.bitchord.HeldItem) -> Unit = { f, m, foto ->
+            val alRetener: (FuenteUI, MangaFuente) -> Unit = { f, m ->
                 // Personalización → Estilo → «Directo»: mantener pulsado añade o quita de la biblioteca, sin menú.
-                if (com.example.lector.ui.mochy.EstiloApp.accionDirecta) alternarEnBiblioteca(ctxR, com.example.lector.Almacen.obtener(ctxR), f, m)
-                else { fotoRetenida = foto; retenido = f to m }
+                if (Aspecto.accionDirecta) alternarEnBiblioteca(ctxR, com.example.lector.Almacen.obtener(ctxR), f, m)
+                else { retenido = f to m }
             }
             Box(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize().heldBackdrop(fondoRetenido)) {
+            Box(Modifier.fillMaxSize()) {
             var refrescando by remember { mutableStateOf(false) }
             val gen = NovedadesGuardadas.generacion
             val pendientes = lista.any { NovedadesGuardadas.datos[it.id]?.first != gen && NovedadesGuardadas.fallos[it.id] != gen }
@@ -475,7 +461,7 @@ private fun NovedadesTab(
                 modifier = Modifier.fillMaxSize(),
                 state = estadoTirar,
                 indicator = {
-                    IndicadorTirar(estadoTirar, refrescando && pendientes, Modifier.align(Alignment.TopCenter).padding(top = arriba), com.example.lector.ui.orbes.EstadoOrbe.SEARCHING)
+                    IndicadorTirar(estadoTirar, refrescando && pendientes, Modifier.align(Alignment.TopCenter).padding(top = arriba), null)
                 },
             ) {
                 // Lo que ya está en tu biblioteca se marca (portada apagada + insignia), como en Komikku.
@@ -504,17 +490,16 @@ private fun NovedadesTab(
             val ctxM = androidx.compose.ui.platform.LocalContext.current
             val almM = remember { com.example.lector.Almacen.obtener(ctxM) }
             val enBiblioM = remember(almM.version) { almM.clavesEnLinea() }
-            com.example.lector.ui.mochy.MenuMantener(
-                item = retenido, held = fotoRetenida, hazeState = fondoRetenido, onDismiss = ::soltar,
+            MenuRetener(item = retenido, onDismiss = ::soltar,
                 onPreviewClick = { (f, m) -> soltar(); onManga(f, m) }, titulo = { it.second.titulo }, subtitulo = { it.first.nombre },
             ) { (f, m) ->
                 val esta = "${f.id}|${m.url}" in enBiblioM
-                com.example.lector.ui.bitchord.HeldMenuAction(
+                AccionRetener(
                     if (esta) Icons.Rounded.Delete else Icons.Rounded.Add, if (esta) "Quitar de la biblioteca" else "Añadir a la biblioteca", destructive = esta,
                 ) { soltar(); alternarEnBiblioteca(ctxM, almM, f, m) }
-                com.example.lector.ui.bitchord.HeldMenuAction(Icons.Rounded.Info, "Abrir ficha") { soltar(); onManga(f, m) }
-                if (onBuscarTitulo != null) com.example.lector.ui.bitchord.HeldMenuAction(Icons.Rounded.Search, "Buscar en todas") { soltar(); onBuscarTitulo(m.titulo) }
-                com.example.lector.ui.bitchord.HeldMenuAction(Icons.Rounded.Share, "Compartir") {
+                AccionRetener(Icons.Rounded.Info, "Abrir ficha") { soltar(); onManga(f, m) }
+                if (onBuscarTitulo != null) AccionRetener(Icons.Rounded.Search, "Buscar en todas") { soltar(); onBuscarTitulo(m.titulo) }
+                AccionRetener(Icons.Rounded.Share, "Compartir") {
                     soltar()
                     compartirTexto(ctxM, runCatching { motor.urlManga(f, m) }.getOrNull()?.let { "${m.titulo}\n$it" } ?: m.titulo)
                 }
@@ -531,8 +516,8 @@ private fun NovedadesFuente(
     busqueda: ExtManager.BusquedaGuardada? = null,
     guardadas: List<ExtManager.BusquedaGuardada> = emptyList(),
     enBiblioteca: Set<String> = emptySet(),
-    /** Mantener pulsada una portada: abre el menú de BitChord con su foto. */
-    onRetener: ((FuenteUI, MangaFuente, com.example.lector.ui.bitchord.HeldItem) -> Unit)? = null,
+    /** Mantener pulsada una portada: abre el menú  con su foto. */
+    onRetener: ((FuenteUI, MangaFuente) -> Unit)? = null,
 ) {
     val gen = NovedadesGuardadas.generacion
     val scopeR = rememberCoroutineScope()
@@ -561,70 +546,69 @@ private fun NovedadesFuente(
     }
     val acento = MaterialTheme.colorScheme.primary
     val cabeceras = remember(f.id) { motor.cabeceras(f) }
-    // Cada fuente es una sección como las de la búsqueda de Mochy: cabecera tocable (con la píldora de resalte),
+    // Cada fuente es una sección como las de la búsqueda : cabecera tocable (con la píldora de resalte),
     // las búsquedas guardadas como píldoras de categoría y el carrusel de portadas; una regla la cierra.
     Column(Modifier.fillMaxWidth().padding(bottom = 18.dp)) {
         Row(
             Modifier.fillMaxWidth()
-                .clickable(interactionSource = null, indication = ResultRowHighlight) { onFuente(f) }
-                .padding(horizontal = SearchHorizontalPadding, vertical = 8.dp),
+                .clickable(interactionSource = null, indication = null) { onFuente(f) }
+                .padding(horizontal = MargenLateral, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconoExt(f.pkg, null, Modifier.size(36.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    f.nombre, style = AppTypography.titleLarge.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
-                    color = SearchColors.Primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    f.nombre, style = TipoBase.titleLarge.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                    color = Tonos.Primario, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     if (busqueda != null) "Búsqueda: ${busqueda.nombre}" else nombreIdioma(f.lang),
-                    style = AppTypography.bodySmall.copy(fontSize = 12.sp),
-                    color = if (busqueda != null) acento else SearchColors.Secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = TipoBase.bodySmall.copy(fontSize = 12.sp),
+                    color = if (busqueda != null) acento else Tonos.Secundario, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
-            Icon(Icons.Rounded.KeyboardArrowRight, "Abrir", tint = SearchColors.Secondary, modifier = Modifier.size(22.dp))
+            Icon(Icons.Rounded.KeyboardArrowRight, "Abrir", tint = Tonos.Secundario, modifier = Modifier.size(22.dp))
         }
         // Las búsquedas guardadas de esta extensión, como al entrar en ella: tocar una la abre ya buscada.
         if (guardadas.isNotEmpty()) LazyRow(
-            contentPadding = PaddingValues(start = SearchHorizontalPadding, end = SearchHorizontalPadding, top = 8.dp),
+            contentPadding = PaddingValues(start = MargenLateral, end = MargenLateral, top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(guardadas, key = { it.nombre }) { b -> SearchCategoryChip(b.nombre, false) { Tacto.tic(); BusquedaPendiente.guardada = b; onFuente(f) } }
+            items(guardadas, key = { it.nombre }) { b -> ChipCategoria(b.nombre, false) { Tacto.tic(); BusquedaPendiente.guardada = b; onFuente(f) } }
         }
         Spacer(Modifier.height(12.dp))
         val lst = estado
         when {
             lst == null && fallo != null -> Row(
-                Modifier.padding(horizontal = SearchHorizontalPadding).fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                    .background(SearchColors.Tile).searchCardBorder(16.dp)
+                Modifier.padding(horizontal = MargenLateral).fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    .background(Tonos.Fila).borde(16.dp)
                     .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Rounded.Warning, null, tint = Rojo, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    fallo!!, style = AppTypography.bodySmall.copy(fontSize = 12.sp), modifier = Modifier.weight(1f),
+                    fallo!!, style = TipoBase.bodySmall.copy(fontSize = 12.sp), modifier = Modifier.weight(1f),
                     color = Rojo, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
-                SearchRowGlyph(Icons.Rounded.Refresh, "Reintentar", { intento++ })
+                GlifoCampo(Icons.Rounded.Refresh, "Reintentar", { intento++ })
             }
             lst == null -> BonesCarrusel()
             lst.isEmpty() -> Text(
-                "Nada nuevo por aquí", style = AppTypography.bodySmall.copy(fontSize = 12.sp),
-                modifier = Modifier.padding(horizontal = SearchHorizontalPadding), color = SearchColors.Secondary,
+                "Nada nuevo por aquí", style = TipoBase.bodySmall.copy(fontSize = 12.sp),
+                modifier = Modifier.padding(horizontal = MargenLateral), color = Tonos.Secundario,
             )
-            else -> LazyRow(contentPadding = PaddingValues(horizontal = SearchHorizontalPadding), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            else -> LazyRow(contentPadding = PaddingValues(horizontal = MargenLateral), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(lst, key = { it.url }) { m ->
-                    val foto = com.example.lector.ui.bitchord.rememberHeldPicture()
                     Column(Modifier.width(118.dp).press3D().pressable(onLongClick = onRetener?.let { r ->
-                        { scopeR.launch { r(f, m, foto.capture()) } }
-                    }) { onManga(f, m) }.heldPicture(foto)) {
+                        { r(f, m) }
+                    }) { onManga(f, m) }) {
                         val esta = "${f.id}|${m.url}" in enBiblioteca
                         Box {
                             ImagenRemota(
                                 m.portadaUrl,
-                                Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(FormaPortada).background(SearchColors.TileHigh)
+                                Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(FormaPortada).background(Tonos.FilaAlta)
                                     .graphicsLayer { alpha = if (esta) 0.38f else 1f },
                                 cabeceras, fuenteId = f.id
                             )
@@ -632,15 +616,15 @@ private fun NovedadesFuente(
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            m.titulo, style = AppTypography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium),
-                            color = SearchColors.Primary, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            m.titulo, style = TipoBase.bodyMedium.copy(fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium),
+                            color = Tonos.Primario, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
             }
         }
         Spacer(Modifier.height(18.dp))
-        SearchRule()
+        Regla()
     }
 }
 
@@ -656,26 +640,26 @@ private fun OrdenarNovedades(ext: ExtManager) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(top = LocalArriba.current)
-            .padding(horizontal = SearchHorizontalPadding, vertical = 4.dp).padding(bottom = 190.dp),
+            .padding(horizontal = MargenLateral, vertical = 4.dp).padding(bottom = 190.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Arrastra para cambiar el orden", style = AppTypography.bodySmall.copy(fontSize = 12.sp), color = SearchColors.Secondary)
+        Text("Arrastra para cambiar el orden", style = TipoBase.bodySmall.copy(fontSize = 12.sp), color = Tonos.Secundario)
         orden.toList().forEach { id ->
             val f = ext.fuentes.firstOrNull { it.id == id }
             key(id) {
                 val levantada = arrastrando == id
                 val escala by animateFloatAsState(if (levantada && !Mov.reducido) 1.04f else 1f, Muelles.espacialRapido(), label = "levantar")
-                val fondo by animateColorAsState(if (levantada) SearchColors.TileHigh else SearchColors.Tile, Muelles.efectos(), label = "fondoOrden")
+                val fondo by animateColorAsState(if (levantada) Tonos.FilaAlta else Tonos.Fila, Muelles.efectos(), label = "fondoOrden")
                 Row(
                     Modifier.fillMaxWidth().height(72.dp)
                         .zIndex(if (levantada) 1f else 0f)
                         .offset { IntOffset(0, if (levantada) desplaz.roundToInt() else 0) }
                         .graphicsLayer { scaleX = escala; scaleY = escala }
-                        .clip(RoundedCornerShape(16.dp)).background(fondo).searchCardBorder(16.dp),
+                        .clip(RoundedCornerShape(16.dp)).background(fondo).borde(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
-                        Modifier.padding(start = 12.dp).size(AvatarSize).clip(CircleShape).background(SearchColors.TileHigh).pointerInput(id) {
+                        Modifier.padding(start = 12.dp).size(TamAvatar).clip(CircleShape).background(Tonos.FilaAlta).pointerInput(id) {
                             detectDragGestures(
                                 onDragStart = { arrastrando = id; desplaz = 0f },
                                 onDragEnd = { arrastrando = null; desplaz = 0f; ext.fijarNovedades(orden.toList()) },
@@ -692,22 +676,22 @@ private fun OrdenarNovedades(ext: ExtManager) {
                             }
                         },
                         Alignment.Center,
-                    ) { Icon(Icons.Rounded.Menu, "Arrastrar", tint = SearchColors.Secondary, modifier = Modifier.size(18.dp)) }
+                    ) { Icon(Icons.Rounded.Menu, "Arrastrar", tint = Tonos.Secundario, modifier = Modifier.size(18.dp)) }
                     if (f != null) {
                         Spacer(Modifier.width(10.dp))
                         IconoExt(f.pkg, null, Modifier.size(40.dp))
                     }
                     Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                         Text(
-                            f?.nombre ?: "Fuente no disponible", style = AppTypography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
-                            color = SearchColors.Primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            f?.nombre ?: "Fuente no disponible", style = TipoBase.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                            color = Tonos.Primario, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                         if (f != null) Text(
-                            nombreIdioma(f.lang), style = AppTypography.bodySmall.copy(fontSize = 12.sp),
-                            color = SearchColors.Secondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            nombreIdioma(f.lang), style = TipoBase.bodySmall.copy(fontSize = 12.sp),
+                            color = Tonos.Secundario, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    SearchRowGlyph(Icons.Rounded.Delete, "Quitar", { orden.remove(id); ext.fijarNovedades(orden.toList()) }, Modifier.padding(end = 12.dp))
+                    GlifoCampo(Icons.Rounded.Delete, "Quitar", { orden.remove(id); ext.fijarNovedades(orden.toList()) }, Modifier.padding(end = 12.dp))
                 }
             }
         }
@@ -817,38 +801,38 @@ private fun ExtensionesTab(
 
     val abajo = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Column(Modifier.fillMaxSize()) {
-        if (buscando) Box(Modifier.padding(horizontal = SearchHorizontalPadding, vertical = 8.dp)) { CampoBusqueda(consulta, onConsulta, "Buscar extensiones") }
+        if (buscando) Box(Modifier.padding(horizontal = MargenLateral, vertical = 8.dp)) { CampoBusqueda(consulta, onConsulta, "Buscar extensiones") }
         val estadoLista = androidx.compose.foundation.lazy.rememberLazyListState()
         Box(Modifier.weight(1f)) {
         LazyColumn(state = estadoLista, contentPadding = PaddingValues(top = LocalArriba.current, bottom = abajo + 190.dp)) {
             if (ext.cargando) item(key = "cargando", contentType = "Aviso") {
-                if (com.example.lector.ui.mochy.EstiloApp.orbes) Box(Modifier.fillMaxWidth().padding(bottom = 14.dp), Alignment.Center) {
-                    IndicadorCarga(Modifier.size(34.dp), SearchColors.Primary, estado = com.example.lector.ui.orbes.EstadoOrbe.CONNECTING)
+                if (false) Box(Modifier.fillMaxWidth().padding(bottom = 14.dp), Alignment.Center) {
+                    IndicadorCarga(Modifier.size(34.dp), Tonos.Primario, estado = null)
                 } else com.example.lector.ui.ProgresoLinea(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = SearchHorizontalPadding).padding(bottom = 14.dp).height(2.dp).clip(CircleShape),
-                    color = SearchColors.Primary, trackColor = SearchColors.Divider,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = MargenLateral).padding(bottom = 14.dp).height(2.dp).clip(CircleShape),
+                    color = Tonos.Primario, trackColor = Tonos.Linea,
                 )
             }
             if (sinConfianza.isNotEmpty()) {
                 item(key = "confianza", contentType = "Aviso") {
-                    // Tarjeta de Mochy: cuántas faltan por confiar y el botón blanco para hacerlo de golpe.
+                    // Tarjeta : cuántas faltan por confiar y el botón blanco para hacerlo de golpe.
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = SearchHorizontalPadding).padding(bottom = 12.dp)
-                            .clip(RoundedCornerShape(16.dp)).background(SearchColors.Tile).searchCardBorder(16.dp).padding(14.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = MargenLateral).padding(bottom = 12.dp)
+                            .clip(RoundedCornerShape(16.dp)).background(Tonos.Fila).borde(16.dp).padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.size(AvatarSize).clip(CircleShape).background(SearchColors.TileHigh), Alignment.Center) {
-                            Icon(Icons.Rounded.Lock, null, tint = SearchColors.Secondary, modifier = Modifier.size(18.dp))
+                        Box(Modifier.size(TamAvatar).clip(CircleShape).background(Tonos.FilaAlta), Alignment.Center) {
+                            Icon(Icons.Rounded.Lock, null, tint = Tonos.Secundario, modifier = Modifier.size(18.dp))
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                "${sinConfianza.size} sin confianza", style = AppTypography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
-                                color = SearchColors.Primary, maxLines = 1,
+                                "${sinConfianza.size} sin confianza", style = TipoBase.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                                color = Tonos.Primario, maxLines = 1,
                             )
                             Text(
-                                "Sus fuentes no salen hasta confiar", style = AppTypography.bodySmall.copy(fontSize = 12.sp),
-                                color = SearchColors.Secondary, maxLines = 2,
+                                "Sus fuentes no salen hasta confiar", style = TipoBase.bodySmall.copy(fontSize = 12.sp),
+                                color = Tonos.Secundario, maxLines = 2,
                             )
                         }
                         Spacer(Modifier.width(8.dp))
@@ -862,11 +846,11 @@ private fun ExtensionesTab(
             if (ext.errores.isNotEmpty()) {
                 item(key = "errores", contentType = "Aviso") {
                     Column(
-                        Modifier.fillMaxWidth().padding(horizontal = SearchHorizontalPadding).padding(bottom = 12.dp)
-                            .clip(RoundedCornerShape(16.dp)).background(SearchColors.Tile).searchCardBorder(16.dp).padding(14.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = MargenLateral).padding(bottom = 12.dp)
+                            .clip(RoundedCornerShape(16.dp)).background(Tonos.Fila).borde(16.dp).padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        ext.errores.forEach { Text(it, style = AppTypography.bodySmall.copy(fontSize = 12.sp), color = Rojo) }
+                        ext.errores.forEach { Text(it, style = TipoBase.bodySmall.copy(fontSize = 12.sp), color = Rojo) }
                     }
                 }
             }
@@ -875,11 +859,11 @@ private fun ExtensionesTab(
             var regla = true
             if (pendientes.isNotEmpty()) {
                 item(contentType = "Actualizaciones") {
-                    SearchSectionHeader(
+                    CabeceraResultados(
                         "Actualizaciones", ruleAbove = false,
                         trailing = {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                SearchCount(pendientes.size)
+                                Cuenta(pendientes.size)
                                 if (pendientes.size > 1) {
                                     Spacer(Modifier.weight(1f))
                                     PildoraAccion(ext.actualizandoTodas?.let { (h, t) -> "${h + 1}/$t" } ?: "Todas", Icons.Rounded.Refresh, relleno = true) { Tacto.confirmar(); ext.actualizarTodas() }
@@ -894,7 +878,7 @@ private fun ExtensionesTab(
             if (alDia.isNotEmpty()) {
                 val arriba = if (regla) 0.dp else 22.dp
                 item(contentType = "Instalado") {
-                    SearchSectionHeader("Instalado", ruleAbove = false, modifier = Modifier.padding(top = arriba), trailing = { SearchCount(alDia.size) })
+                    CabeceraResultados("Instalado", ruleAbove = false, modifier = Modifier.padding(top = arriba), trailing = { Cuenta(alDia.size) })
                 }
                 items(alDia, contentType = { "Instalado" }) { FilaInstalada(it, ext, onDetalle, onConfiar) }
                 regla = false
@@ -904,7 +888,7 @@ private fun ExtensionesTab(
                 val arriba = if (regla) 0.dp else 22.dp
                 regla = false
                 item(contentType = n) {
-                    SearchSectionHeader(n, ruleAbove = false, modifier = Modifier.padding(top = arriba), trailing = { SearchCount(lista.size) })
+                    CabeceraResultados(n, ruleAbove = false, modifier = Modifier.padding(top = arriba), trailing = { Cuenta(lista.size) })
                 }
                 items(lista, contentType = { n }) { FilaDisponible(it, ext, onWeb) { elegir = it } }
             }
@@ -924,14 +908,14 @@ private fun FilaInstalada(e: ExtInstalada, ext: ExtManager, onDetalle: (ExtInsta
             e.versionName + (e.actualizacion?.let { " → ${it.versionName}" } ?: "") + (e.repoSigla?.let { " @$it" } ?: ""),
         ).joinToString("  •  ")
     }
-    ResultRow(
+    FilaResultado(
         artwork = {
             Box {
                 IconoExt(e.pkg, null, Modifier.size(46.dp))
                 // Insignia de actualización: un círculo de acento con la flecha, en la esquina del icono.
                 if (e.actualizacion != null) Box(
                     Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp).size(20.dp)
-                        .clip(CircleShape).background(SearchColors.page(false)).padding(2.dp).clip(CircleShape).background(acento),
+                        .clip(CircleShape).background(LectorColors.Bg).padding(2.dp).clip(CircleShape).background(acento),
                     Alignment.Center,
                 ) { Icon(Icons.Rounded.KeyboardArrowUp, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(14.dp)) }
             }
@@ -941,7 +925,7 @@ private fun FilaInstalada(e: ExtInstalada, ext: ExtManager, onDetalle: (ExtInsta
         subtitleColor = when {
             !e.confiable -> Rojo
             e.actualizacion != null -> acento
-            else -> SearchColors.Secondary
+            else -> Tonos.Secundario
         },
         onClick = { onDetalle(e) },
         trailing = {
@@ -950,7 +934,7 @@ private fun FilaInstalada(e: ExtInstalada, ext: ExtManager, onDetalle: (ExtInsta
                 pr != null -> EstadoProgreso(pr) { ext.limpiarError(e.pkg) }
                 !e.confiable -> PildoraAccion("Confiar", null) { onConfiar(e) }
                 e.actualizacion != null -> PildoraAccion("Actualizar", Icons.Rounded.Refresh, relleno = true) { e.actualizacion?.let { ext.instalar(it) } }
-                else -> SearchRowGlyph(Icons.Rounded.Settings, "Ajustes", { onDetalle(e) })
+                else -> GlifoCampo(Icons.Rounded.Settings, "Ajustes", { onDetalle(e) })
             }
         },
     )
@@ -966,7 +950,7 @@ private fun FilaDisponible(d: ExtDisponible, ext: ExtManager, onWeb: (String, St
         ).joinToString("  •  ")
     }
     val web = d.fuentes.firstOrNull { it.baseUrl.startsWith("http") }?.baseUrl
-    ResultRow(
+    FilaResultado(
         artwork = { IconoExt(d.pkg, d.iconoUrl, Modifier.size(46.dp)) },
         title = d.nombre,
         subtitle = subtitulo,
@@ -975,15 +959,15 @@ private fun FilaDisponible(d: ExtDisponible, ext: ExtManager, onWeb: (String, St
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (web != null) {
                     Box(
-                        Modifier.size(34.dp).pressable { onWeb(web, d.nombre) }.clip(CircleShape).background(SearchColors.TileHigh),
+                        Modifier.size(34.dp).pressable { onWeb(web, d.nombre) }.clip(CircleShape).background(Tonos.FilaAlta),
                         Alignment.Center,
-                    ) { Icon(Iconos.Globo, "Ver la web", tint = SearchColors.Primary, modifier = Modifier.size(18.dp)) }
+                    ) { Icon(Iconos.Globo, "Ver la web", tint = Tonos.Primario, modifier = Modifier.size(18.dp)) }
                     Spacer(Modifier.width(8.dp))
                 }
                 val pr = ext.progreso[d.pkg]
                 when {
                     pr != null -> EstadoProgreso(pr) { ext.limpiarError(d.pkg) }
-                    d.apkUrl.isBlank() -> Text("No disponible", style = AppTypography.bodySmall.copy(fontSize = 12.sp), color = SearchColors.Secondary)
+                    d.apkUrl.isBlank() -> Text("No disponible", style = TipoBase.bodySmall.copy(fontSize = 12.sp), color = Tonos.Secundario)
                     copias > 1 -> PildoraAccion("Elegir", Icons.Rounded.Add) { Tacto.tic(); onElegir() }
                     else -> PildoraAccion("Instalar", Icons.Rounded.Add) { Tacto.tic(); ext.instalarDe(d) }
                 }
@@ -1002,14 +986,13 @@ private fun DialogoListados(d: ExtDisponible, ext: ExtManager, onWeb: (String, S
     fun Opcion(titulo: String, detalle: String, accion: String, onClick: () -> Unit) {
         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(titulo, style = AppTypography.bodyLarge.copy(fontWeight = FontWeight.SemiBold), color = SearchColors.Primary, maxLines = 1)
-                Text(detalle, style = AppTypography.bodySmall, color = SearchColors.Secondary, maxLines = 1)
+                Text(titulo, style = TipoBase.bodyLarge.copy(fontWeight = FontWeight.SemiBold), color = Tonos.Primario, maxLines = 1)
+                Text(detalle, style = TipoBase.bodySmall, color = Tonos.Secundario, maxLines = 1)
             }
             PildoraAccion(accion, null) { Tacto.tic(); onClick() }
         }
     }
     androidx.compose.material3.AlertDialog(
-        modifier = com.example.lector.ui.estiloDialogoFxM(),
         onDismissRequest = onCerrar,
         title = { Text(d.nombre) },
         text = {
@@ -1017,7 +1000,7 @@ private fun DialogoListados(d: ExtDisponible, ext: ExtManager, onWeb: (String, S
                 if (web != null) Opcion("Ver la web antes de instalar", web, "Abrir") { onCerrar(); onWeb(web, d.nombre) }
                 Text(
                     if (copias.size > 1) "Está en ${copias.size} listados. Elige de cuál instalarla:" else "Listado",
-                    style = AppTypography.labelMedium, color = SearchColors.Secondary, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                    style = TipoBase.labelMedium, color = Tonos.Secundario, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                 )
                 copias.forEach { c ->
                     Opcion(
@@ -1028,7 +1011,7 @@ private fun DialogoListados(d: ExtDisponible, ext: ExtManager, onWeb: (String, S
                 }
                 if (misma.isNotEmpty()) {
                     Text(
-                        "Otras extensiones de la misma web", style = AppTypography.labelMedium, color = SearchColors.Secondary,
+                        "Otras extensiones de la misma web", style = TipoBase.labelMedium, color = Tonos.Secundario,
                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                     )
                     misma.forEach { o -> Opcion(o.nombre, "v${o.versionName}  •  @${o.repoSigla}", "Instalar") { onCerrar(); ext.instalarDe(o) } }
@@ -1039,20 +1022,20 @@ private fun DialogoListados(d: ExtDisponible, ext: ExtManager, onWeb: (String, S
     )
 }
 
-/** Botón en píldora de 34 dp, como las categorías de la búsqueda de Mochy: blanco si [relleno], gris si no. */
+/** Botón en píldora de 34 dp, como las categorías de la búsqueda : blanco si [relleno], gris si no. */
 @Composable
 private fun PildoraAccion(texto: String, icono: ImageVector?, relleno: Boolean = false, onClick: () -> Unit) {
     Row(
         Modifier.height(34.dp).pressable(onClick).clip(RoundedCornerShape(50))
-            .background(if (relleno) SearchColors.Primary else SearchColors.TileHigh).padding(horizontal = 14.dp),
+            .background(if (relleno) Tonos.Primario else Tonos.FilaAlta).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val tinta = if (relleno) SearchColors.page(false) else SearchColors.Primary
+        val tinta = if (relleno) LectorColors.Bg else Tonos.Primario
         if (icono != null) {
             Icon(icono, null, tint = tinta, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
         }
-        Text(texto, style = AppTypography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium), color = tinta, maxLines = 1)
+        Text(texto, style = TipoBase.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium), color = tinta, maxLines = 1)
     }
 }
 
@@ -1064,18 +1047,18 @@ private fun EstadoProgreso(pr: Progreso, alReintentar: () -> Unit) {
             val fr by animateFloatAsState(
                 (pr.porcentaje / 100f).coerceIn(0.04f, 1f), if (Mov.reducido) tween(100) else Muelles.espacial(), label = "descarga"
             )
-            val relleno = SearchColors.Primary.copy(alpha = 0.28f)
+            val relleno = Tonos.Primario.copy(alpha = 0.28f)
             Box(
-                Modifier.width(78.dp).height(34.dp).clip(CircleShape).background(SearchColors.TileHigh)
+                Modifier.width(78.dp).height(34.dp).clip(CircleShape).background(Tonos.FilaAlta)
                     .drawBehind { drawRoundRect(relleno, size = Size(size.width * fr, size.height), cornerRadius = CornerRadius(size.height / 2f)) },
                 Alignment.Center,
-            ) { Text("${pr.porcentaje}%", style = AppTypography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), color = SearchColors.Primary) }
+            ) { Text("${pr.porcentaje}%", style = TipoBase.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), color = Tonos.Primario) }
         }
         Fase.INSTALANDO -> Row(
-            Modifier.height(34.dp).clip(CircleShape).background(SearchColors.TileHigh).padding(horizontal = 12.dp),
+            Modifier.height(34.dp).clip(CircleShape).background(Tonos.FilaAlta).padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SearchLoadingDots(Modifier.padding(end = 2.dp))
+            PuntosCarga(Modifier.padding(end = 2.dp))
         }
         Fase.ERROR -> Row(
             Modifier.height(34.dp).pressable(alReintentar).clip(CircleShape).background(Rojo.copy(alpha = 0.14f)).padding(horizontal = 12.dp),
@@ -1083,7 +1066,7 @@ private fun EstadoProgreso(pr: Progreso, alReintentar: () -> Unit) {
         ) {
             Icon(Icons.Rounded.Refresh, null, tint = Rojo, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
-            Text("Error", style = AppTypography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium), color = Rojo)
+            Text("Error", style = TipoBase.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.Medium), color = Rojo)
         }
     }
 }
@@ -1112,7 +1095,7 @@ private fun MigrarTab(
     androidx.compose.foundation.lazy.LazyColumn(contentPadding = PaddingValues(top = LocalArriba.current, bottom = abajo + 190.dp)) {
         // Recientes: las últimas migraciones y el acceso al historial completo.
         if (recientes.isNotEmpty()) item(key = "recientes") {
-            Row(Modifier.padding(horizontal = SearchHorizontalPadding).padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.padding(horizontal = MargenLateral).padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 ChipSel("Recientes (${recientes.size})", false, onClick = onRecientes)
             }
             Column {
@@ -1123,8 +1106,8 @@ private fun MigrarTab(
         item(key = "intro") {
             Text(
                 "Elige una serie para buscarla en otra fuente y pasar tu progreso.",
-                style = AppTypography.bodySmall.copy(fontSize = 12.sp), color = SearchColors.Secondary,
-                modifier = Modifier.padding(horizontal = SearchHorizontalPadding).padding(bottom = 18.dp),
+                style = TipoBase.bodySmall.copy(fontSize = 12.sp), color = Tonos.Secundario,
+                modifier = Modifier.padding(horizontal = MargenLateral).padding(bottom = 18.dp),
             )
         }
         var primera = true
@@ -1132,20 +1115,20 @@ private fun MigrarTab(
             val arriba = if (primera) 0.dp else 22.dp
             primera = false
             item(key = "g_$nombre") {
-                SearchSectionHeader(nombre, ruleAbove = false, modifier = Modifier.padding(top = arriba), trailing = { SearchCount(lista.size) })
+                CabeceraResultados(nombre, ruleAbove = false, modifier = Modifier.padding(top = arriba), trailing = { Cuenta(lista.size) })
             }
             items(lista.size, key = { lista[it].id }) { i ->
                 val c = lista[i]
-                ResultRow(
+                FilaResultado(
                     artwork = {
-                        // la miniatura de 46 dp de alto de las filas de Mochy, en proporción de portada
+                        // la miniatura de 46 dp de alto de las filas , en proporción de portada
                         ComicCover(c, almacen!!, Modifier.height(46.dp).aspectRatio(2f / 3f), RoundedCornerShape(6.dp))
                     },
                     title = c.titulo,
                     // Lo guardado (de la copia o de la biblioteca); al tocar se ve su ficha guardada y desde ahí se migra.
                     subtitle = if (c.paginas > 0) "${c.paginas} capítulos · ${c.ultimaPagina} leídos" else "Ver lo guardado y migrar",
                     onClick = { onMigrar(c) },
-                    trailing = { SearchRowGlyph(Icons.Rounded.ArrowForward, "Migrar", { onMigrar(c) }) },
+                    trailing = { GlifoCampo(Icons.Rounded.ArrowForward, "Migrar", { onMigrar(c) }) },
                 )
             }
         }
@@ -1154,15 +1137,6 @@ private fun MigrarTab(
 
 // ───────────────────────── Piezas comunes ─────────────────────────
 
-/** Botón redondo de la cabecera de Explorar (el hueco del avatar de Mochy); con [activo] se vuelve blanco. */
-@Composable
-private fun BotonCabecera(icono: ImageVector, desc: String, activo: Boolean = false, onClick: () -> Unit) {
-    val fondo by animateColorAsState(if (activo) SearchColors.Primary else SearchColors.TileHigh, Muelles.efectos(), label = "botonCab")
-    val tinta by animateColorAsState(if (activo) SearchColors.page(false) else SearchColors.Secondary, Muelles.efectos(), label = "tintaCab")
-    Box(Modifier.size(AvatarSize).pressable { Tacto.tic(); onClick() }.clip(CircleShape).background(fondo), Alignment.Center) {
-        Icon(icono, desc, tint = tinta, modifier = Modifier.size(AvatarSize * 0.5f))
-    }
-}
 
 /** Tarjeta de fila de Explorar (fuentes, extensiones): superficie Card, esquinas suaves y se aplasta al pulsar. */
 @Composable
@@ -1258,54 +1232,53 @@ internal fun BonesCarrusel(ancho: androidx.compose.ui.unit.Dp = 118.dp) {
 
 @Composable
 internal fun CampoBusqueda(valor: String, alCambiar: (String) -> Unit, pista: String) {
-    // El SearchField de Mochy (mochy/search/SearchDesign.kt): píldora de 48 dp, Field (FieldFocused con el foco),
+    // El CampoBuscar  (mochy/search/SearchDesign.kt): píldora de 48 dp, Field (FieldFocused con el foco),
     // lupa y borrar de 20 dp a los lados y pista gris de 15 sp. Se queda con texto plano para no cambiar quién lo usa.
     var foco by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     BasicTextField(
         value = valor, onValueChange = alCambiar, singleLine = true,
-        textStyle = AppTypography.bodyMedium.copy(color = SearchColors.Primary, fontSize = 15.sp),
-        cursorBrush = SolidColor(SearchColors.Primary),
+        textStyle = TipoBase.bodyMedium.copy(color = Tonos.Primario, fontSize = 15.sp),
+        cursorBrush = SolidColor(Tonos.Primario),
         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
         keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { focusManager.clearFocus() }),
-        modifier = Modifier.onFocusChanged { foco = it.isFocused }.then(if (foco && fxOn("searchinput")) Modifier.hazBorde(24.dp, MaterialTheme.colorScheme.primary) else Modifier)
-            .then(if (fxOn("th_liquido")) Modifier.gotaLiquida(foco, valor.length) else Modifier),
+        modifier = Modifier.onFocusChanged { foco = it.isFocused },
         decorationBox = { inner ->
             Row(
-                Modifier.fillMaxWidth().height(SearchFieldHeight).clip(RoundedCornerShape(50))
-                    .background(if (foco) SearchColors.FieldFocused else SearchColors.Field).padding(horizontal = 16.dp),
+                Modifier.fillMaxWidth().height(AltoCampo).clip(RoundedCornerShape(50))
+                    .background(if (foco) Tonos.CampoFoco else Tonos.Campo).padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SearchFieldGlyph(Icons.Rounded.Search, null)
+                GlifoCampo(Icons.Rounded.Search, null)
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     if (valor.isEmpty()) Text(
-                        pista, style = AppTypography.bodyMedium.copy(fontSize = 15.sp), color = SearchColors.Placeholder,
+                        pista, style = TipoBase.bodyMedium.copy(fontSize = 15.sp), color = Tonos.Pista,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                     inner()
                 }
                 if (valor.isNotEmpty()) {
                     Spacer(Modifier.width(10.dp))
-                    SearchFieldGlyph(Icons.Rounded.Close, "Borrar") { alCambiar("") }
+                    GlifoCampo(Icons.Rounded.Close, "Borrar") { alCambiar("") }
                 }
             }
         }
     )
 }
 
-/** Vacío: el texto gris de «No results» de Mochy, con un icono en un círculo y una píldora blanca de acción. */
+/** Vacío: el texto gris de «No results» , con un icono en un círculo y una píldora blanca de acción. */
 @Composable
 private fun Vacio(texto: String, accion: String? = null, onAccion: (() -> Unit)? = null, icono: ImageVector = Icons.Rounded.Search) {
     Column(
         Modifier.fillMaxSize().padding(top = LocalArriba.current).padding(horizontal = 40.dp).padding(bottom = 120.dp),
         verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(72.dp).clip(CircleShape).background(SearchColors.TileHigh), Alignment.Center) {
-            Icon(icono, null, tint = SearchColors.Secondary, modifier = Modifier.size(32.dp))
+        Box(Modifier.size(72.dp).clip(CircleShape).background(Tonos.FilaAlta), Alignment.Center) {
+            Icon(icono, null, tint = Tonos.Secundario, modifier = Modifier.size(32.dp))
         }
         Spacer(Modifier.height(18.dp))
-        Text(texto, color = SearchColors.Secondary, style = AppTypography.bodyLarge.copy(fontSize = 15.sp, lineHeight = 21.sp), textAlign = TextAlign.Center)
+        Text(texto, color = Tonos.Secundario, style = TipoBase.bodyLarge.copy(fontSize = 15.sp, lineHeight = 21.sp), textAlign = TextAlign.Center)
         if (accion != null && onAccion != null) {
             Spacer(Modifier.height(18.dp))
             PildoraAccion(accion, Icons.Rounded.KeyboardArrowRight, relleno = true, onClick = onAccion)
@@ -1316,12 +1289,12 @@ private fun Vacio(texto: String, accion: String? = null, onAccion: (() -> Unit)?
 @Composable
 private fun Aviso(texto: String, accion: String, onAccion: () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = SearchHorizontalPadding).padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(16.dp)).background(SearchColors.Tile).searchCardBorder(16.dp).padding(16.dp)
+        Modifier.fillMaxWidth().padding(horizontal = MargenLateral).padding(bottom = 12.dp)
+            .clip(RoundedCornerShape(16.dp)).background(Tonos.Fila).borde(16.dp).padding(16.dp)
     ) {
-        Icon(Icons.Rounded.Info, null, tint = SearchColors.Secondary, modifier = Modifier.size(22.dp))
+        Icon(Icons.Rounded.Info, null, tint = Tonos.Secundario, modifier = Modifier.size(22.dp))
         Spacer(Modifier.height(10.dp))
-        Text(texto, style = AppTypography.bodyLarge.copy(fontSize = 15.sp), color = SearchColors.Primary)
+        Text(texto, style = TipoBase.bodyLarge.copy(fontSize = 15.sp), color = Tonos.Primario)
         Spacer(Modifier.height(14.dp))
         PildoraAccion(accion, Icons.Rounded.Add, relleno = true, onClick = onAccion)
     }
@@ -1516,14 +1489,14 @@ fun ImagenRemota(
             val cargada = img ?: Imagenes.cargar(url, cabeceras, maxLado, fuenteId)
             img = cargada
             if (cargada != null) {
-                com.example.lector.ui.mochy.EstiloApp.anotarPortada(url, cargada.width, cargada.height)
+                Aspecto.anotarPortada(url, cargada.width, cargada.height)
                 onCargada?.invoke(cargada)
             }
         }
     }
     // La portada nueva aparece con un fundido; la que ya estaba en caché empieza directamente en 1f.
     val opacidad by animateFloatAsState(if (img != null) 1f else 0f, tween(300), label = "portadaFundido")
-    Box((if (efectosPortada) modifier.efectosPortadaFx() else modifier).background(LectorColors.CardHigh)) {
+    Box(modifier.background(LectorColors.CardHigh)) {
         val i = img
         if (i != null) Image(
             bitmap = i, contentDescription = null, contentScale = escala,
