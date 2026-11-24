@@ -86,8 +86,10 @@ tocar "Inicio"; tocar "Añadir cómic" && { sleep 5; cap selector
   tocar "Prueba.cbz" || { tocar "Show roots" || tocar "Mostrar raíces"; tocar "Downloads" || tocar "Descargas"; sleep 2; tocar "Prueba.cbz"; }
   sleep 8; cap tras-importar
   tocar "Biblioteca"; sleep 2; tocar "Prueba" && { sleep 3; cap ficha-local; bajar; cap ficha-local-2; arriba
-    tocar "Leer" || tocar "Reanudar"; sleep 6; cap lector-local; adb shell input tap 540 1200; sleep 2; cap lector-local-barras
-    adb shell input tap 1000 1200; sleep 2; adb shell input tap 1000 1200; sleep 2; cap lector-local-pag3; atras; sleep 2; cap tras-lector-local; atras; } ; }
+    tocar "Leer" || tocar "Reanudar"; sleep 6; tocar "Got it" || tocar "Entendido"; sleep 1; cap lector-local; adb shell input tap 540 1200; sleep 2; cap lector-local-barras
+    adb shell input tap 540 1200; sleep 1; adb shell input tap 100 1200; sleep 2; adb shell input tap 100 1200; sleep 2; cap lector-local-pag3
+    dump; echo "  lector: $(grep -oE 'text="[0-9]+ / [0-9]+"' ui.xml | head -1)" >> $R
+    atras; sleep 2; cap tras-lector-local; atras; } ; }
 
 # ── Con algo en la biblioteca
 for k in 1 2 3; do atras; done; abrir 6

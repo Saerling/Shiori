@@ -891,12 +891,8 @@ internal val EstiloContador = LectorType.Label.copy(fontWeight = FontWeight.Bold
 
 /** Píldora de cristal flotante: tinte de la barra, línea finísima y una sombra suave (salvo en «Líquido»). */
 @Composable
-internal fun Modifier.pildoraCristal(forma: Shape, sombra: Boolean = true): Modifier {
-    val conSombra = sombra
-    return this
-        .then(if (conSombra) Modifier.shadow(10.dp, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.28f)) else Modifier)
-        .clip(forma).background(ColorBarra).border(0.6.dp, BordeBarra, forma)
-}
+internal fun Modifier.pildoraCristal(forma: Shape, sombra: Boolean = true): Modifier =
+    this.vidrioFlotante(forma, if (sombra) 12.dp else 0.dp)
 
 // Barras: entran deslizándose con el muelle espacial (algo de rebote) y salen con uno sin rebote.
 private fun entraBarra(arriba: Boolean): EnterTransition =

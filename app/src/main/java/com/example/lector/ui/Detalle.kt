@@ -90,7 +90,8 @@ fun DetalleScreen(
     val fondo = remember { mutableStateOf(LectorColors.Bg) }
     fondo.value = LectorColors.Bg
     val alto = altoPortadaFicha()
-    val pliegue = { (scroll.value / (alto.value * 2.2f)).coerceIn(0f, 1f) }
+    val altoPx = with(androidx.compose.ui.platform.LocalDensity.current) { alto.toPx() }
+    val pliegue = { (scroll.value / (altoPx * 0.8f)).coerceIn(0f, 1f) }
     Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
         FondoFicha({ m -> ComicCover(comic, almacen, m, RoundedCornerShape(0.dp)) }, alto, pliegue, fondo)
         Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 130.dp).graphicsLayer { alpha = t }) {
@@ -125,7 +126,7 @@ fun DetalleScreen(
             FilaSilencio(Icons.Rounded.Settings, "Modo de lectura", nombreModo(modo), { dModo = true })
             FilaSilencio(Icons.Rounded.Delete, "Eliminar", "Quitar de la biblioteca y borrar la copia", { dBorrar = true })
         }
-        BarraFicha({ (scroll.value / (alto.value * 2.5f)).coerceIn(0f, 1f) }, comic.titulo, fondo, onBack, null) {}
+        BarraFicha(pliegue, comic.titulo, fondo, onBack, null) {}
     }
 
     if (dCategorias) DialogoCategoriasComic(comic, almacen) { dCategorias = false; version++; onChanged() }
