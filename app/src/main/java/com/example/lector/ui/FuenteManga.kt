@@ -585,9 +585,25 @@ fun FichaMangaScreen(
                         f.nombre, fi.capitulos.maxOfOrNull { it.fecha } ?: 0L,
                     )
                 }
+                item(key = "si_propiedades", contentType = "si_propiedades") {
+                    if (fxOn("si_propiedades")) {
+                        val leidos = fi.capitulos.count { ext.esLeido(f.id, manga.url, it.url) }
+                        PropiedadesFicha(
+                            listOf(
+                                "Estado" to estadoPub?.let { estadoTexto(it) },
+                                "Autor" to autor,
+                                "Fuente" to f.nombre,
+                                "Capítulos" to "${fi.capitulos.size} · $leidos leídos",
+                                "Actualizado" to fi.capitulos.maxOfOrNull { it.fecha }?.takeIf { it > 0 }?.let { fechaTexto(it) },
+                            ),
+                            Modifier.padding(horizontal = PlaylistInset, vertical = 6.dp),
+                        )
+                    }
+                }
                 if (generos.isNotEmpty()) {
                     item(key = "generos", contentType = "generos") {
-                        Row(
+                        if (fxOn("si_propiedades")) FilaEtiquetas(generos, Modifier.padding(horizontal = PlaylistInset, vertical = 6.dp)) { alGenero(it) }
+                        else Row(
                             Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = PlaylistInset, vertical = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) { generos.forEach { g -> PildoraGenero(g) { alGenero(g) } } }

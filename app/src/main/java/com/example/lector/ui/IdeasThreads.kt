@@ -55,7 +55,7 @@ val IdsThreads = listOf(
 private const val DIA = 86_400_000L
 
 /** Capítulos leídos por día (índice 0 = hoy), a partir del historial en línea y de los cómics locales. */
-private fun lecturasPorDia(almacen: Almacen, comics: List<Comic>, dias: Int): IntArray {
+internal fun lecturasPorDia(almacen: Almacen, comics: List<Comic>, dias: Int): IntArray {
     val hoy = System.currentTimeMillis() / DIA
     val cuenta = IntArray(dias)
     almacen.historialLinea.forEach { val d = (hoy - it.leido / DIA).toInt(); if (d in 0 until dias) cuenta[d]++ }

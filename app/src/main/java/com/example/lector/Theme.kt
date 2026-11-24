@@ -57,6 +57,7 @@ object Paletas {
         Paleta("Azul", Color(0xFF4C8DFF)),
         Paleta("Violeta", Color(0xFFA37BFF)),
         Paleta("Rosa", Color(0xFFFF5FA2)),
+        Paleta("Obsidiana", Color(0xFFA88BFA)),
     )
 
     val porDefecto = fijas.first()
@@ -69,6 +70,8 @@ fun colorDePaleta(nombre: String, oscuro: Boolean = true): Color {
         val ctx = LocalContext.current
         return if (oscuro) dynamicDarkColorScheme(ctx).primary else androidx.compose.material3.dynamicLightColorScheme(ctx).primary
     }
+    // Con el tema Obsidiana, la paleta monocroma pasa al violeta de Obsidian.
+    if (nombre == Paletas.MONO && com.example.lector.fx.Fx.on("si_obsidiana")) return if (oscuro) Color(0xFFA88BFA) else Color(0xFF7C5CE6)
     // El gris claro de «Musicfy» no se vería sobre fondo claro: ahí es casi negro.
     if ((nombre == Paletas.MONO || Paletas.fijas.none { it.nombre == nombre }) && !oscuro) return Color(0xFF1C1C1E)
     return (Paletas.fijas.firstOrNull { it.nombre == nombre } ?: Paletas.porDefecto).color
@@ -241,7 +244,18 @@ fun LectorTheme(
     puro: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    val base = if (!oscuro) EsquemaClaro else if (puro) EsquemaPuro else EsquemaOscuro
+    val obsidiana = com.example.lector.fx.Fx.on("si_obsidiana")
+    val base0 = if (!oscuro) EsquemaClaro else if (puro) EsquemaPuro else EsquemaOscuro
+    // Obsidiana: las superficies de Material siguen al grafito de LectorColors.
+    val base = remember(base0, obsidiana, oscuro) {
+        if (!obsidiana) base0 else base0.copy(
+            background = com.example.lector.ui.LectorColors.Bg, surface = com.example.lector.ui.LectorColors.Bg,
+            surfaceContainer = com.example.lector.ui.LectorColors.Card, surfaceContainerLow = com.example.lector.ui.LectorColors.Card,
+            surfaceContainerHigh = com.example.lector.ui.LectorColors.CardHigh, surfaceContainerHighest = com.example.lector.ui.LectorColors.CardHigh,
+            surfaceVariant = com.example.lector.ui.LectorColors.Card, outline = com.example.lector.ui.LectorColors.Linea,
+            outlineVariant = com.example.lector.ui.LectorColors.Linea,
+        )
+    }
     // El acento elegido (por defecto el gris claro monocromo de Mochy) sustituye al primario; el resto no cambia.
     val esquema = remember(base, acento) { base.copy(primary = acento, onPrimary = textoSobre(acento)) }
     MaterialTheme(

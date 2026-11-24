@@ -160,6 +160,7 @@ fun HistorialScreen(
             val semanaFx = com.example.lector.fx.fxOn("weekstrip")
             LazyColumn(contentPadding = PaddingValues(bottom = 190.dp)) {
                 // Ideas de Threads: racha de lectura y gráfica semanal.
+                item(key = "si_mapa") { if (com.example.lector.fx.fxOn("si_mapa")) MapaLectura(almacen, comics) }
                 item(key = "th_racha") { if (com.example.lector.fx.fxOn("th_racha")) RachaLectura(almacen, comics) }
                 item(key = "th_graficas") { if (com.example.lector.fx.fxOn("th_graficas")) GraficaSemanal(almacen, comics) }
                 // Biblioteca de animaciones: Week Strip Calendar — toca un día para ver solo lo de ese día.
