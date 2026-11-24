@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -52,7 +53,7 @@ fun rememberPlegadoFicha(lista: LazyListState, alto: Dp): State<Float> {
 /** Fondo de la ficha: la portada desenfocada a sangre que se funde con el color de fondo. */
 @Composable
 fun FondoFicha(portadaSuave: @Composable (Modifier) -> Unit, alto: Dp, progreso: () -> Float, fondo: State<Color>, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(alto + 120.dp).graphicsLayer { alpha = 1f - progreso() * 0.8f; translationY = -progreso() * alto.toPx() * 0.3f }) {
+    Box(modifier.fillMaxWidth().height(alto + 120.dp).clipToBounds().graphicsLayer { alpha = 1f - progreso() * 0.8f; translationY = -progreso() * alto.toPx() * 0.3f }) {
         portadaSuave(
             Modifier.matchParentSize().graphicsLayer { alpha = 0.55f; scaleX = 1.2f; scaleY = 1.2f }
                 .then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(48.dp) else Modifier),
@@ -74,7 +75,7 @@ fun CabeceraFichaS(
 ) {
     val alto = altoPortadaFicha()
     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 56.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        val forma = RoundedCornerShape(12.dp)
+        val forma = SuaveShape(12.dp)
         portada(
             Modifier.height(alto - 40.dp).aspectRatio(2f / 3f)
                 .shadow(24.dp, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.5f), spotColor = Color.Black.copy(alpha = 0.6f))

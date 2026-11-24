@@ -1,5 +1,9 @@
 package com.example.lector.ui
 
+import androidx.compose.ui.draw.drawBehind
+
+import androidx.compose.animation.core.animateFloatAsState
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -42,71 +46,70 @@ import androidx.compose.ui.unit.sp
  * y el color lo ponen las portadas.
  */
 
-/** Borde de vidrio: una línea finísima más clara arriba que abajo. */
-private val BordeVidrio = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0.06f)))
-
-/** Superficie de vidrio flotante con sombra suave. */
-@Composable
-fun Modifier.vidrio(forma: Shape): Modifier = this
-    .shadow(16.dp, forma, clip = false, ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.35f))
-    .clip(forma)
-    .border(1.dp, BordeVidrio, forma)
-
-/**
- * Vidrio que copia lo de detrás. SOLO para lo que flota fuera del contenido capturado (barra y mini lector):
- * dentro de una pantalla se copiaría a sí mismo y el dibujo entraría en un bucle infinito.
- */
-@Composable
-private fun FondoVidrioFlotante(modifier: Modifier = Modifier) =
-    Box(modifier.background(LectorColors.Cristal.copy(alpha = 0.94f)))
-
-/** Vidrio para botones y barras dentro de las pantallas: translúcido, sin copiar el fondo. */
+/** Vidrio dentro de las pantallas (barras de arriba): translúcido, con la intensidad elegida. */
 @Composable
 private fun FondoVidrio(modifier: Modifier = Modifier) =
-    Box(modifier.background(if (TemaActual.oscuro) Color(0xFF3A3A3C).copy(alpha = 0.42f) else Color.White.copy(alpha = 0.55f)))
+    Box(modifier.background(LectorColors.Bg.copy(alpha = 0.99f - 0.14f * Aspecto.vidrio)))
 
 /**
- * Barra de pestañas flotante: una píldora con Inicio, Biblioteca, Novedades, Historial y Más,
- * y la búsqueda (Explorar) aparte, en un círculo a la derecha, como en Apple Music.
+ * Barra de pestañas flotante (el «dock» de ColorOS 17): una cápsula de vidrio con las cinco pestañas y, aparte, la
+ * esfera de Más. La pestaña activa la marca una cápsula de luz que se desliza con un muelle de una a otra.
  */
 @Composable
 fun BarraSilencio(selected: LectorTab, onSelect: (LectorTab) -> Unit, modifier: Modifier = Modifier) {
     val pestanas = remember { listOf(LectorTab.Home, LectorTab.Library, LectorTab.Search, LectorTab.Updates, LectorTab.History) }
+    val indice = pestanas.indexOf(selected)
+    val pos by animateFloatAsState(if (indice >= 0) indice.toFloat() else -1f, spring(dampingRatio = 0.72f, stiffness = 420f), label = "indicador")
+    val visible by animateFloatAsState(if (indice >= 0) 1f else 0f, spring(stiffness = 600f), label = "indicadorVis")
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        val forma = RoundedCornerShape(32.dp)
-        Box(Modifier.weight(1f).height(64.dp).vidrio(forma)) {
-            FondoVidrioFlotante(Modifier.matchParentSize())
-            Row(Modifier.fillMaxSize().padding(3.dp), verticalAlignment = Alignment.CenterVertically) {
+        val forma = CircleShape
+        Box(Modifier.weight(1f).height(62.dp).vidrioFlotante(forma)) {
+            // Cápsula de luz detrás de la pestaña activa.
+            val acento = androidx.compose.material3.MaterialTheme.colorScheme.primary
+            Box(
+                Modifier.fillMaxSize().padding(4.dp).drawBehind {
+                    if (visible <= 0f) return@drawBehind
+                    val ancho = size.width / pestanas.size
+                    val x = ancho * pos.coerceAtLeast(0f)
+                    drawRoundRect(
+                        (if (TemaActual.oscuro) Color.White else Color.Black).copy(alpha = 0.10f * visible),
+                        androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Size(ancho, size.height),
+                        androidx.compose.ui.geometry.CornerRadius(size.height / 2),
+                    )
+                    if (Aspecto.luminoso) drawCircle(
+                        Brush.radialGradient(listOf(acento.copy(alpha = 0.22f * visible), Color.Transparent), androidx.compose.ui.geometry.Offset(x + ancho / 2, size.height), ancho * 0.6f),
+                        ancho * 0.6f, androidx.compose.ui.geometry.Offset(x + ancho / 2, size.height),
+                    )
+                },
+            )
+            Row(Modifier.fillMaxSize().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 pestanas.forEach { t -> PestanaSilencio(t, t == selected, Modifier.weight(1f)) { onSelect(t) } }
             }
         }
         Spacer(Modifier.width(10.dp))
         val activa = selected == LectorTab.More
+        val fuente = remember { MutableInteractionSource() }
         Box(
-            Modifier.size(64.dp).vidrio(CircleShape)
-                .selectable(selected = activa, role = Role.Tab) { onSelect(LectorTab.More) },
+            Modifier.size(62.dp).respuestaFlexible(fuente, 0.88f).vidrioFlotante(CircleShape)
+                .selectable(selected = activa, interactionSource = fuente, indication = null, role = Role.Tab) { onSelect(LectorTab.More) },
             contentAlignment = Alignment.Center,
         ) {
-            FondoVidrioFlotante(Modifier.matchParentSize())
-            if (activa) Box(Modifier.matchParentSize().padding(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)))
-            Icon(Icons.Rounded.Settings, "Más", tint = if (activa) LectorColors.Text else LectorColors.Text.copy(alpha = 0.8f), modifier = Modifier.size(26.dp))
+            if (activa) Box(Modifier.matchParentSize().padding(5.dp).clip(CircleShape).background(LectorColors.Text.copy(alpha = 0.12f)))
+            Icon(Icons.Rounded.Settings, "Más", tint = if (activa) LectorColors.Text else LectorColors.Text.copy(alpha = 0.75f), modifier = Modifier.size(25.dp))
         }
     }
 }
 
 @Composable
 private fun PestanaSilencio(t: LectorTab, activa: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val fondo by animateColorAsState(
-        if (activa) LectorColors.Text.copy(alpha = 0.14f) else Color.Transparent,
-        spring(stiffness = Spring.StiffnessMediumLow), label = "pestana",
-    )
     val tinta by animateColorAsState(
-        if (activa) LectorColors.Text else LectorColors.Text.copy(alpha = 0.58f),
+        if (activa) LectorColors.Text else LectorColors.Text.copy(alpha = 0.55f),
         spring(stiffness = Spring.StiffnessMediumLow), label = "tinta",
     )
+    val fuente = remember { MutableInteractionSource() }
     Column(
-        modifier.fillMaxHeight().clip(RoundedCornerShape(28.dp)).background(fondo)
-            .selectable(selected = activa, interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Tab, onClick = onClick),
+        modifier.fillMaxHeight().clip(CircleShape).respuestaFlexible(fuente, 0.9f)
+            .selectable(selected = activa, interactionSource = fuente, indication = null, role = Role.Tab, onClick = { Tacto.tic(); onClick() }),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -122,24 +125,21 @@ fun MiniSilencio(
     progreso: Float? = null,
     portada: @Composable (Modifier) -> Unit,
 ) {
-    val forma = RoundedCornerShape(30.dp)
-    Box(modifier.fillMaxWidth().height(60.dp).vidrio(forma).clickable(onClickLabel = "Seguir leyendo", onClick = onClick)) {
-        FondoVidrioFlotante(Modifier.matchParentSize())
+    val forma = SuaveShape(30.dp)
+    Box(modifier.fillMaxWidth().height(60.dp).vidrioFlotante(CircleShape).clickable(onClickLabel = "Seguir leyendo", onClick = onClick)) {
         Row(Modifier.fillMaxSize().padding(start = 9.dp, end = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-            portada(Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)))
+            portada(Modifier.size(42.dp).clip(SuaveShape(10.dp)))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 LText(titulo, LectorType.Body.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold), maxLines = 1)
                 LText(subtitulo, LectorType.Label, color = LectorColors.Muted, maxLines = 1)
             }
-            Box(Modifier.size(42.dp).clip(CircleShape).background(LectorColors.Text).clickable(onClickLabel = "Seguir leyendo", onClick = onClick), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(42.dp).esfera(CircleShape, LectorColors.Text).clickable(onClickLabel = "Seguir leyendo", onClick = onClick), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.PlayArrow, "Seguir leyendo", tint = LectorColors.Bg, modifier = Modifier.size(24.dp))
             }
         }
         if (progreso != null) {
-            Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 30.dp).fillMaxWidth().height(2.dp).background(LectorColors.Text.copy(alpha = 0.12f))) {
-                Box(Modifier.fillMaxWidth(progreso.coerceIn(0f, 1f)).fillMaxHeight().background(LectorColors.Text.copy(alpha = 0.8f)))
-            }
+            BarraLuminosa(progreso, Modifier.align(Alignment.BottomCenter).padding(horizontal = 30.dp), alto = 2.dp)
         }
     }
 }
@@ -148,15 +148,8 @@ fun MiniSilencio(
 
 /** Botón redondo de vidrio (atrás, menús) que flota sobre el contenido. */
 @Composable
-fun BotonVidrio(icono: androidx.compose.ui.graphics.vector.ImageVector, descripcion: String, modifier: Modifier = Modifier, tam: androidx.compose.ui.unit.Dp = 40.dp, onClick: () -> Unit) {
-    Box(
-        modifier.size(tam).vidrio(CircleShape).clickable(onClickLabel = descripcion) { Tacto.tic(); onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        FondoVidrio(Modifier.matchParentSize())
-        Icon(icono, descripcion, tint = LectorColors.Text, modifier = Modifier.size(22.dp))
-    }
-}
+fun BotonVidrio(icono: androidx.compose.ui.graphics.vector.ImageVector, descripcion: String, modifier: Modifier = Modifier, tam: androidx.compose.ui.unit.Dp = 40.dp, onClick: () -> Unit) =
+    BotonCirculo(icono, descripcion, onClick, modifier, tam = tam)
 
 /**
  * Página con título grande (34 sp) que, al desplazar, pasa a una barra de vidrio arriba con el título pequeño
@@ -169,22 +162,23 @@ fun PaginaSilencio(
 ) {
     val scroll = androidx.compose.foundation.rememberScrollState()
     val densidad = androidx.compose.ui.platform.LocalDensity.current
-    val plegado by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { scroll.value > with(densidad) { 64.dp.toPx() } } }
-    val alfa by androidx.compose.animation.core.animateFloatAsState(if (plegado) 1f else 0f, androidx.compose.animation.core.tween(180), label = "barra")
+    val umbral = with(densidad) { 40.dp.toPx() }
+    // La barra aparece justo cuando el título grande llega al botón atrás; el título se apaga a la vez (sin solaparse).
+    val alfa by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { (scroll.value / umbral).coerceIn(0f, 1f) } }
     Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
         Column(Modifier.fillMaxSize().verticalScroll(scroll).statusBarsPadding().padding(bottom = 120.dp).anchoLectura()) {
-            Spacer(Modifier.height(64.dp))
-            LText(titulo, LectorType.Display.copy(fontSize = 34.sp, fontWeight = FontWeight.Bold), modifier = Modifier.padding(horizontal = 22.dp), maxLines = 2)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(60.dp))
+            LText(titulo, LectorType.Display, modifier = Modifier.padding(horizontal = MargenLateral).graphicsLayer { alpha = 1f - alfa; translationY = scroll.value * 0.25f }, maxLines = 2)
+            Spacer(Modifier.height(10.dp))
             content()
         }
-        Box(Modifier.fillMaxWidth().graphicsLayerAlpha(alfa)) {
-            Box(Modifier.matchParentSize().clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))) { FondoVidrio(Modifier.matchParentSize()) }
+        Box(Modifier.fillMaxWidth().graphicsLayer { alpha = alfa }) {
+            Box(Modifier.matchParentSize()) { FondoVidrio(Modifier.matchParentSize()); Regla(Modifier.align(Alignment.BottomCenter)) }
             Box(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp), contentAlignment = Alignment.Center) {
                 LText(titulo, LectorType.Body.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold), maxLines = 1, modifier = Modifier.padding(horizontal = 70.dp))
             }
         }
-        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (onBack != null) BotonVidrio(Icons.Rounded.ArrowBack, "Atrás", onClick = onBack)
             Spacer(Modifier.weight(1f))
             acciones()
@@ -194,37 +188,57 @@ fun PaginaSilencio(
 
 private fun Modifier.graphicsLayerAlpha(a: Float) = this.then(Modifier.graphicsLayer { alpha = a })
 
-/** Fila de ajustes agrupada: superficie del sistema, icono en un cuadrito redondeado, título, detalle y chevron. */
+/** Dentro de un [GrupoFilas] las filas no pintan su propia tarjeta: las une el grupo. */
+val LocalEnGrupo = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/** Grupo de filas de ajustes: una sola tarjeta de esquinas continuas con líneas finas entre filas (como ColorOS e iOS). */
+@Composable
+fun GrupoFilas(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val forma = SuaveShape(22.dp)
+    Column(modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth().clip(forma).background(LectorColors.Card).bordeLuminoso(forma, 0.5f)) {
+        androidx.compose.runtime.CompositionLocalProvider(LocalEnGrupo provides true) { content() }
+    }
+}
+
+/**
+ * Fila de ajustes: icono en una esfera pequeña, título, detalle y chevron. Sola, es una cápsula propia de esquinas
+ * continuas; dentro de [GrupoFilas], una fila más del grupo separada por una línea fina.
+ */
 @Composable
 fun FilaSilencio(
     icon: androidx.compose.ui.graphics.vector.ImageVector?, titulo: String, detalle: String?,
     onClick: (() -> Unit)?, final: (@Composable () -> Unit)? = null,
     interruptor: Boolean? = null,
 ) {
-    Column {
-    Row(
-        Modifier.fillMaxWidth()
-            .then(
-                if (interruptor != null && onClick != null) Modifier.toggleable(value = interruptor, role = Role.Switch) { onClick() }
-                else if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
-            )
-            .heightIn(min = 52.dp).padding(horizontal = MargenLateral, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) {
-            Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(LectorColors.Card).border(0.6.dp, LectorColors.Linea, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = LectorColors.Text, modifier = Modifier.size(17.dp))
+    val enGrupo = LocalEnGrupo.current
+    val forma = SuaveShape(20.dp)
+    val fuente = remember { MutableInteractionSource() }
+    Column(if (enGrupo) Modifier else Modifier.padding(horizontal = 12.dp, vertical = 3.dp)) {
+        Row(
+            Modifier.fillMaxWidth()
+                .then(if (enGrupo) Modifier else Modifier.clip(forma).background(LectorColors.Card).bordeLuminoso(forma, 0.5f))
+                .respuestaFlexible(fuente, if (enGrupo) 1f else 0.97f)
+                .then(
+                    if (interruptor != null && onClick != null) Modifier.toggleable(value = interruptor, interactionSource = fuente, indication = null, role = Role.Switch) { onClick() }
+                    else if (onClick != null) Modifier.clickable(fuente, null, onClick = onClick) else Modifier
+                )
+                .heightIn(min = 56.dp).padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                Box(Modifier.size(32.dp).esfera(CircleShape, LectorColors.CardHigh, sombra = false), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = LectorColors.Text, modifier = Modifier.size(17.dp))
+                }
+                Spacer(Modifier.width(13.dp))
             }
-            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                LText(titulo, LectorType.Body.copy(fontSize = 16.sp))
+                if (!detalle.isNullOrBlank()) LText(detalle, LectorType.Label.copy(fontSize = 13.sp, fontWeight = FontWeight.Normal), color = LectorColors.Muted, maxLines = 3)
+            }
+            if (final != null) { Spacer(Modifier.width(12.dp)); final() }
+            else if (onClick != null) { Spacer(Modifier.width(8.dp)); LText("›", LectorType.Body.copy(fontSize = 20.sp), color = LectorColors.Muted) }
         }
-        Column(Modifier.weight(1f)) {
-            LText(titulo, LectorType.Body.copy(fontSize = 16.sp))
-            if (!detalle.isNullOrBlank()) LText(detalle, LectorType.Label.copy(fontSize = 13.sp, fontWeight = FontWeight.Normal), color = LectorColors.Muted, maxLines = 3)
-        }
-        if (final != null) { Spacer(Modifier.width(12.dp)); final() }
-        else if (onClick != null) { Spacer(Modifier.width(8.dp)); LText("›", LectorType.Body.copy(fontSize = 20.sp), color = LectorColors.Muted) }
-    }
-    Regla(inicio = MargenLateral + if (icon != null) 44.dp else 0.dp)
+        if (enGrupo) Regla(inicio = if (icon != null) 59.dp else 14.dp)
     }
 }
 
@@ -246,7 +260,7 @@ fun TarjetaSeguir(
     comic: com.example.lector.Comic, almacen: com.example.lector.Almacen, etiqueta: String,
     onOpen: () -> Unit, onRead: () -> Unit, onLong: () -> Unit,
 ) {
-    val forma = RoundedCornerShape(24.dp)
+    val forma = SuaveShape(24.dp)
     Box(
         Modifier.width(260.dp).height(360.dp).shadow(12.dp, forma, clip = false).clip(forma)
             .combinedClickableSilencio(onOpen, onLong),
@@ -254,7 +268,7 @@ fun TarjetaSeguir(
         ComicCover(comic, almacen, Modifier.fillMaxSize(), RoundedCornerShape(0.dp))
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.55f))))
         Row(
-            Modifier.align(Alignment.BottomCenter).padding(8.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp))
+            Modifier.align(Alignment.BottomCenter).padding(8.dp).fillMaxWidth().clip(SuaveShape(18.dp))
                 .background(Color.Black.copy(alpha = 0.35f)).padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -319,18 +333,15 @@ fun LibraryTabChips(labels: List<String>, counts: List<Int>?, selected: Int, onS
 /** Chip nativo (FilterChip de Material 3) con el aspecto Silencio: píldora gris; elegido, blanco con texto negro. */
 @Composable
 fun ChipNativo(texto: String, seleccionado: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    androidx.compose.material3.FilterChip(
-        selected = seleccionado,
-        onClick = { Tacto.tic(); onClick() },
-        label = { LText(texto, LectorType.Body.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), maxLines = 1, color = if (seleccionado) LectorColors.Bg else LectorColors.Text) },
-        modifier = modifier,
-        shape = CircleShape,
-        border = null,
-        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-            containerColor = LectorColors.Card, selectedContainerColor = LectorColors.Text,
-            labelColor = LectorColors.Text, selectedLabelColor = LectorColors.Bg,
-        ),
-    )
+    val fondo by animateColorAsState(if (seleccionado) LectorColors.Text else LectorColors.Card, spring(stiffness = 700f), label = "pildora")
+    val tinta by animateColorAsState(if (seleccionado) LectorColors.Bg else LectorColors.Text, spring(stiffness = 700f), label = "pildoraTinta")
+    val fuente = remember { MutableInteractionSource() }
+    Box(
+        modifier.height(36.dp).respuestaFlexible(fuente, 0.92f).esfera(CircleShape, fondo, sombra = seleccionado)
+            .selectable(selected = seleccionado, interactionSource = fuente, indication = null, role = Role.Tab) { Tacto.tic(); onClick() }
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
+    ) { LText(texto, LectorType.Body.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), color = tinta, maxLines = 1) }
 }
 
 

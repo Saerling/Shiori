@@ -15,7 +15,7 @@ adb logcat -c
 
 abrir() { adb shell am start -n $PKG/com.example.lector.MainActivity >/dev/null; sleep "${1:-8}"; }
 vivo() { [ -n "$(adb shell pidof $PKG)" ]; }
-cap() { N=$((N+1)); f=$(printf "cap-%02d-%s.png" $N "$1"); adb exec-out screencap -p > "$f"
+cap() { N=$((N+1)); local arch; arch=$(printf "cap-%02d-%s.png" $N "$1"); adb exec-out screencap -p > "$arch"
   if vivo; then echo "$1: ok" >> $R; else echo "$1: SE CERRÓ" >> $R; adb logcat -d | grep -A30 "FATAL EXCEPTION" | tail -32 >> $R; abrir 10; fi; }
 dump() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1; }
 centro() { # bounds del primer nodo con ese texto/descripción (coincidencia exacta)
@@ -23,7 +23,7 @@ centro() { # bounds del primer nodo con ese texto/descripción (coincidencia exa
 tocar() { # toca el nodo; si no está, desplaza hacia abajo hasta 6 veces
   local b=""
   for k in 1 2 3 4 5 6 7; do dump; b=$(centro "$1"); [ -n "$b" ] && break; adb shell input swipe 540 1700 540 900 300; sleep 1; done
-  if [ -z "$b" ]; then echo "  no encontré «$1»" >> $R; return 1; fi
+  if [ -z "$b" ]; then echo "  no encontré «$1» (en pantalla: $(grep -oE '(text|content-desc)="[^"]+"' ui.xml | head -14 | cut -d'"' -f2 | tr '\n' '|'))" >> $R; return 1; fi
   set -- $(echo $b | grep -oE '[0-9]+'); adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); sleep 2; return 0; }
 mantener() { dump; local b=$(centro "$1"); [ -z "$b" ] && { echo "  no encontré «$1» para mantener" >> $R; return 1; }
   set -- $(echo $b | grep -oE '[0-9]+'); local x=$(( ($1+$3)/2 )) y=$(( ($2+$4)/2 )); adb shell input swipe $x $y $x $y 900; sleep 2; }
@@ -37,14 +37,14 @@ for t in Biblioteca Explorar Novedades Historial; do tocar "$t" && sleep 2; cap 
 
 # ── Más y cada fila
 tocar "Más"; cap mas; bajar; cap mas-abajo; arriba
-for f in "Categorías" "Estadísticas" "Migraciones recientes" "Datos y almacenamiento" "Acerca de"; do
-  arriba; tocar "$f" && { sleep 2; cap "mas-$f"; bajar; cap "mas-$f-abajo"; atras; }
+for fila in "Categorías" "Estadísticas" "Migraciones recientes" "Datos y almacenamiento" "Acerca de"; do
+  arriba; tocar "$fila" && { sleep 2; cap "mas-$fila"; bajar; cap "mas-$fila-abajo"; atras; }
 done
 
 # ── Ajustes y sus páginas
 arriba; tocar "Ajustes"; cap ajustes
-for f in "Aspecto" "Biblioteca" "Visor" "Descargas" "Seguimiento" "Explorar" "Datos y almacenamiento" "Seguridad y privacidad" "Avanzado" "Acerca de"; do
-  arriba; tocar "$f" && { sleep 2; cap "aj-$f"; bajar; cap "aj-$f-2"; bajar; cap "aj-$f-3"; atras; }
+for fila in "Aspecto" "Biblioteca" "Visor" "Descargas" "Seguimiento" "Explorar" "Datos y almacenamiento" "Seguridad y privacidad" "Avanzado" "Acerca de"; do
+  arriba; tocar "$fila" && { sleep 2; cap "aj-$fila"; bajar; cap "aj-$fila-2"; bajar; cap "aj-$fila-3"; atras; }
 done
 # Tema claro y negro puro, para ver los tres.
 arriba; tocar "Aspecto" && { tocar "Claro"; cap aspecto-claro; tocar "Negro"; cap aspecto-negro; tocar "Grafito"; cap aspecto-grafito; atras; }
@@ -53,9 +53,8 @@ atras
 # ── Explorar: extensiones, fuentes, catálogo, ficha y lector
 tocar "Explorar"; cap explorar
 tocar "Extensiones"; sleep 4; cap explorar-extensiones
-tocar "Confiar" && cap confiar
-tocar "18+" 2>/dev/null
-tocar "Fuentes"; sleep 2; cap explorar-fuentes
+tocar "Confiar" && { cap confiar; tocar "Confiar en todas"; sleep 3; cap confiada; }
+arriba; tocar "Fuentes"; sleep 3; cap explorar-fuentes
 tocar "Eternal Mangas" && { sleep 10; cap catalogo; bajar; sleep 4; cap catalogo-abajo; arriba
   # Mantener pulsada la primera portada: menú.
   dump; p=$(grep -oE 'bounds="\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]"' ui.xml | sed -n '40p'); echo "  portada: $p" >> $R
@@ -70,7 +69,8 @@ tocar "Eternal Mangas" && { sleep 10; cap catalogo; bajar; sleep 4; cap catalogo
   bajar; adb shell input swipe 200 1500 800 1500 300; sleep 2; cap ficha-deslizar
   atras; atras; }
 
-# ── Con un manga en la biblioteca
+# ── Con un manga en la biblioteca (vuelve a la raíz primero)
+for k in 1 2 3; do atras; done; abrir 6
 tocar "Biblioteca"; sleep 3; cap biblioteca-llena
 tocar "Inicio"; sleep 3; cap inicio-lleno
 tocar "Historial"; sleep 3; cap historial-lleno

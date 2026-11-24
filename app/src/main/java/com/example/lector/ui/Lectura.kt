@@ -51,7 +51,7 @@ private val EstiloClave = LectorType.Label.copy(fontFamily = FontFamily.Monospac
 fun PropiedadesFicha(filas: List<Pair<String, String?>>, modifier: Modifier = Modifier) {
     val visibles = filas.filter { !it.second.isNullOrBlank() }
     if (visibles.isEmpty()) return
-    val forma = RoundedCornerShape(14.dp)
+    val forma = SuaveShape(14.dp)
     Column(modifier.fillMaxWidth().clip(forma).background(LectorColors.Card).border(1.dp, LectorColors.Linea, forma)) {
         visibles.forEachIndexed { i, (k, v) ->
             if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(LectorColors.Linea))
@@ -100,7 +100,7 @@ fun MapaLectura(almacen: Almacen, comics: List<Comic>, modifier: Modifier = Modi
     val t by animateFloatAsState(if (entro || Mov.reducido) 1f else 0f, tween(700), label = "mapa")
     // Hoy cae en la fila de su día de la semana (lunes = 0); la última columna puede quedar a medias.
     val hoyFila = remember { (java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7 }
-    Column(modifier.fillMaxWidth().padding(horizontal = MargenLateral, vertical = 8.dp).clip(RoundedCornerShape(16.dp)).background(LectorColors.Card).borde(16.dp).padding(16.dp)) {
+    Column(modifier.fillMaxWidth().padding(horizontal = MargenLateral, vertical = 8.dp).clip(SuaveShape(16.dp)).background(LectorColors.Card).borde(16.dp).padding(16.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
             LText("Mapa de lectura", LectorType.Section, Modifier.weight(1f))
             LText("$total caps. · $activos días", EstiloClave, color = LectorColors.Muted)

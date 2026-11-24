@@ -107,12 +107,9 @@ fun rememberCabeceras(fuenteId: Long): Map<String, String> {
 }
 
 /** Progreso fino (3 dp): pista gris y avance del color del texto. */
+/** Progreso fino y luminoso. */
 @Composable
-fun ProgressLine(progress: Float, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(LectorColors.PillFill)) {
-        Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).fillMaxHeight().background(androidx.compose.material3.MaterialTheme.colorScheme.primary))
-    }
-}
+fun ProgressLine(progress: Float, modifier: Modifier = Modifier) = BarraLuminosa(progress, modifier, alto = 3.dp)
 
 @Composable
 fun PillButton(text: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) =
@@ -161,7 +158,7 @@ fun MiniReader(comic: Comic, almacen: Almacen, onClick: () -> Unit, modifier: Mo
     MiniReaderGenerico(
         comic.titulo, comic.textoPagina(), onClick, modifier,
         progreso = if (comic.paginas > 0) ((comic.ultimaPagina + if (comic.enLinea) 0 else 1).toFloat() / comic.paginas).coerceIn(0f, 1f) else null,
-    ) { m -> ComicCover(comic, almacen, m, RoundedCornerShape(10.dp)) }
+    ) { m -> ComicCover(comic, almacen, m, SuaveShape(10.dp)) }
 
 @Composable
 fun MiniReaderGenerico(

@@ -95,7 +95,7 @@ fun DetalleScreen(
         FondoFicha({ m -> ComicCover(comic, almacen, m, RoundedCornerShape(0.dp)) }, alto, pliegue, fondo)
         Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(bottom = 130.dp).graphicsLayer { alpha = t }) {
             CabeceraFichaS(
-                portada = { m -> ComicCover(comic, almacen, m, RoundedCornerShape(12.dp)) },
+                portada = { m -> ComicCover(comic, almacen, m, SuaveShape(12.dp)) },
                 title = comic.titulo, creators = listOfNotNull(comic.autor?.takeIf { it.isNotBlank() }),
                 stats = listOf("${comic.paginas} páginas", estado).joinToString(" · "),
                 playLabel = if (comic.enCurso()) "Reanudar" else "Leer", playEnabled = true, onPlayClick = onRead, acento = acento,

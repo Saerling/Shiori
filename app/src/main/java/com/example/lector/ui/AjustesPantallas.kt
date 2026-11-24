@@ -82,15 +82,17 @@ fun AjustesScreen(almacen: Almacen, onBack: () -> Unit, onRuta: (Ruta) -> Unit) 
         Box(Modifier.padding(horizontal = MargenLateral, vertical = 6.dp)) { CampoBusqueda(q, { q = it }, "Buscar en ajustes") }
         if (texto.isNotEmpty()) {
             if (hallados.isEmpty()) LText("Ningún ajuste coincide con «$texto».", EstiloCuerpo, Modifier.padding(MargenLateral, 16.dp), color = LectorColors.Muted)
-            hallados.forEach { (t, _, r) ->
-                val ap = APARTADOS_AJUSTES.firstOrNull { it.ruta == r }
-                FilaSilencio(ap?.icono ?: Icons.Rounded.Settings, t, ap?.titulo, { onRuta(r) })
+            if (hallados.isNotEmpty()) GrupoFilas {
+                hallados.forEach { (t, _, r) ->
+                    val ap = APARTADOS_AJUSTES.firstOrNull { it.ruta == r }
+                    FilaSilencio(ap?.icono ?: Icons.Rounded.Settings, t, ap?.titulo, { onRuta(r) })
+                }
             }
             return@PaginaSilencio
         }
         // Tarjeta de la app: logo, nombre y versión.
         Row(
-            Modifier.padding(horizontal = MargenLateral, vertical = 10.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            Modifier.padding(horizontal = MargenLateral, vertical = 10.dp).fillMaxWidth().clip(SuaveShape(16.dp))
                 .background(LectorColors.Card).borde(16.dp).clickable { onRuta(Ruta.AcercaDe) }.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -103,7 +105,7 @@ fun AjustesScreen(almacen: Almacen, onBack: () -> Unit, onRuta: (Ruta) -> Unit) 
             LText("›", LectorType.Body.copy(fontSize = 20.sp), color = LectorColors.Muted)
         }
         TituloSeccion("General")
-        APARTADOS_AJUSTES.forEachIndexed { i, a -> Box(Modifier.entrada(i)) { FilaSilencio(a.icono, a.titulo, a.detalle, { onRuta(a.ruta) }) } }
+        GrupoFilas(Modifier.entrada(1)) { APARTADOS_AJUSTES.forEach { a -> FilaSilencio(a.icono, a.titulo, a.detalle, { onRuta(a.ruta) }) } }
     }
 }
 
@@ -130,6 +132,8 @@ private val AJUSTES_BUSCABLES: List<Triple<String, String, Ruta>> = listOf(
     Triple("Gestos de capítulos", "deslizar leído marcar descargar", Ruta.Apariencia),
     Triple("Redondeo de portadas", "esquinas portada", Ruta.Apariencia),
     Triple("Animaciones", "velocidad quitar animaciones movimiento", Ruta.Apariencia),
+    Triple("Intensidad del vidrio", "vidrio transparencia cristal claro tintado", Ruta.Apariencia),
+    Triple("Efecto luminoso", "luz brillo halo bordes", Ruta.Apariencia),
     Triple("Vista de la biblioteca", "cuadrícula lista columnas portadas", Ruta.AjBiblioteca),
     Triple("Categorías", "categoría ordenar ocultas", Ruta.AjBiblioteca),
     Triple("Actualizar biblioteca", "actualizaciones automáticas novedades capítulos nuevos", Ruta.AjBiblioteca),
@@ -209,6 +213,13 @@ fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit) {
             }
         }
         FilaSwitch("Color de la portada", "La ficha y el lector toman el color de la portada.", almacen.colorPortada) { almacen.elegirColorPortada(it) }
+        TituloSeccion("Vidrio y luz")
+        FilaSilencio(null, "Intensidad del vidrio", when { Aspecto.vidrio < 0.25f -> "Tintado"; Aspecto.vidrio > 0.75f -> "Claro"; else -> "Normal" }, null)
+        Box(Modifier.padding(horizontal = MargenLateral)) {
+            DeslizadorExpresivo(Aspecto.vidrio, 0f..1f, { Aspecto.elegirVidrio(it) })
+        }
+        LText("Cuánto deja ver la barra, el mini lector y las barras de arriba lo que hay detrás.", LectorType.Label, Modifier.padding(MargenLateral, 6.dp), color = LectorColors.Muted)
+        FilaSwitch("Efecto luminoso", "Bordes de luz en esferas y cápsulas, halo en el progreso y en la pestaña activa.", Aspecto.luminoso) { Aspecto.elegirLuminoso(it) }
         TituloSeccion("Portadas")
         FilaSilencio(null, "Redondeo", "${Aspecto.radioPortada.toInt()} dp", null, final = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -216,7 +227,7 @@ fun AparienciaScreen(almacen: Almacen, onBack: () -> Unit) {
             }
         })
         Box(Modifier.padding(horizontal = MargenLateral)) {
-            DeslizadorExpresivo(Aspecto.radioPortada, 0f..24f, { Aspecto.elegirRadioPortada(it.roundToInt().toFloat()) })
+            DeslizadorExpresivo(Aspecto.radioPortada, 0f..28f, { Aspecto.elegirRadioPortada(it.roundToInt().toFloat()) })
         }
         FilaSwitch("Portadas panorámicas", "En Historial y Novedades, las portadas apaisadas se ven a lo ancho.", Aspecto.panoramica) { Aspecto.elegirPanoramica(it) }
         TituloSeccion("Biblioteca")
@@ -267,7 +278,7 @@ private fun FilaGesto(titulo: String, actual: AccionGesto, alElegir: (AccionGest
 private fun TarjetaTema(
     nombre: String, color: Color, seleccionada: Boolean, fondo: Color, tarjeta: Color, texto: Color, onClick: () -> Unit,
 ) {
-    val forma = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+    val forma = SuaveShape(16.dp)
     Column(Modifier.width(92.dp).pressable(onClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier.fillMaxWidth().height(132.dp).clip(forma).background(fondo)

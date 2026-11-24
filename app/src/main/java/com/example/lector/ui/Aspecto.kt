@@ -27,7 +27,7 @@ object Aspecto {
     /** Animación al abrir la app. */
     var arranque by mutableStateOf(AnimArranque.PUNTOS); private set
     /** Redondeo de las portadas en toda la app, en dp. */
-    var radioPortada by mutableFloatStateOf(10f); private set
+    var radioPortada by mutableFloatStateOf(14f); private set
     /** Fondo oscuro grafito (como Obsidian) en vez de negro puro. */
     var grafito by mutableStateOf(true); private set
     /** Mantener pulsado añade o quita de la biblioteca directamente, sin menú. */
@@ -35,6 +35,10 @@ object Aspecto {
     /** Portadas apaisadas a lo ancho en Historial y Novedades. */
     var panoramica by mutableStateOf(false); private set
     var verDescargas by mutableStateOf(true); private set
+    /** Intensidad del vidrio de lo que flota (barra, mini lector, barras de arriba, hojas): 0 = casi opaco, 1 = muy claro. */
+    var vidrio by mutableFloatStateOf(0.5f); private set
+    /** Brillo de borde y halos (efecto luminoso de ColorOS 17). */
+    var luminoso by mutableStateOf(true); private set
     var ladoDescargas by mutableStateOf(LadoDescargas.IZQUIERDA); private set
 
     fun iniciar(ctx: Context) {
@@ -42,19 +46,23 @@ object Aspecto {
         val p = ctx.applicationContext.getSharedPreferences("aspecto", Context.MODE_PRIVATE).also { prefs = it }
         grafito = p.getBoolean("grafito", true)
         arranque = runCatching { AnimArranque.valueOf(p.getString("arranque", null)!!) }.getOrDefault(AnimArranque.PUNTOS)
-        radioPortada = p.getFloat("radio_portada2", 10f)
+        radioPortada = p.getFloat("radio_portada3", 14f)
         accionDirecta = p.getString("estilo_menu", null) == "DIRECTO" || p.getBoolean("accion_directa", false)
         panoramica = p.getBoolean("estilo_panoramica", false)
         verDescargas = p.getBoolean("estilo_descargas", true)
+        vidrio = p.getFloat("vidrio", 0.5f)
+        luminoso = p.getBoolean("luminoso", true)
         ladoDescargas = runCatching { LadoDescargas.valueOf(p.getString("estilo_descargas_lado", null)!!) }.getOrDefault(LadoDescargas.IZQUIERDA)
     }
 
     private fun b(k: String, v: Boolean) { prefs?.edit()?.putBoolean(k, v)?.apply() }
     fun elegir(a: AnimArranque) { arranque = a; prefs?.edit()?.putString("arranque", a.name)?.apply() }
-    fun elegirRadioPortada(v: Float) { radioPortada = v; prefs?.edit()?.putFloat("radio_portada2", v)?.apply() }
+    fun elegirRadioPortada(v: Float) { radioPortada = v; prefs?.edit()?.putFloat("radio_portada3", v)?.apply() }
     fun elegirGrafito(v: Boolean) { grafito = v; b("grafito", v) }
     fun elegirAccionDirecta(v: Boolean) { accionDirecta = v; b("accion_directa", v); prefs?.edit()?.remove("estilo_menu")?.apply() }
     fun elegirPanoramica(v: Boolean) { panoramica = v; b("estilo_panoramica", v) }
+    fun elegirVidrio(v: Float) { vidrio = v.coerceIn(0f, 1f); prefs?.edit()?.putFloat("vidrio", vidrio)?.apply() }
+    fun elegirLuminoso(v: Boolean) { luminoso = v; b("luminoso", v) }
     fun elegirVerDescargas(v: Boolean) { verDescargas = v; b("estilo_descargas", v) }
     fun elegir(v: LadoDescargas) { ladoDescargas = v; prefs?.edit()?.putString("estilo_descargas_lado", v.name)?.apply() }
 
@@ -72,8 +80,8 @@ object Aspecto {
 enum class AnimArranque(val nombre: String) { PUNTOS("Puntos"), AGUJERO("Agujero negro"), RAPIDA("Rápida"), NINGUNA("Ninguna") }
 
 /** Forma de las portadas según el ajuste de redondeo ([escala] para portadas pequeñas). */
-val FormaPortada: androidx.compose.ui.graphics.Shape get() = androidx.compose.foundation.shape.RoundedCornerShape(Aspecto.radioPortada.dp)
-fun formaPortada(escala: Float): androidx.compose.ui.graphics.Shape = androidx.compose.foundation.shape.RoundedCornerShape((Aspecto.radioPortada * escala).dp)
+val FormaPortada: androidx.compose.ui.graphics.Shape get() = SuaveShape(Aspecto.radioPortada.dp)
+fun formaPortada(escala: Float): androidx.compose.ui.graphics.Shape = SuaveShape((Aspecto.radioPortada * escala).dp)
 
 /** Velocidad global de las animaciones: se entrega al Recomposer de la ventana. */
 object MovimientoApp {

@@ -144,29 +144,35 @@ fun Modifier.tocar(onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modi
 
 // ───────────── Botones ─────────────
 
-/** Botón redondo neutro (acciones de cabecera, de fila, de la ficha). */
+/** Esfera pulsable (acciones de cabecera, de fila, de la ficha): volumen suave, borde de luz y respuesta flexible. */
 @Composable
 fun BotonCirculo(
     icono: ImageVector, descripcion: String, onClick: () -> Unit, modifier: Modifier = Modifier,
     tam: Dp = 40.dp, activo: Boolean = false, tinte: Color? = null, relleno: Color? = null,
 ) {
     val fondo by animateColorAsState(if (activo) LectorColors.Text else relleno ?: RellenoPildora, label = "circulo")
+    val fuente = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Box(
-        modifier.size(tam).clip(CircleShape).background(fondo)
-            .clickable(role = Role.Button, onClickLabel = descripcion) { Tacto.tic(); onClick() },
+        modifier.size(tam).respuestaFlexible(fuente, 0.88f)
+            .then(if (fondo.alpha == 0f) Modifier.clip(CircleShape) else Modifier.esfera(CircleShape, fondo, sombra = relleno == null))
+            .clickable(fuente, null, role = Role.Button, onClickLabel = descripcion) { Tacto.tic(); onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Icon(icono, descripcion, tint = if (activo) LectorColors.Bg else tinte ?: LectorColors.Text, modifier = Modifier.size(tam * 0.5f))
     }
 }
 
-/** Botón principal: píldora blanca (o de acento) con icono y texto. */
+/** Botón principal: cápsula del color del texto (o de acento) con un halo suave debajo. */
 @Composable
 fun BotonLeer(texto: String, onClick: () -> Unit, modifier: Modifier = Modifier, habilitado: Boolean = true, icono: ImageVector = Icons.Rounded.PlayArrow, color: Color = LectorColors.Text) {
     val tinta = textoSobreSil(color)
+    val fuente = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val halo = MaterialTheme.colorScheme.primary
     Row(
-        modifier.height(48.dp).clip(CircleShape).background(if (habilitado) color else color.copy(alpha = 0.3f))
-            .clickable(enabled = habilitado, onClickLabel = texto) { Tacto.tic(); onClick() }.padding(horizontal = 22.dp),
+        modifier.height(50.dp).respuestaFlexible(fuente, 0.95f)
+            .then(if (Aspecto.luminoso && habilitado) Modifier.shadow(14.dp, CircleShape, clip = false, ambientColor = halo.copy(alpha = 0.5f), spotColor = halo.copy(alpha = 0.6f)) else Modifier)
+            .esfera(CircleShape, if (habilitado) color else color.copy(alpha = 0.3f), sombra = false)
+            .clickable(fuente, null, enabled = habilitado, onClickLabel = texto) { Tacto.tic(); onClick() }.padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
         Icon(icono, null, tint = tinta, modifier = Modifier.size(20.dp))
@@ -180,7 +186,7 @@ fun textoSobreSil(c: Color): Color = if ((c.red * 0.299f + c.green * 0.587f + c.
 /** Botón pequeño de fila (descargar, anclar…): círculo tonal de 34 dp. */
 @Composable
 fun AccionFila(icon: ImageVector, contentDescription: String, onClick: () -> Unit, tint: Color? = null, fill: Color? = null) =
-    BotonCirculo(icon, contentDescription, onClick, tam = 34.dp, tinte = tint, relleno = fill ?: Color.Transparent)
+    BotonCirculo(icon, contentDescription, onClick, tam = 34.dp, tinte = tint, relleno = fill)
 
 // ───────────── Títulos ─────────────
 
@@ -252,7 +258,7 @@ fun FilaPortada(
     cover: @Composable () -> Unit, extra: (@Composable () -> Unit)? = null, trailing: (@Composable () -> Unit)? = null,
 ) {
     val velo = LectorColors.Text.copy(alpha = 0.10f * selected)
-    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(velo).then(if (onClick != null) Modifier.tocar(onLongClick, onClick) else Modifier)) {
+    Column(modifier.fillMaxWidth().clip(SuaveShape(10.dp)).background(velo).then(if (onClick != null) Modifier.tocar(onLongClick, onClick) else Modifier)) {
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             cover()
             Spacer(Modifier.width(14.dp))
@@ -404,9 +410,9 @@ fun CampoBuscar(
 ) {
     val fondo by animateColorAsState(if (focused) Tonos.CampoFoco else Tonos.Campo, label = "campo")
     Row(
-        modifier.fillMaxWidth().height(AltoCampo).clip(RoundedCornerShape(12.dp)).background(fondo)
+        modifier.fillMaxWidth().height(AltoCampo).clip(CircleShape).background(fondo).bordeLuminoso(CircleShape, 0.6f)
             .then(if (readOnlyClick != null) Modifier.clickable(onClick = readOnlyClick) else Modifier)
-            .padding(start = 12.dp, end = 6.dp),
+            .padding(start = 14.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leading != null) leading() else Icon(Icons.Rounded.Search, null, tint = LectorColors.Muted, modifier = Modifier.size(20.dp))
@@ -521,11 +527,11 @@ fun TarjetaResultado(
     extra: (@Composable () -> Unit)? = null,
 ) {
     Row(
-        modifier.padding(horizontal = MargenLateral).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(LectorColors.Card).borde(16.dp)
+        modifier.padding(horizontal = MargenLateral).fillMaxWidth().clip(SuaveShape(22.dp)).background(LectorColors.Card).bordeLuminoso(SuaveShape(22.dp), 0.6f)
             .tocar(onLongClick, onClick).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) { artwork() }
+        Box(Modifier.size(76.dp).clip(SuaveShape(10.dp)), contentAlignment = Alignment.Center) { artwork() }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             LText(title, EstiloFilaTitulo.copy(fontSize = 18.sp, lineHeight = 22.sp), maxLines = 2)

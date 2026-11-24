@@ -581,7 +581,7 @@ private fun NovedadesFuente(
         val lst = estado
         when {
             lst == null && fallo != null -> Row(
-                Modifier.padding(horizontal = MargenLateral).fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                Modifier.padding(horizontal = MargenLateral).fillMaxWidth().clip(SuaveShape(16.dp))
                     .background(Tonos.Fila).borde(16.dp)
                     .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -655,7 +655,7 @@ private fun OrdenarNovedades(ext: ExtManager) {
                         .zIndex(if (levantada) 1f else 0f)
                         .offset { IntOffset(0, if (levantada) desplaz.roundToInt() else 0) }
                         .graphicsLayer { scaleX = escala; scaleY = escala }
-                        .clip(RoundedCornerShape(16.dp)).background(fondo).borde(16.dp),
+                        .clip(SuaveShape(16.dp)).background(fondo).borde(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
@@ -818,7 +818,7 @@ private fun ExtensionesTab(
                     // Tarjeta : cuántas faltan por confiar y el botón blanco para hacerlo de golpe.
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = MargenLateral).padding(bottom = 12.dp)
-                            .clip(RoundedCornerShape(16.dp)).background(Tonos.Fila).borde(16.dp).padding(14.dp),
+                            .clip(SuaveShape(16.dp)).background(Tonos.Fila).borde(16.dp).padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.size(TamAvatar).clip(CircleShape).background(Tonos.FilaAlta), Alignment.Center) {
@@ -847,7 +847,7 @@ private fun ExtensionesTab(
                 item(key = "errores", contentType = "Aviso") {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = MargenLateral).padding(bottom = 12.dp)
-                            .clip(RoundedCornerShape(16.dp)).background(Tonos.Fila).borde(16.dp).padding(14.dp),
+                            .clip(SuaveShape(16.dp)).background(Tonos.Fila).borde(16.dp).padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         ext.errores.forEach { Text(it, style = TipoBase.bodySmall.copy(fontSize = 12.sp), color = Rojo) }
@@ -1290,7 +1290,7 @@ private fun Vacio(texto: String, accion: String? = null, onAccion: (() -> Unit)?
 private fun Aviso(texto: String, accion: String, onAccion: () -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(horizontal = MargenLateral).padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(16.dp)).background(Tonos.Fila).borde(16.dp).padding(16.dp)
+            .clip(SuaveShape(16.dp)).background(Tonos.Fila).borde(16.dp).padding(16.dp)
     ) {
         Icon(Icons.Rounded.Info, null, tint = Tonos.Secundario, modifier = Modifier.size(22.dp))
         Spacer(Modifier.height(10.dp))

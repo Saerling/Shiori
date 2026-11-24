@@ -78,14 +78,14 @@ fun IslaCopia(modifier: Modifier = Modifier) {
             val liquido = LectorColors.Text.copy(alpha = 0.08f)
             Column(
                 Modifier
-                    .shadow(12.dp, androidx.compose.foundation.shape.RoundedCornerShape(22.dp), clip = false, ambientColor = Color.Black, spotColor = Color.Black)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
+                    .shadow(12.dp, SuaveShape(22.dp), clip = false, ambientColor = Color.Black, spotColor = Color.Black)
+                    .clip(SuaveShape(22.dp))
                     .background(LectorColors.Aviso)
                     .drawBehind {
                         // El «líquido»: rellena la píldora según el avance (solo mientras trabaja).
                         if (estado != null) drawRect(liquido, size = Size(size.width * fraccion, size.height))
                     }
-                    .border(0.6.dp, LectorColors.Linea, androidx.compose.foundation.shape.RoundedCornerShape(22.dp))
+                    .border(0.6.dp, LectorColors.Linea, SuaveShape(22.dp))
                     .pressableCon(0.96f) {
                         if (estado != null) abierta = !abierta
                         else { TareaCopia.informeVisto = true; TareaCopia.verInforme = true }

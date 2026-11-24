@@ -131,7 +131,7 @@ fun DialogoAlerta(
         dismissButton = dismissButton?.let { d -> { CompositionLocalProvider(LocalContentColor provides LectorColors.Muted) { d() } } },
         icon = icon, title = title,
         text = text,
-        shape = RoundedCornerShape(28.dp),
+        shape = SuaveShape(30.dp),
         containerColor = LectorColors.Hoja,
         iconContentColor = LectorColors.Text, titleContentColor = LectorColors.Text, textContentColor = LectorColors.Muted,
         tonalElevation = 0.dp,
@@ -157,7 +157,7 @@ fun MenuShiori(expanded: Boolean, onDismissRequest: () -> Unit, modifier: Modifi
             shape = SuaveShape(20.dp),
             containerColor = LectorColors.Hoja,
             tonalElevation = 0.dp, shadowElevation = 12.dp,
-            border = androidx.compose.foundation.BorderStroke(1.dp, LectorColors.Linea),
+            border = androidx.compose.foundation.BorderStroke(0.8.dp, LectorColors.Linea),
             content = content,
         )
     }
@@ -210,7 +210,7 @@ fun CampoTextoShiori(
         leadingIcon = leadingIcon, trailingIcon = trailingIcon, supportingText = supportingText, isError = isError,
         visualTransformation = visualTransformation, keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
         singleLine = singleLine, maxLines = maxLines, minLines = minLines,
-        shape = RoundedCornerShape(16.dp),
+        shape = SuaveShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent,
             disabledBorderColor = Color.Transparent, errorBorderColor = Color.Transparent,

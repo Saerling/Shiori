@@ -174,7 +174,7 @@ private fun TituloSeccion(texto: String) {
 
 @Composable
 private fun Tarjeta(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(LectorColors.Card).padding(vertical = 4.dp), content = content)
+    Column(Modifier.fillMaxWidth().clip(SuaveShape(24.dp)).background(LectorColors.Card).padding(vertical = 4.dp), content = content)
 }
 
 @Composable

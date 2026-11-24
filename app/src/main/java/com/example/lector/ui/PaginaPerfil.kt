@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -37,7 +38,7 @@ fun PaginaPerfil(
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(Modifier.fillMaxSize().background(LectorColors.Bg)) {
-        Box(Modifier.fillMaxWidth().height(bannerHeight).graphicsLayer { alpha = 1f - scrollProgress.value; translationY = -scrollProgress.value * size.height * 0.3f }) {
+        Box(Modifier.fillMaxWidth().height(bannerHeight).clipToBounds().graphicsLayer { alpha = 1f - scrollProgress.value; translationY = -scrollProgress.value * size.height * 0.3f }) {
             banner()
             Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to LectorColors.Bg.copy(alpha = 0.2f), 1f to LectorColors.Bg)))
         }
@@ -64,7 +65,7 @@ fun FondoIcono(content: @Composable BoxScope.() -> Unit) {
 
 @Composable
 fun AvatarPerfil(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
-    Box(modifier.size(96.dp).clip(RoundedCornerShape(22.dp)).background(LectorColors.Card).border(0.6.dp, LectorColors.Linea, RoundedCornerShape(22.dp)), content = content)
+    Box(modifier.size(96.dp).clip(SuaveShape(22.dp)).background(LectorColors.Card).border(0.6.dp, LectorColors.Linea, SuaveShape(22.dp)), content = content)
 }
 
 @Composable
@@ -80,7 +81,7 @@ fun AccionesPerfil(modifier: Modifier = Modifier, content: @Composable RowScope.
 /** Tarjeta plana con borde fino. */
 @Composable
 fun TarjetaPerfil(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, tint: Color = LectorColors.Text, content: @Composable BoxScope.() -> Unit) {
-    val forma = RoundedCornerShape(14.dp)
+    val forma = SuaveShape(14.dp)
     Box(
         modifier.fillMaxWidth().clip(forma).background(LectorColors.Card).border(0.6.dp, if (tint == LectorColors.Text) LectorColors.Linea else tint.copy(alpha = 0.5f), forma)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(14.dp),

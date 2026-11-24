@@ -61,8 +61,7 @@ fun BarraAcciones(visible: Boolean, acciones: List<AccionBarra>, modifier: Modif
     ) {
         Row(
             Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp).fillMaxWidth()
-                .shadow(14.dp, SuaveShape(28.dp), clip = false).clip(SuaveShape(28.dp)).background(LectorColors.Glass)
-                .border(0.6.dp, LectorColors.Linea, SuaveShape(28.dp))
+                .vidrioFlotante(CircleShape)
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 6.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
@@ -207,7 +206,7 @@ fun HojaLector(onCerrar: () -> Unit, content: @Composable ColumnScope.() -> Unit
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onCerrar,
         sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
         containerColor = LectorColors.Hoja,
         contentColor = LectorColors.Text,
         tonalElevation = 0.dp,

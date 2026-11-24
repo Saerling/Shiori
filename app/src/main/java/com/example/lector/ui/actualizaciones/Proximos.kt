@@ -433,7 +433,7 @@ private fun DiaCalendario(
         },
         label = "bordeDia",
     )
-    val forma = RoundedCornerShape(14.dp)
+    val forma = SuaveShape(14.dp)
     val pasado = fecha.isBefore(hoy)
     val conPortada = mangas.isNotEmpty()
     Box(

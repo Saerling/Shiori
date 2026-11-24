@@ -84,7 +84,7 @@ private fun nombreTinteVisor(t: Tinte) = when (t) {
 @Composable
 fun FilaChips(etiquetas: List<String>, elegida: Int, onElegir: (Int) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = MargenLateral, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         etiquetas.forEachIndexed { i, e -> ChipSel(e, i == elegida) { onElegir(i) } }
@@ -97,30 +97,18 @@ private val FormaBloque = SuaveShape(22.dp)
 
 /** Título de sección: icono en círculo tonal de acento + texto grande en negrita. */
 @Composable
-private fun SeccionVisor(texto: String, icono: ImageVector) {
-    val acento = MaterialTheme.colorScheme.primary
-    Row(
-        Modifier.fillMaxWidth().padding(start = 22.dp, end = 24.dp, top = 22.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(30.dp).clip(CircleShape).background(acento.copy(alpha = 0.18f)), Alignment.Center) {
-            Icon(icono, null, tint = acento, modifier = Modifier.size(17.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        LText(texto, LectorType.Section.copy(fontSize = 19.sp, fontWeight = FontWeight.Bold), color = LectorColors.Text)
-    }
-}
+private fun SeccionVisor(texto: String, icono: ImageVector) = TituloSeccion(texto)
 
 /** Bloque tipo tarjeta (como las filas de ajustes) con un título, un valor opcional en píldora y su control. */
 @Composable
 private fun BloqueVisor(titulo: String, valor: String? = null, content: @Composable ColumnScope.() -> Unit) {
     val acento = MaterialTheme.colorScheme.primary
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp)
-            .clip(FormaBloque).background(LectorColors.Card).padding(top = 14.dp, bottom = 12.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 6.dp)
+            .clip(FormaBloque).background(LectorColors.Card).bordeLuminoso(FormaBloque, 0.5f).padding(top = 14.dp, bottom = 12.dp),
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            LText(titulo, LectorType.Section, Modifier.weight(1f), color = LectorColors.Text)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            LText(titulo, LectorType.Body.copy(fontSize = 16.sp), Modifier.weight(1f), color = LectorColors.Text)
             if (valor != null) {
                 Spacer(Modifier.width(8.dp))
                 LText(
@@ -137,28 +125,12 @@ private fun BloqueVisor(titulo: String, valor: String? = null, content: @Composa
 
 /** Píldora de opción del visor: la elegida, en acento lleno con un visto; las demás, tonales. */
 @Composable
-private fun ChipVisor(texto: String, elegido: Boolean, onClick: () -> Unit) {
-    val acento = MaterialTheme.colorScheme.primary
-    val radio by animateDpAsState(if (elegido) 18.dp else 10.dp, Muelles.espacialRapido(), label = "radioChip")
-    val fondo by animateColorAsState(if (elegido) acento else LectorColors.PillFill, Muelles.efectos(), label = "fondoChip")
-    val tinta by animateColorAsState(if (elegido) MaterialTheme.colorScheme.onPrimary else LectorColors.Text, Muelles.efectos(), label = "tintaChip")
-    Row(
-        Modifier.pressable { Tacto.tic(); onClick() }.clip(RoundedCornerShape(radio)).background(fondo)
-            .height(36.dp).padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (elegido) {
-            Icon(Icons.Rounded.Check, null, tint = tinta, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(6.dp))
-        }
-        LText(texto, LectorType.Body, color = tinta, maxLines = 1)
-    }
-}
+private fun ChipVisor(texto: String, elegido: Boolean, onClick: () -> Unit) = ChipNativo(texto, elegido) { onClick() }
 
 @Composable
 private fun ChipsVisor(etiquetas: List<String>, elegida: Int, onElegir: (Int) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         etiquetas.forEachIndexed { i, e -> ChipVisor(e, i == elegida) { onElegir(i) } }

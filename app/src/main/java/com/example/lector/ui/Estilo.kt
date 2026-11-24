@@ -1,5 +1,7 @@
 package com.example.lector.ui
 
+import androidx.compose.ui.geometry.toRect
+
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.draw.drawBehind
@@ -134,12 +136,33 @@ val EnfasisEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 // ───────────────────────── Formas ─────────────────────────
 
-/** Rectángulo redondeado de Silencio (se mantiene el nombre por las pantallas). */
+/**
+ * Rectángulo con esquinas continuas (G2, como ColorOS 17 e iOS): la curva entra en el borde sin el quiebre de un
+ * cuarto de círculo. Cada esquina ocupa 1,28 × el radio y se dibuja con dos cúbicas.
+ */
 @Immutable
 data class SuaveShape(val radio: Dp, val exponente: Float = 4f) : Shape {
-    private val forma = androidx.compose.foundation.shape.RoundedCornerShape(radio)
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
-        forma.createOutline(size, layoutDirection, density)
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val r0 = with(density) { radio.toPx() }
+        val r = minOf(r0, size.minDimension / 2f)
+        if (r <= 0f) return Outline.Rectangle(size.toRect())
+        // Cápsulas: si el radio llega a la mitad del lado corto, una píldora normal (los extremos ya son semicírculos).
+        if (r0 >= size.minDimension / 2f) return Outline.Rounded(androidx.compose.ui.geometry.RoundRect(size.toRect(), androidx.compose.ui.geometry.CornerRadius(r)))
+        val e = minOf(r * 1.28f, size.minDimension / 2f)
+        val w = size.width; val h = size.height
+        val p = androidx.compose.ui.graphics.Path().apply {
+            moveTo(e, 0f); lineTo(w - e, 0f)
+            cubicTo(w - e * 0.38f, 0f, w, e * 0.38f, w, e)
+            lineTo(w, h - e)
+            cubicTo(w, h - e * 0.38f, w - e * 0.38f, h, w - e, h)
+            lineTo(e, h)
+            cubicTo(e * 0.38f, h, 0f, h - e * 0.38f, 0f, h - e)
+            lineTo(0f, e)
+            cubicTo(0f, e * 0.38f, e * 0.38f, 0f, e, 0f)
+            close()
+        }
+        return Outline.Generic(p)
+    }
 }
 
 // ───────────────────────── Pulsación ─────────────────────────

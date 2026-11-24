@@ -227,7 +227,7 @@ fun HojaMasInicio(lista: List<Comic>, almacen: Almacen, puedeEliminar: Boolean, 
     HojaLector(onCerrar) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             if (uno != null) {
-                val forma = RoundedCornerShape(10.dp)
+                val forma = SuaveShape(10.dp)
                 ComicCover(uno, almacen, Modifier.width(46.dp).aspectRatio(2f / 3f).clip(forma), forma)
                 Spacer(Modifier.width(14.dp))
             }

@@ -224,7 +224,7 @@ fun ChipBorde(texto: String, color: Color) {
 /** Dato grande con su etiqueta (Estadísticas): número en negrita y etiqueta monoespaciada, con borde fino. */
 @Composable
 fun StatCard(value: String, label: String, modifier: Modifier = Modifier) {
-    Column(modifier.clip(RoundedCornerShape(16.dp)).background(LectorColors.Card).borde(16.dp).padding(18.dp)) {
+    Column(modifier.clip(SuaveShape(16.dp)).background(LectorColors.Card).borde(16.dp).padding(18.dp)) {
         Odometro(value, LectorType.Display.copy(fontSize = if (value.length > 6) 22.sp else 32.sp))
         Spacer(Modifier.height(4.dp))
         LText(label.uppercase(), EstiloDatos, color = LectorColors.Muted, maxLines = 2)
