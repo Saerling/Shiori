@@ -689,7 +689,7 @@ private fun NavegarFuente(
                 Column(
                     Modifier.fillMaxWidth()
                         .padding(top = alturaBanner * AvatarPerfilEn)
-                        .padding(start = MargenFicha - 3.dp - margen, end = MargenFicha - margen)
+                        .padding(start = (MargenFicha - 3.dp - margen).coerceAtLeast(0.dp), end = (MargenFicha - margen).coerceAtLeast(0.dp))
                 ) {
                     AvatarPerfil { IconoExt(f.pkg, null, Modifier.fillMaxSize()) }
                     Spacer(Modifier.height(14.dp))
